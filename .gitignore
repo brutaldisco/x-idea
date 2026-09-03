@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# env
+.env
+.env.*
+!.env.example
+
+# local db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# vercel
+.vercel/
+
+# test / coverage
+coverage/
+playwright-report/
+test-results/
+
+# os / editor
+.DS_Store
+*.log
