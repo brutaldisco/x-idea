@@ -1,5 +1,6 @@
 import { getClient, isRemoteDb } from "@/db/client";
 import {
+  isIdempotentSkip,
   isOptionalStatement,
   loadInitSql,
   splitSql,
@@ -28,7 +29,7 @@ export async function applyMigration(): Promise<{
       await client.execute(sql);
       applied += 1;
     } catch (error) {
-      if (isOptionalStatement(raw)) {
+      if (isOptionalStatement(raw) || isIdempotentSkip(error)) {
         skipped += 1;
         logger.warn(
           { sql: raw.slice(0, 80) },

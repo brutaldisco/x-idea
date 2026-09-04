@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const OPTIONAL = /libsql_vector_idx|F32_BLOB|sources_fts|tokenize = 'trigram'/i;
+const IDEMPOTENT_SKIP = /duplicate column name|no such column/i;
 
 export function splitSql(sql: string): string[] {
   return sql
@@ -16,12 +17,21 @@ export function splitSql(sql: string): string[] {
     .filter(Boolean);
 }
 
+const MIGRATION_FILES = ["0000_init.sql", "0001_multi_account.sql"];
+
 export function loadInitSql(): string {
-  return readFileSync(join(process.cwd(), "drizzle/0000_init.sql"), "utf8");
+  return MIGRATION_FILES.map((file) =>
+    readFileSync(join(process.cwd(), "drizzle", file), "utf8"),
+  ).join(";\n");
 }
 
 export function isOptionalStatement(sql: string): boolean {
   return OPTIONAL.test(sql);
+}
+
+export function isIdempotentSkip(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return IDEMPOTENT_SKIP.test(message);
 }
 
 export function toLocalSqlite(sql: string): string {

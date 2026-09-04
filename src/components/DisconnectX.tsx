@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function DisconnectX() {
+export function DisconnectX({ id }: { id: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -14,7 +14,9 @@ export function DisconnectX() {
       disabled={busy}
       onClick={() => {
         setBusy(true);
-        void fetch("/api/x/connection", { method: "DELETE" })
+        void fetch(`/api/x/connection?id=${encodeURIComponent(id)}`, {
+          method: "DELETE",
+        })
           .then((res) => {
             if (res.ok) {
               router.refresh();

@@ -3,6 +3,27 @@ import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import type { TokenResponse, XMe } from "@/server/x/oauth";
 
+export const MAX_X_ACCOUNTS = 3;
+
+export type XAccountPublic = {
+  id: string;
+  username: string;
+  name: string | null;
+  status: string;
+  syncEnabled: boolean;
+  lastSyncedAt: string | null;
+};
+
+export async function countXAccounts(): Promise<number> {
+  if (!isDbConfigured()) {
+    return 0;
+  }
+  const result = await getClient().execute(
+    "SELECT COUNT(*) AS n FROM x_account LIMIT 1",
+  );
+  return Number(result.rows[0]?.n ?? 0);
+}
+
 export async function saveXAccount(
   me: XMe,
   tokens: TokenResponse,
@@ -11,13 +32,49 @@ export async function saveXAccount(
     Date.now() + (tokens.expires_in ?? 7200) * 1000,
   ).toISOString();
   const client = getClient();
-  await client.execute("DELETE FROM x_account");
+
+  const existing = await client.execute({
+    sql: "SELECT id FROM x_account WHERE x_user_id = ? LIMIT 1",
+    args: [me.id],
+  });
+
+  if (existing.rows[0]) {
+    await client.execute({
+      sql: `UPDATE x_account SET
+        x_username = ?, x_name = ?, x_avatar_url = ?,
+        access_token = ?, refresh_token = ?, token_expires_at = ?,
+        scopes_json = ?, status = 'active', updated_at = datetime('now')
+      WHERE id = ?`,
+      args: [
+        me.username,
+        me.name ?? null,
+        me.profile_image_url ?? null,
+        tokens.access_token,
+        tokens.refresh_token ?? "",
+        expires,
+        JSON.stringify(
+          (
+            tokens.scope ?? "bookmark.read tweet.read users.read offline.access"
+          ).split(" "),
+        ),
+        existing.rows[0].id,
+      ],
+    });
+    logger.info({ username: me.username }, "x_account updated");
+    return;
+  }
+
+  const count = await countXAccounts();
+  if (count >= MAX_X_ACCOUNTS) {
+    throw new Error(`X アカウントは最大 ${MAX_X_ACCOUNTS} 件までです`);
+  }
+
   await client.execute({
     sql: `INSERT INTO x_account (
       id, x_user_id, x_username, x_name, x_avatar_url,
       access_token, refresh_token, token_expires_at, scopes_json, status,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))`,
+      sync_enabled, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, datetime('now'), datetime('now'))`,
     args: [
       newId(),
       me.id,
@@ -37,29 +94,33 @@ export async function saveXAccount(
   logger.info({ username: me.username }, "x_account saved");
 }
 
-export async function deleteXAccount(): Promise<void> {
-  await getClient().execute("DELETE FROM x_account");
-  logger.info("x_account deleted");
+export async function deleteXAccount(id: string): Promise<void> {
+  await getClient().execute({
+    sql: "DELETE FROM x_account WHERE id = ?",
+    args: [id],
+  });
+  logger.info({ id }, "x_account deleted");
 }
 
-export async function getXAccountPublic(): Promise<{
-  username: string;
-  name: string | null;
-  status: string;
-} | null> {
+export async function listXAccounts(): Promise<XAccountPublic[]> {
   if (!isDbConfigured()) {
-    return null;
+    return [];
   }
   const result = await getClient().execute(
-    "SELECT x_username, x_name, status FROM x_account LIMIT 1",
+    `SELECT id, x_username, x_name, status, sync_enabled, last_synced_at
+     FROM x_account ORDER BY created_at ASC LIMIT ${MAX_X_ACCOUNTS}`,
   );
-  const row = result.rows[0];
-  if (!row) {
-    return null;
-  }
-  return {
+  return result.rows.map((row) => ({
+    id: String(row.id),
     username: String(row.x_username),
     name: row.x_name ? String(row.x_name) : null,
     status: String(row.status),
-  };
+    syncEnabled: Number(row.sync_enabled) === 1,
+    lastSyncedAt: row.last_synced_at ? String(row.last_synced_at) : null,
+  }));
+}
+
+export async function getXAccountPublic(): Promise<XAccountPublic | null> {
+  const list = await listXAccounts();
+  return list[0] ?? null;
 }

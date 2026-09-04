@@ -16,7 +16,15 @@ export async function DELETE(request: Request) {
     );
   }
   try {
-    await deleteXAccount();
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+    if (!id) {
+      return Response.json(
+        toErrorBody(new AppError("VALIDATION", "id が必要です")),
+        { status: 400 },
+      );
+    }
+    await deleteXAccount(id);
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json(toErrorBody(error), { status: 500 });

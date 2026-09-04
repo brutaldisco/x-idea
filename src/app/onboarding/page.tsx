@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { getXAccountPublic } from "@/server/x/account";
+import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
 async function OnboardingBody({
   searchParams,
@@ -11,7 +11,8 @@ async function OnboardingBody({
   await connection();
   const params = await searchParams;
   const step = Number(params.step ?? "1");
-  const account = await getXAccountPublic();
+  const accounts = await listXAccounts();
+  const account = accounts[0] ?? null;
 
   if (step <= 1) {
     return (
@@ -42,7 +43,19 @@ async function OnboardingBody({
           だけです。
         </p>
         {account ? (
-          <p className="mt-6 text-sm">連携済み: @{account.username}</p>
+          <div className="mt-6 space-y-2">
+            <p className="text-sm">
+              連携済み: {accounts.map((a) => `@${a.username}`).join(" / ")}
+            </p>
+            {accounts.length < MAX_X_ACCOUNTS ? (
+              <Link
+                href="/api/x/oauth/start"
+                className="inline-block text-sm underline"
+              >
+                別のアカウントを追加
+              </Link>
+            ) : null}
+          </div>
         ) : (
           <Link
             href="/api/x/oauth/start"

@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { DisconnectX } from "@/components/DisconnectX";
 import { TabBar } from "@/components/TabBar";
 import { getHealth } from "@/server/health";
-import { getXAccountPublic } from "@/server/x/account";
+import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
 async function SettingsBody({
   searchParams,
@@ -12,11 +12,12 @@ async function SettingsBody({
   searchParams: Promise<{ x?: string }>;
 }) {
   await connection();
-  const [health, account, params] = await Promise.all([
+  const [health, accounts, params] = await Promise.all([
     getHealth(),
-    getXAccountPublic(),
+    listXAccounts(),
     searchParams,
   ]);
+  const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
     <div className="space-y-3">
       {params.x === "missing" ? (
@@ -29,34 +30,53 @@ async function SettingsBody({
           X 連携がキャンセルされました。
         </p>
       ) : null}
+      {params.x === "limit" ? (
+        <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">
+          X アカウントは最大 {MAX_X_ACCOUNTS} 件までです。
+        </p>
+      ) : null}
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">X 連携</h2>
           <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
-            {account ? account.status : "未設定"}
+            {accounts.length} / {MAX_X_ACCOUNTS}
           </span>
         </div>
-        {account ? (
-          <>
-            <p className="mt-2 text-sm">@{account.username}</p>
-            <p className="mt-1 text-ink-2 text-sm">
-              同期トグルは OFF のままです。クレジット購入後に人間が ON
-              にします。
-            </p>
-            <DisconnectX />
-          </>
+        {accounts.length === 0 ? (
+          <p className="mt-2 text-ink-2 text-sm">
+            ブックマークの取り込みに X 連携が必要です。
+          </p>
         ) : (
-          <>
-            <p className="mt-2 text-ink-2 text-sm">
-              ブックマークの取り込みに X 連携が必要です。
-            </p>
-            <Link
-              href="/api/x/oauth/start"
-              className="mt-3 inline-block rounded-full bg-ink px-4 py-2 text-paper text-sm"
-            >
-              X と連携
-            </Link>
-          </>
+          <ul className="mt-3 space-y-3">
+            {accounts.map((account) => (
+              <li
+                key={account.id}
+                className="rounded-xl border border-line bg-paper p-3"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-sm">@{account.username}</p>
+                  <span className="text-ink-2 text-xs">{account.status}</span>
+                </div>
+                <p className="mt-1 text-ink-2 text-xs">
+                  同期トグルは OFF のままです。クレジット購入後に人間が ON
+                  にします。
+                </p>
+                <DisconnectX id={account.id} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {canAdd ? (
+          <Link
+            href="/api/x/oauth/start"
+            className="mt-3 inline-block rounded-full bg-ink px-4 py-2 text-paper text-sm"
+          >
+            {accounts.length === 0 ? "X と連携" : "アカウントを追加"}
+          </Link>
+        ) : (
+          <p className="mt-3 text-ink-2 text-xs">
+            上限 {MAX_X_ACCOUNTS} 件に達しています。
+          </p>
         )}
       </article>
       <ServiceCard

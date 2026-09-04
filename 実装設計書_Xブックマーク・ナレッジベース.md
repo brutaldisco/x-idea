@@ -4,9 +4,9 @@
 | --- | --- |
 | ドキュメント種別 | 実装設計書（Implementation Design Document） |
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
-| 版 | **v3.1** |
+| 版 | **v3.2** |
 | 作成日 | 2026-07-12 |
-| 改訂日 | **2026-09-04** |
+| 改訂日 | **2026-09-05** |
 | ステータス | 実装着手可能 |
 | 外部サービス情報の確認日 | 2026-09-04（Next.js / Turso / Gemini / X API / Vercel / AI SDK / MCP の各公式ドキュメント） |
 | リポジトリ | `https://github.com/brutaldisco/x-idea.git`（空。本書のコミットから開始） |
@@ -23,6 +23,9 @@
 > 3. **「驚き」を生む体験を追加**：朝の **Daily Briefing**（音声つき）、引用と生成UIつきの **Ask**、知識の星図 **Atlas**、忘却に逆らう **Echo**、AIが余白に書き込む **Marginalia Reader**、スクショの文字まで検索できる **マルチモーダル取り込み**、自分の知識を Claude / ChatGPT / Cursor から使える **MCPサーバー**、Xの **ブックマークフォルダ連動**、自然言語で作る **Lens（スマートコレクション）**、ユーザー修正から学ぶ **「学習する司書」**。
 > 4. **個人用途・シングルテナント・アプリログインなし** は維持。ただし外部から機械アクセスする経路（MCP / Quick Capture / Cron）には **Bearer トークン必須**。任意で `APP_PASSCODE`。
 > 5. **リポジトリと本番DB・本番URLを確定**：GitHub `brutaldisco/x-idea`、Turso 東京、Vercel `https://x-idea.vercel.app`（`hnd1`）。有料プランはすべて **設定トグル既定 OFF**。契約が遅れても実装は `MOCK_EXTERNAL=1` と無料枠で進められる（付録H）。
+
+> **v3.2 の要点（v3.1 からの変更）**
+> 1. **X 連携を複数アカウント（最大 3）に変更**（ADR-002）。`x_account` は複数行になり、`sources` は `x_account_id` でどのアカウント由来かを保持する。同期カーソルはアカウント別に分離する。アプリのユーザー概念やログインは追加しない。
 
 ---
 
@@ -315,7 +318,7 @@ UI/UX の判断に迷ったら以下に従う。
   4. **Echo カード**（P2）：問い1つ＋3ボタン（同意／変わった／不要）。
   5. **Insights**（P2）：今週のテーマ1〜3個。
   6. **最近の Source**：横スクロールカード（8件）。
-- **空状態**：X 未連携→「X と連携して始める」CTA 1つのみ。連携済み・0件→「初回取り込み中… 120/5,000」進捗。
+- **空状態**：X 未連携→「X と連携して始める」CTA 1つのみ。連携済み・0件→「初回取り込み中… 120/5,000」進捗。複数アカウント時はアカウントごとの進捗を並べる。
 - **キャッシュ**：Briefing/Insights は `use cache`（`cacheTag('today')`）。同期ピルは Suspense で後ストリーム。
 
 ### 8.2 SC-02 Inbox
@@ -374,7 +377,7 @@ UI/UX の判断に迷ったら以下に従う。
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
   - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
-- **X 連携**：状態、再連携、解除、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。
+- **X 連携**：接続中アカウント一覧（最大 3）。各アカウントの状態、再連携、個別解除、「アカウントを追加」、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。3 件に達したら追加ボタンを無効化。
 - **同期**：間隔（15/30/60/360 分/手動）、返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
@@ -597,28 +600,31 @@ UI/UX の判断に迷ったら以下に従う。
 - **認証**：OAuth 2.0 Authorization Code with PKCE。スコープ `bookmark.read tweet.read users.read offline.access`。
 - **取得仕様**：`max_results` 1〜100、`pagination_token`。自身のブックマークのみ。
 
-### 14.2 認証フロー（アプリログインなし）
+### 14.2 認証フロー（アプリログインなし、複数アカウント）
+
+**v3.2（ADR-002）**：`x_account` はシングルトンではなく **最大 3 行**。追加は Settings の「アカウントを追加」から行い、同じ X アカウント（`x_user_id`）は上書き更新する。アプリ側のログイン／ユーザー切替は作らない。
 
 ```
-[Settings/Onboarding] 「X と連携」
+[Settings/Onboarding] 「X と連携」または「アカウントを追加」
   → GET /api/x/oauth/start
       state / code_verifier を HttpOnly 暗号化 Cookie（10分）に保存
       → https://x.com/i/oauth2/authorize?...&code_challenge_method=S256
   → 同意 → GET /api/x/oauth/callback?code&state
   → トークン交換 → GET /2/users/me
-  → x_account（シングルトン行）に保存 → /onboarding?step=3 へ
+  → x_account に upsert（x_user_id 一意、最大 3）→ /onboarding?step=3 へ
 ```
 
-- ジョブ実行時に期限を確認し、失効 5 分前ならリフレッシュ。失敗は `status='reauth_required'`、Today に赤ピル、（P2）Push。
+- ジョブ実行時に期限を確認し、失効 5 分前ならリフレッシュ。失敗はその行の `status='reauth_required'`、Today に赤ピル、（P2）Push。
+- 3 件目以降の追加は拒否し、Settings に「上限 3」と表示する。
 
 ### 14.3 差分取得アルゴリズム
 
 Bookmarks API は新しい順。**前回同期時の先頭既知 ID に到達したら打ち切る**。
 
 ```
-sync_bookmarks(mode = 'incremental' | 'initial', initial_limit?):
-  token = ensure_valid_token()
-  known_head = settings.last_sync_head_tweet_id
+sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
+  token = ensure_valid_token(x_account_id)
+  known_head = x_account.last_sync_head_tweet_id
   new_head = null; pagination = null; fetched = []
   max_pages = mode == 'initial' ? ceil(initial_limit / 100) : 10
   loop max_pages:
@@ -636,8 +642,9 @@ sync_bookmarks(mode = 'incremental' | 'initial', initial_limit?):
   done:
     upsert fetched → x_posts / sources / media_assets / source_articles(pending)
     enqueue article_fetch(per url) ; enqueue enrich_batch(coalesce)
-    settings.last_sync_head_tweet_id = new_head ?? known_head
-    sync_runs に記録（pages, new, cost_estimate = resources * 0.001）
+    x_account.last_sync_head_tweet_id = new_head ?? known_head
+    x_account.last_synced_at = now
+    sync_runs に記録（x_account_id, pages, new, cost_estimate = resources * 0.001）
 ```
 
 - `note_tweet` があれば長文本文を優先。
@@ -901,7 +908,7 @@ RETURNING *;
 ### 18.1 設計方針
 
 - Source と Knowledge Card の分離。AI 出力とユーザー入力の分離（`ai_*` / `user_*`、`*_source`）。原文不変。
-- シングルテナント：`user_id` なし。設定・X 連携はシングルトン。
+- シングルテナント：`user_id` なし。設定はシングルトン。**X 連携は最大 3 アカウント**（v3.2、ADR-002）。`user_id` は追加しない。
 - SQLite 型：ID は TEXT（ULID）、真偽は INTEGER 0/1、時刻は ISO8601 TEXT（UTC）、JSON は TEXT、ベクトルは `F32_BLOB(768)`。
 - rows read 抑制：一覧はカーソルページネーション必須、フィルタ用インデックスを最初から張る、ベクトルは索引経由のみ。
 
@@ -909,8 +916,8 @@ RETURNING *;
 
 | エンティティ | 役割 |
 | --- | --- |
-| `settings` | 設定・同期カーソル（1 行） |
-| `x_account` | X 連携（1 行） |
+| `settings` | 設定（1 行） |
+| `x_account` | X 連携（最大 3 行、v3.2） |
 | `x_bookmark_folders` / `x_post_folders` | フォルダ（P2） |
 | `sources` | 保存単位の中核 |
 | `x_posts` / `articles` / `source_articles` / `media_assets` | 一次情報 |
@@ -968,6 +975,7 @@ CREATE TABLE settings (
 INSERT INTO settings (id) VALUES (1);
 
 -- X 連携（シングルトン運用）
+-- X 連携（v3.2: 最大 3 行。アプリ側のユーザー概念は追加しない）
 CREATE TABLE x_account (
   id TEXT PRIMARY KEY,
   x_user_id TEXT NOT NULL UNIQUE,
@@ -979,6 +987,9 @@ CREATE TABLE x_account (
   token_expires_at TEXT NOT NULL,
   scopes_json TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active', -- active | reauth_required | revoked
+  sync_enabled INTEGER NOT NULL DEFAULT 1,
+  last_sync_head_tweet_id TEXT,           -- アカウント別の同期カーソル
+  last_synced_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1013,6 +1024,7 @@ CREATE TABLE sources (
   id TEXT PRIMARY KEY,
   origin TEXT NOT NULL DEFAULT 'x_bookmark',    -- x_bookmark | manual
   kind TEXT NOT NULL CHECK (kind IN ('x_post','article','note')),
+  x_account_id TEXT REFERENCES x_account(id) ON DELETE SET NULL, -- v3.2: どのアカウント由来か
   x_post_id TEXT,
   article_id TEXT,
   bookmarked_at TEXT,
@@ -1400,6 +1412,7 @@ INSERT INTO job_schedules (key, job_type, cron_expr) VALUES
 
 CREATE TABLE sync_runs (
   id TEXT PRIMARY KEY,
+  x_account_id TEXT REFERENCES x_account(id) ON DELETE SET NULL, -- v3.2
   trigger TEXT NOT NULL,                         -- cron | manual | initial | client
   mode TEXT NOT NULL DEFAULT 'incremental',
   status TEXT NOT NULL,                          -- running | success | partial | failed
@@ -1800,6 +1813,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | ID | タスク | 成果物 | 依存 | DoD |
 | --- | --- | --- | --- | --- |
 | T-101 | X OAuth PKCE（start/callback/解除）、`x_account` 保存、Onboarding ステップ 2 | `src/app/api/x/oauth/*`, `src/server/x/oauth.ts` | T-003, T-005 | 実アカウントで連携・解除 |
+| T-101b | X 複数アカウント（最大 3、v3.2）：`x_account` 複数行化、`sources.x_account_id`、`sync_runs.x_account_id`、アカウント別カーソル、Settings の一覧/追加/個別解除 | `drizzle/0001_multi_account.sql`, `src/server/x/*`, Settings UI | T-101 | 2 つ目のアカウントを追加・解除できる。既存データは最初の 1 件に帰属 |
 | T-102 | トークンリフレッシュ、`reauth_required` 遷移（E-02） | `src/server/x/token.ts` | T-101 | 失効フィクスチャで状態遷移 |
 | T-103 | X API クライアント（fields/expansions、レート制限記録、`withRetry`、Zod 解析） | `src/server/x/client.ts`, `fixtures/x/*.json` | T-009 | 契約テスト |
 | T-104 | `sync_bookmarks`（差分／初回 `initial_limit`、errors→availability、`note_tweet`、sync_runs、コスト推定） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | 実データ取り込み、既知 ID 打ち切り |
@@ -1960,6 +1974,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | P-12 | ブックマーク時刻 | 初回観測時刻 | API 制約 |
 | P-13 | 引用 | 1 階層スナップショット | ノイズ抑制 |
 | P-14 | アプリ認証 | なし | 個人用途 |
+| P-26 | X 連携アカウント数 | 最大 3（v3.2） | ユーザー要望。アプリのユーザー概念は追加しない |
 | P-15 | 初期カテゴリ | 社会学/AI/組織/デザイン/筋力トレーニング/健康/仕事/思想 | 要件例示 |
 | P-16 | Cron | cron-job.org 1 分 | Hobby 制約回避 |
 | P-17 | `APP_PASSCODE` | 未設定 | 最小セキュリティ |

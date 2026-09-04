@@ -57,7 +57,7 @@ export async function getHealth(): Promise<HealthPayload> {
     const client = getClient();
     const [settings, pending, inbox, account, usage] = await Promise.all([
       client.execute(
-        "SELECT last_synced_at, x_api_enabled, ai_paid_enabled, ai_lane_caps_json FROM settings WHERE id = 1 LIMIT 1",
+        "SELECT x_api_enabled, ai_paid_enabled, ai_lane_caps_json FROM settings WHERE id = 1 LIMIT 1",
       ),
       client.execute(
         "SELECT COUNT(*) AS n FROM jobs WHERE status = 'pending' LIMIT 1",
@@ -65,7 +65,9 @@ export async function getHealth(): Promise<HealthPayload> {
       client.execute(
         "SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' LIMIT 1",
       ),
-      client.execute("SELECT id FROM x_account LIMIT 1"),
+      client.execute(
+        "SELECT MAX(last_synced_at) AS last_synced_at, COUNT(*) AS n FROM x_account LIMIT 1",
+      ),
       client.execute({
         sql: "SELECT lane, requests FROM ai_usage_daily WHERE day_pt = ? LIMIT 16",
         args: [pacificDay()],
@@ -99,10 +101,12 @@ export async function getHealth(): Promise<HealthPayload> {
     return {
       ...base,
       db: "ok",
-      last_synced_at: row?.last_synced_at ? String(row.last_synced_at) : null,
+      last_synced_at: account.rows[0]?.last_synced_at
+        ? String(account.rows[0].last_synced_at)
+        : null,
       pending_jobs: Number(pending.rows[0]?.n ?? 0),
       inbox_count: Number(inbox.rows[0]?.n ?? 0),
-      x_connected: Boolean(account.rows[0]),
+      x_connected: Number(account.rows[0]?.n ?? 0) > 0,
       x_api_enabled: Number(row?.x_api_enabled ?? 0) === 1,
       ai_paid_enabled: Number(row?.ai_paid_enabled ?? 0) === 1,
       ai_budget: caps,
