@@ -1,4 +1,5 @@
 export const OWNED_READ_USD = 0.001;
+export const POST_READ_USD = 0.005;
 export const LOW_CREDIT_USD = 2;
 export const USAGE_DAYS = 14;
 
@@ -10,6 +11,10 @@ export function roundUsd(value: number): number {
 
 export function estimateCostUsd(resources: number): number {
   return roundUsd(Math.max(0, resources) * OWNED_READ_USD);
+}
+
+export function estimatePostReadUsd(resources: number): number {
+  return roundUsd(Math.max(0, resources) * POST_READ_USD);
 }
 
 export function lastDateKeys(

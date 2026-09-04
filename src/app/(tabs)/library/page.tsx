@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { SourceCard } from "@/components/SourceCard";
 import { countSources, listSources } from "@/server/sources/query";
 import { contextLabel, getAccountContext } from "@/server/x/context";
 
@@ -28,15 +29,13 @@ async function LibraryBody() {
         {label} · {count}件
       </li>
       {items.map((item) => (
-        <li
+        <SourceCard
           key={item.id}
-          className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
-        >
-          {item.authorUsername ? (
-            <p className="text-ink-2 text-xs">@{item.authorUsername}</p>
-          ) : null}
-          <p className="mt-1 text-sm">{item.summary}</p>
-        </li>
+          id={item.id}
+          authorUsername={item.authorUsername}
+          summary={item.summary}
+          url={item.url}
+        />
       ))}
     </ul>
   );

@@ -18,6 +18,9 @@ next-env.d.ts
 *.db-wal
 *.db-shm
 
+# local media (ADR-005)
+data/media/
+
 # vercel
 .vercel/
 

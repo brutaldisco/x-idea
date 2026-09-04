@@ -40,17 +40,19 @@ export async function enqueueJob(input: {
   payload?: unknown;
   dedupeKey?: string;
   priority?: number;
+  timeoutSec?: number;
 }): Promise<boolean> {
   const priority = input.priority ?? JOB_PRIORITY[input.type] ?? 0;
   try {
     await getClient().execute({
-      sql: `INSERT INTO jobs (type, payload_json, dedupe_key, priority, status, run_after, created_at)
-            VALUES (?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))`,
+      sql: `INSERT INTO jobs (type, payload_json, dedupe_key, priority, status, timeout_sec, run_after, created_at)
+            VALUES (?, ?, ?, ?, 'pending', ?, datetime('now'), datetime('now'))`,
       args: [
         input.type,
         JSON.stringify(input.payload ?? {}),
         input.dedupeKey ?? null,
         priority,
+        input.timeoutSec ?? 120,
       ],
     });
     return true;

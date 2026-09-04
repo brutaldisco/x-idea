@@ -2,7 +2,7 @@
 
 X でブックマークするだけで、AI が要約・分類・画像解読・関連付けを行い、朝の Briefing・Ask（RAG）・Echo（再浮上）・Atlas（知識星図）・MCP サーバーで「引き出せる知識」に変える個人用 Web アプリ（PWA）。
 
-- 設計書（正本）: [`実装設計書_Xブックマーク・ナレッジベース.md`](./実装設計書_Xブックマーク・ナレッジベース.md)（v3.1）
+- 設計書（正本）: [`実装設計書_Xブックマーク・ナレッジベース.md`](./実装設計書_Xブックマーク・ナレッジベース.md)（v3.4）
 - worker AI 向け入口: [`AGENTS.md`](./AGENTS.md)
 - アカウント・契約: 設計書 **付録H**
 - 本番: **https://x-idea.vercel.app**
@@ -37,4 +37,5 @@ pnpm dev
 - 同期・ジョブ・AI 予算の状態は Settings。残量メーターは「なくなったら追加」。X の公式残量を出すなら `X_BEARER_TOKEN`。
 - Gemini の日次クォータは太平洋時間 0:00（JST 16:00/17:00）にリセット。
 - MCP エンドポイント: `https://x-idea.vercel.app/api/mcp`（Settings でトークン発行、`Authorization: Bearer`）。
-- 有料プラン（X クレジット、Gemini 課金、スレッド展開、Anthropic/OpenAI）はすべて Settings トグル既定 OFF。契約後に人間が ON にする。
+- 有料プラン（X クレジット、Gemini 課金、スレッド展開、返信取得、Anthropic/OpenAI）はすべて Settings トグル既定 OFF。契約後に人間が ON にする。
+- 画像・動画の実ファイルはローカルの `MEDIA_ROOT`（既定 `./data/media`）に保存する。Vercel では保存せず X CDN を表示する。引っ越しは同じ相対パスごとコピーする。

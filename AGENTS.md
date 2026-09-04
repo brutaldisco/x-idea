@@ -32,7 +32,7 @@
 - Vercel: Hobby、リージョン `hnd1`、本番 URL **`https://x-idea.vercel.app`**
 - アカウント作業と有料トグル: 設計書 **付録H**
 
-有料トグル（`x_api_enabled` / `ai_paid_enabled` / `thread_expand_enabled` / `paid_providers_json`）は既定 OFF。人間の指示なしに ON にしない。
+有料トグル（`x_api_enabled` / `ai_paid_enabled` / `thread_expand_enabled` / `reply_context_enabled` / `paid_providers_json`）は既定 OFF。人間の指示なしに ON にしない。
 
 <!-- BEGIN:nextjs-agent-rules -->
 

@@ -4,9 +4,11 @@ import { Suspense } from "react";
 import { AccountSyncToggle } from "@/components/AccountSyncToggle";
 import { DisconnectX } from "@/components/DisconnectX";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
+import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { UsageMeters } from "@/components/UsageMeters";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
 import { getHealth } from "@/server/health";
+import { getContextSettings } from "@/server/settings";
 import { getUsageDashboard } from "@/server/usage/dashboard";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
@@ -16,11 +18,12 @@ async function SettingsBody({
   searchParams: Promise<{ x?: string }>;
 }) {
   await connection();
-  const [health, accounts, usage, params] = await Promise.all([
+  const [health, accounts, usage, params, flags] = await Promise.all([
     getHealth(),
     listXAccounts(),
     getUsageDashboard(),
     searchParams,
+    getContextSettings(),
   ]);
   const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
@@ -117,6 +120,18 @@ async function SettingsBody({
         </p>
         <XApiEnabledToggle enabled={health.x_api_enabled} />
         <ManualSyncButton disabled={!health.x_api_enabled} />
+        <SettingsFlagToggle
+          field="thread_expand_enabled"
+          enabled={flags.threadExpandEnabled}
+          label="セルフスレッド展開"
+          hint="起点投稿の連投を取得します。$0.005/件。既定 OFF。"
+        />
+        <SettingsFlagToggle
+          field="reply_context_enabled"
+          enabled={flags.replyContextEnabled}
+          label="直近7日の返信を取得"
+          hint="会話の返信を最大25件。上限はスレッド展開と共用。既定 OFF。"
+        />
       </article>
       <ServiceCard
         name="Gemini"

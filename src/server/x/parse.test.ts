@@ -21,6 +21,9 @@ describe("parseBookmarksPage", () => {
     expect(tweetUrls(page.tweets[0])).toEqual(["https://example.com/paper"]);
     expect(page.users.get("99")?.username).toBe("alice");
     expect(page.media.get("3_111")?.type).toBe("photo");
+    expect(page.media.get("13_222")?.variants?.[1]?.url).toBe(
+      "https://example.com/high.mp4",
+    );
     expect(isReply(page.tweets[2])).toBe(true);
   });
 });

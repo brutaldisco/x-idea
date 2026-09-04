@@ -57,6 +57,30 @@
         "url": "https://example.com/p.jpg",
         "width": 800,
         "height": 600
+      },
+      {
+        "media_key": "13_222",
+        "type": "video",
+        "preview_image_url": "https://example.com/v.jpg",
+        "duration_ms": 12000,
+        "width": 1280,
+        "height": 720,
+        "variants": [
+          {
+            "bit_rate": 832000,
+            "content_type": "video/mp4",
+            "url": "https://example.com/low.mp4"
+          },
+          {
+            "bit_rate": 2176000,
+            "content_type": "video/mp4",
+            "url": "https://example.com/high.mp4"
+          },
+          {
+            "content_type": "application/x-mpegURL",
+            "url": "https://example.com/stream.m3u8"
+          }
+        ]
       }
     ]
   },

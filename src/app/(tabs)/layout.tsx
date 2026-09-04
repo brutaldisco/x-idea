@@ -21,7 +21,7 @@ async function AccountChrome() {
 
 export default function TabsLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto min-h-dvh max-w-lg pb-32 min-[48rem]:pb-24">
+    <div className="mx-auto min-h-dvh max-w-3xl pb-32 min-[48rem]:pb-24">
       <TickOnMount />
       {children}
       <Suspense fallback={null}>

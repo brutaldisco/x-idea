@@ -37,6 +37,7 @@ export const settings = sqliteTable("settings", {
   threadExpandMonthlyCapUsd: real("thread_expand_monthly_cap_usd")
     .notNull()
     .default(2),
+  replyContextEnabled: integer("reply_context_enabled").notNull().default(0),
   briefingTimeLocal: text("briefing_time_local").notNull().default("07:00"),
   timezone: text("timezone").notNull().default("Asia/Tokyo"),
   lastSyncHeadTweetId: text("last_sync_head_tweet_id"),
@@ -130,6 +131,7 @@ export const xPosts = sqliteTable("x_posts", {
   postedAt: text("posted_at"),
   url: text("url").notNull(),
   isReply: integer("is_reply").notNull().default(0),
+  replyToTweetId: text("reply_to_tweet_id"),
   quotedTweetId: text("quoted_tweet_id"),
   quotedSnapshotJson: text("quoted_snapshot_json"),
   rawEntitiesJson: text("raw_entities_json"),

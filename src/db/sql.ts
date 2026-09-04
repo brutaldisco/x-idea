@@ -21,6 +21,7 @@ const MIGRATION_FILES = [
   "0000_init.sql",
   "0001_multi_account.sql",
   "0002_usage_credits.sql",
+  "0003_media_context.sql",
 ];
 
 export function loadInitSql(): string {

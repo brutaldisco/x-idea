@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { OpenInX } from "@/components/OpenInX";
 import { listSources } from "@/server/sources/query";
 import { getTodayState } from "@/server/today";
 import { type AccountContext, contextLabel } from "@/server/x/context";
@@ -142,12 +143,22 @@ async function RecentSources({
         {items.map((item) => (
           <li
             key={item.id}
-            className="w-48 shrink-0 rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
+            className="w-56 shrink-0 rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
           >
-            {item.authorUsername ? (
-              <p className="text-ink-2 text-xs">@{item.authorUsername}</p>
-            ) : null}
-            <p className="mt-1 line-clamp-4 text-sm">{item.summary}</p>
+            <div className="flex items-start justify-between gap-2">
+              {item.authorUsername ? (
+                <p className="text-ink-2 text-xs">@{item.authorUsername}</p>
+              ) : (
+                <span />
+              )}
+              {item.url ? <OpenInX url={item.url} compact /> : null}
+            </div>
+            <Link
+              href={`/source/${item.id}`}
+              className="mt-1 line-clamp-4 block text-sm hover:underline"
+            >
+              {item.summary}
+            </Link>
           </li>
         ))}
       </ul>
