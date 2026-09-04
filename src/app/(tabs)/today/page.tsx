@@ -45,6 +45,27 @@ async function TodayBody() {
     );
   }
 
+  if (empty === "needs_credits") {
+    return (
+      <section className="flex min-h-[70dvh] flex-col items-center justify-center px-6 text-center">
+        <p className="text-sm text-ink-2">X 連携済み</p>
+        <h2 className="mt-2 font-semibold text-2xl">
+          クレジット設定が必要です
+        </h2>
+        <p className="mt-3 max-w-sm text-ink-2 text-sm">
+          同期は <code>x_api_enabled</code> が OFF のあいだ動きません。購入後に
+          Settings で人間が ON にします。
+        </p>
+        <Link
+          href="/settings"
+          className="mt-8 rounded-full bg-ink px-6 py-3 font-medium text-paper"
+        >
+          設定を見る
+        </Link>
+      </section>
+    );
+  }
+
   if (empty === "importing") {
     return (
       <section className="flex min-h-[70dvh] flex-col items-center justify-center px-6 text-center">
