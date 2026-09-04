@@ -1,4 +1,5 @@
 import { getClient, isDbConfigured } from "@/db/client";
+import { ensureSchema } from "@/db/ensure";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import type { TokenResponse, XMe } from "@/server/x/oauth";
@@ -134,6 +135,7 @@ export async function listXAccounts(): Promise<XAccountPublic[]> {
   if (!isDbConfigured()) {
     return [];
   }
+  await ensureSchema();
   const result = await getClient().execute(
     `SELECT id, x_username, x_name, status, sync_enabled, last_synced_at
      FROM x_account ORDER BY created_at ASC LIMIT ${MAX_X_ACCOUNTS}`,
