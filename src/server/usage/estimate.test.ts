@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   estimateCostUsd,
+  estimatePostReadUsd,
   isLowRemaining,
   parseCreditBalance,
   parseTweetUsageDays,
@@ -11,6 +12,12 @@ import {
 describe("estimateCostUsd", () => {
   it("uses Owned Reads $0.001", () => {
     expect(estimateCostUsd(1500)).toBe(1.5);
+  });
+});
+
+describe("estimatePostReadUsd", () => {
+  it("uses $0.005 per post", () => {
+    expect(estimatePostReadUsd(4)).toBe(0.02);
   });
 });
 

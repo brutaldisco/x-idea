@@ -18,6 +18,12 @@ export type XUser = {
   profile_image_url?: string;
 };
 
+export type XMediaVariant = {
+  bit_rate?: number;
+  content_type?: string;
+  url: string;
+};
+
 export type XMedia = {
   media_key: string;
   type: string;
@@ -27,6 +33,7 @@ export type XMedia = {
   duration_ms?: number;
   width?: number;
   height?: number;
+  variants?: XMediaVariant[];
 };
 
 export type XApiErrorItem = {
@@ -60,6 +67,17 @@ export function quotedTweetId(tweet: XTweet): string | null {
   return (
     tweet.referenced_tweets?.find((ref) => ref.type === "quoted")?.id ?? null
   );
+}
+
+export function replyToTweetId(tweet: XTweet): string | null {
+  return (
+    tweet.referenced_tweets?.find((ref) => ref.type === "replied_to")?.id ??
+    null
+  );
+}
+
+export function isConversationRoot(tweet: XTweet): boolean {
+  return !tweet.conversation_id || tweet.conversation_id === tweet.id;
 }
 
 export function tweetUrls(tweet: XTweet): string[] {
@@ -165,6 +183,7 @@ export function parseBookmarksPage(payload: unknown): BookmarksPage {
             typeof row.duration_ms === "number" ? row.duration_ms : undefined,
           width: typeof row.width === "number" ? row.width : undefined,
           height: typeof row.height === "number" ? row.height : undefined,
+          variants: parseVariants(row.variants),
         });
       }
     }
@@ -206,4 +225,31 @@ export function parseBookmarksPage(payload: unknown): BookmarksPage {
       meta && typeof meta.next_token === "string" ? meta.next_token : null,
     resourcesRead: tweets.length,
   };
+}
+
+function parseVariants(value: unknown): XMediaVariant[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const variants: XMediaVariant[] = [];
+  for (const raw of value.slice(0, 16)) {
+    const row = asRecord(raw);
+    if (row && typeof row.url === "string") {
+      variants.push({
+        url: row.url,
+        bit_rate: typeof row.bit_rate === "number" ? row.bit_rate : undefined,
+        content_type:
+          typeof row.content_type === "string" ? row.content_type : undefined,
+      });
+    }
+  }
+  return variants.length > 0 ? variants : undefined;
+}
+
+export function parseTweetLookup(payload: unknown): BookmarksPage {
+  const root = asRecord(payload) ?? {};
+  if (root.data && !Array.isArray(root.data) && asTweet(root.data)) {
+    return parseBookmarksPage({ ...root, data: [root.data] });
+  }
+  return parseBookmarksPage(payload);
 }

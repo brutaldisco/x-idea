@@ -3,24 +3,29 @@ import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import { hostOf, normalizeUrl } from "@/server/ingest/url";
 import {
+  attachMedia,
+  enqueueMediaDownloads,
+  findPostIdByTweetId,
+  upsertXPost,
+} from "@/server/ingest/x-post";
+import { enqueueJob } from "@/server/jobs/queue";
+import { getContextSettings } from "@/server/settings";
+import {
   type BookmarksPage,
+  isConversationRoot,
   isReply,
-  quotedTweetId,
+  replyToTweetId,
   tweetText,
   tweetUrls,
   type XTweet,
 } from "@/server/x/parse";
 
 export type IngestResult =
-  | { created: true }
+  | { created: true; sourceId: string; postId: string }
   | { created: false; skipped: "exists" | "reply" };
 
 export async function tweetExists(tweetId: string): Promise<boolean> {
-  const result = await getClient().execute({
-    sql: "SELECT 1 AS n FROM x_posts WHERE tweet_id = ? LIMIT 1",
-    args: [tweetId],
-  });
-  return Boolean(result.rows[0]);
+  return Boolean(await findPostIdByTweetId(tweetId));
 }
 
 export async function markUnavailable(tweetId: string): Promise<void> {
@@ -68,6 +73,68 @@ async function attachUrls(sourceId: string, urls: string[]): Promise<void> {
   }
 }
 
+async function enqueueContextJobs(input: {
+  accountId: string;
+  tweet: XTweet;
+  page: BookmarksPage;
+  sourceId: string;
+}): Promise<void> {
+  const parentId = replyToTweetId(input.tweet);
+  const includedParent = parentId
+    ? input.page.includedTweets.get(parentId)
+    : undefined;
+  if (includedParent) {
+    const parent = await upsertXPost({
+      tweet: includedParent,
+      page: input.page,
+    });
+    const mediaIds = await attachMedia({
+      postId: parent.postId,
+      tweet: includedParent,
+      page: input.page,
+      accountId: input.accountId,
+    });
+    await enqueueMediaDownloads(mediaIds, input.accountId);
+  } else if (parentId) {
+    await enqueueJob({
+      type: "fetch_parent",
+      payload: {
+        tweet_id: parentId,
+        account_id: input.accountId,
+        source_id: input.sourceId,
+      },
+      dedupeKey: `fetch_parent:${parentId}`,
+    });
+  }
+
+  const settings = await getContextSettings();
+  if (settings.replyContextEnabled) {
+    await enqueueJob({
+      type: "reply_context",
+      payload: {
+        conversation_id: input.tweet.conversation_id ?? input.tweet.id,
+        account_id: input.accountId,
+        source_id: input.sourceId,
+      },
+      dedupeKey: `reply_context:${input.tweet.conversation_id ?? input.tweet.id}`,
+    });
+    return;
+  }
+  if (settings.threadExpandEnabled && isConversationRoot(input.tweet)) {
+    await enqueueJob({
+      type: "expand_thread",
+      payload: {
+        tweet_id: input.tweet.id,
+        account_id: input.accountId,
+        author_username:
+          input.page.users.get(input.tweet.author_id ?? "")?.username ?? null,
+        source_id: input.sourceId,
+      },
+      dedupeKey: `expand_thread:${input.tweet.id}`,
+    });
+  }
+}
+
 export async function ingestBookmark(input: {
   accountId: string;
   tweet: XTweet;
@@ -77,74 +144,31 @@ export async function ingestBookmark(input: {
   if (!input.saveReplies && isReply(input.tweet)) {
     return { created: false, skipped: "reply" };
   }
-  if (await tweetExists(input.tweet.id)) {
+
+  const existingSource = await getClient().execute({
+    sql: `SELECT s.id FROM sources s
+          JOIN x_posts p ON p.id = s.x_post_id
+          WHERE p.tweet_id = ? LIMIT 1`,
+    args: [input.tweet.id],
+  });
+  if (existingSource.rows[0]) {
     return { created: false, skipped: "exists" };
   }
 
-  const author = input.tweet.author_id
-    ? input.page.users.get(input.tweet.author_id)
-    : undefined;
-  const username = author?.username ?? "unknown";
-  const text = tweetText(input.tweet);
-  const quoted = quotedTweetId(input.tweet);
-  const quotedTweet = quoted
-    ? input.page.includedTweets.get(quoted)
-    : undefined;
-  const postId = newId();
-  const sourceId = newId();
-  const client = getClient();
-
-  await client.execute({
-    sql: `INSERT INTO x_posts (
-      id, tweet_id, conversation_id, author_id, author_username, author_name,
-      author_avatar_url, text, lang, posted_at, url, is_reply, quoted_tweet_id,
-      quoted_snapshot_json, raw_entities_json, fetched_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-    args: [
-      postId,
-      input.tweet.id,
-      input.tweet.conversation_id ?? input.tweet.id,
-      input.tweet.author_id ?? "unknown",
-      username,
-      author?.name ?? null,
-      author?.profile_image_url ?? null,
-      text,
-      input.tweet.lang ?? null,
-      input.tweet.created_at ?? null,
-      `https://x.com/${username}/status/${input.tweet.id}`,
-      isReply(input.tweet) ? 1 : 0,
-      quoted,
-      quotedTweet ? JSON.stringify(quotedTweet) : null,
-      input.tweet.entities ? JSON.stringify(input.tweet.entities) : null,
-    ],
+  const { postId } = await upsertXPost({
+    tweet: input.tweet,
+    page: input.page,
   });
+  const mediaIds = await attachMedia({
+    postId,
+    tweet: input.tweet,
+    page: input.page,
+    accountId: input.accountId,
+  });
+  await enqueueMediaDownloads(mediaIds, input.accountId);
 
-  for (const key of (input.tweet.attachments?.media_keys ?? []).slice(0, 8)) {
-    const media = input.page.media.get(key);
-    if (!media) {
-      continue;
-    }
-    await client.execute({
-      sql: `INSERT INTO media_assets (
-        id, x_post_id, media_key, type, preview_url, media_url, alt_text,
-        duration_ms, width, height, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      args: [
-        newId(),
-        postId,
-        media.media_key,
-        media.type,
-        media.preview_image_url ?? null,
-        media.url ?? null,
-        media.alt_text ?? null,
-        media.duration_ms ?? null,
-        media.width ?? null,
-        media.height ?? null,
-      ],
-    });
-  }
-
-  await client.execute({
+  const sourceId = newId();
+  await getClient().execute({
     sql: `INSERT INTO sources (
       id, origin, kind, x_account_id, x_post_id, bookmarked_at, saved_at,
       availability, triage_status, read_status, language, created_at, updated_at
@@ -160,6 +184,12 @@ export async function ingestBookmark(input: {
   });
 
   await attachUrls(sourceId, tweetUrls(input.tweet));
-  await upsertFts(sourceId, text);
-  return { created: true };
+  await upsertFts(sourceId, tweetText(input.tweet));
+  await enqueueContextJobs({
+    accountId: input.accountId,
+    tweet: input.tweet,
+    page: input.page,
+    sourceId,
+  });
+  return { created: true, sourceId, postId };
 }

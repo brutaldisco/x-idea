@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { withRetry } from "@/lib/retry";
-import { type BookmarksPage, parseBookmarksPage } from "@/server/x/parse";
+import {
+  type BookmarksPage,
+  parseBookmarksPage,
+  parseTweetLookup,
+} from "@/server/x/parse";
 
 export class XApiError extends Error {
   readonly status: number;
@@ -12,15 +16,20 @@ export class XApiError extends Error {
   }
 }
 
+export const TWEET_FIELDS =
+  "id,text,author_id,created_at,lang,entities,attachments,referenced_tweets,conversation_id,note_tweet";
+export const TWEET_EXPANSIONS =
+  "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id";
+export const USER_FIELDS = "username,name,profile_image_url";
+export const MEDIA_FIELDS =
+  "media_key,type,url,preview_image_url,alt_text,duration_ms,width,height,variants";
+
 export const BOOKMARK_QUERY = {
   max_results: "100",
-  "tweet.fields":
-    "id,text,author_id,created_at,lang,entities,attachments,referenced_tweets,conversation_id,note_tweet",
-  expansions:
-    "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id",
-  "user.fields": "username,name,profile_image_url",
-  "media.fields":
-    "media_key,type,url,preview_image_url,alt_text,duration_ms,width,height",
+  "tweet.fields": TWEET_FIELDS,
+  expansions: TWEET_EXPANSIONS,
+  "user.fields": USER_FIELDS,
+  "media.fields": MEDIA_FIELDS,
 } as const;
 
 export type RateLimit = {
@@ -39,42 +48,27 @@ function readRateLimit(headers: Headers): RateLimit {
   };
 }
 
-function loadFixture(): unknown {
-  const path = join(process.cwd(), "fixtures/x/bookmarks-page.json");
-  return JSON.parse(readFileSync(path, "utf8"));
+function loadFixture(name: string): unknown {
+  return JSON.parse(
+    readFileSync(join(process.cwd(), "fixtures/x", name), "utf8"),
+  );
 }
 
-export async function fetchBookmarksPage(
+async function xGet(
   accessToken: string,
-  xUserId: string,
-  paginationToken?: string | null,
-): Promise<BookmarksFetch> {
-  if (process.env.MOCK_EXTERNAL === "1") {
-    return {
-      ...parseBookmarksPage(loadFixture()),
-      rateLimit: { remaining: 179, reset: null },
-    };
-  }
-
+  url: string,
+): Promise<{ body: unknown; rateLimit: RateLimit }> {
   return withRetry(
     async () => {
-      const params = new URLSearchParams(BOOKMARK_QUERY);
-      if (paginationToken) {
-        params.set("pagination_token", paginationToken);
-      }
-      const res = await fetch(
-        `https://api.x.com/2/users/${encodeURIComponent(xUserId)}/bookmarks?${params}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          cache: "no-store",
-        },
-      );
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
       const rateLimit = readRateLimit(res.headers);
       if (!res.ok) {
-        throw new XApiError(res.status, `bookmarks failed (${res.status})`);
+        throw new XApiError(res.status, `x api failed (${res.status})`);
       }
-      const body: unknown = await res.json();
-      return { ...parseBookmarksPage(body), rateLimit };
+      return { body: await res.json(), rateLimit };
     },
     {
       attempts: 3,
@@ -86,4 +80,75 @@ export async function fetchBookmarksPage(
       },
     },
   );
+}
+
+function tweetQuery(): URLSearchParams {
+  return new URLSearchParams({
+    "tweet.fields": TWEET_FIELDS,
+    expansions: TWEET_EXPANSIONS,
+    "user.fields": USER_FIELDS,
+    "media.fields": MEDIA_FIELDS,
+  });
+}
+
+export async function fetchBookmarksPage(
+  accessToken: string,
+  xUserId: string,
+  paginationToken?: string | null,
+): Promise<BookmarksFetch> {
+  if (process.env.MOCK_EXTERNAL === "1") {
+    return {
+      ...parseBookmarksPage(loadFixture("bookmarks-page.json")),
+      rateLimit: { remaining: 179, reset: null },
+    };
+  }
+
+  const params = new URLSearchParams(BOOKMARK_QUERY);
+  if (paginationToken) {
+    params.set("pagination_token", paginationToken);
+  }
+  const { body, rateLimit } = await xGet(
+    accessToken,
+    `https://api.x.com/2/users/${encodeURIComponent(xUserId)}/bookmarks?${params}`,
+  );
+  return { ...parseBookmarksPage(body), rateLimit };
+}
+
+export async function fetchTweetById(
+  accessToken: string,
+  tweetId: string,
+): Promise<BookmarksFetch> {
+  if (process.env.MOCK_EXTERNAL === "1") {
+    return {
+      ...parseTweetLookup(loadFixture("tweet-lookup.json")),
+      rateLimit: { remaining: 400, reset: null },
+    };
+  }
+  const params = tweetQuery();
+  const { body, rateLimit } = await xGet(
+    accessToken,
+    `https://api.x.com/2/tweets/${encodeURIComponent(tweetId)}?${params}`,
+  );
+  return { ...parseTweetLookup(body), rateLimit };
+}
+
+export async function searchRecentConversation(
+  accessToken: string,
+  query: string,
+  maxResults = 25,
+): Promise<BookmarksFetch> {
+  if (process.env.MOCK_EXTERNAL === "1") {
+    return {
+      ...parseBookmarksPage(loadFixture("conversation-recent.json")),
+      rateLimit: { remaining: 400, reset: null },
+    };
+  }
+  const params = tweetQuery();
+  params.set("query", query);
+  params.set("max_results", String(Math.min(100, Math.max(10, maxResults))));
+  const { body, rateLimit } = await xGet(
+    accessToken,
+    `https://api.x.com/2/tweets/search/recent?${params}`,
+  );
+  return { ...parseBookmarksPage(body), rateLimit };
 }

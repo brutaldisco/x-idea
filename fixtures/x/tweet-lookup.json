@@ -1,0 +1,29 @@
+{
+  "data": {
+    "id": "1000",
+    "text": "親投稿です。画像つき。",
+    "author_id": "77",
+    "created_at": "2026-09-01T12:00:00.000Z",
+    "lang": "ja",
+    "conversation_id": "1000",
+    "attachments": { "media_keys": ["3_333"] }
+  },
+  "includes": {
+    "users": [
+      {
+        "id": "77",
+        "username": "carol",
+        "name": "Carol"
+      }
+    ],
+    "media": [
+      {
+        "media_key": "3_333",
+        "type": "photo",
+        "url": "https://example.com/parent.jpg",
+        "width": 400,
+        "height": 300
+      }
+    ]
+  }
+}

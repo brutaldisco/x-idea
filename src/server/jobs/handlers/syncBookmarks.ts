@@ -2,6 +2,7 @@ import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import { ingestBookmark, markUnavailable } from "@/server/ingest/bookmark";
+import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { getSyncSettings } from "@/server/settings";
 import { estimateCostUsd } from "@/server/usage/estimate";
 import {
@@ -97,6 +98,7 @@ async function syncOneAccount(
       pagination = page.nextToken;
     }
 
+    await enqueuePendingMediaDownloads(account.id);
     await markXAccountSynced(account.id, newHead);
     await writeRun({
       runId,

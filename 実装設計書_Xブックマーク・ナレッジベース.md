@@ -4,7 +4,7 @@
 | --- | --- |
 | ドキュメント種別 | 実装設計書（Implementation Design Document） |
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
-| 版 | **v3.3** |
+| 版 | **v3.4** |
 | 作成日 | 2026-07-12 |
 | 改訂日 | **2026-09-05** |
 | ステータス | 実装着手可能 |
@@ -30,6 +30,10 @@
 > **v3.3 の要点（v3.2 からの変更）**
 > 1. **アカウントコンテキスト（ビュー切替）を追加**（ADR-003）。指向性の異なるアカウント同士を混ぜないため、Today / Inbox / Library / Ask は **選択中の 1 アカウントだけ** にスコープする。「すべて」は持たない。既定は先頭アカウント。画面左下に現在の `@name` を出し（タブバーには入れない）、タップで「アカウントを切り替える」と候補を開く。HttpOnly Cookie `x_ctx`。`user_id` は追加しない。
 > 2. **Settings 使用量メーター**（ADR-004）。X クレジットと Gemini 枠は「残量」を主表示し、なくなったら追加する。アカウント別の推定使用も出す。`x_api_enabled` は人間が ON にする。
+
+> **v3.4 の要点（v3.3 からの変更）**
+> 1. **メディアのローカル保存**（ADR-005）。PC 利用を主前提とし、画像・動画の実ファイルはローカルディスク（`MEDIA_ROOT`、既定 `./data/media`）に **最高解像度** で保存する。DB には相対パスのみ持ち、引っ越しは同じパスへのコピーで引き継げる。**4 時間超の動画は確認してから保存**。Vercel では保存せず CDN 表示。詳細は `docs/design/2026-09-05-context-media-x.md`。
+> 2. **返信コンテキスト**：返信の親 1 件取得（Phase A）、直近 7 日の返信取得（Phase B、`reply_context_enabled` 既定 OFF）。「X で開く」を全 Source に常設。
 
 ---
 
@@ -360,7 +364,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 - **ヒーロー**：投稿者アバター・名前・日時・X で開く。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。
-- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、スレッド展開があれば連結表示（P2）。
+- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、スレッド展開があれば連結表示（P2）。4 時間超の動画は確認 UI（14.6）。
 - **記事**：リーダー表示。`fetch_scope` を先頭にバッジ（全文／一部／概要のみ／失敗）。
 - **要約**：「✦ AI」バッジ、3行要約、情報タイプ、重要度、タグ、カテゴリ（確信度）。「AI で再処理」。
 - **Marginalia（P2）**：記事・原文の重要文を AI がハイライト（薄いマーカー色）、余白（PC は右カラム、モバイルはハイライトタップで下部シート）に注釈。ユーザーは選択→「ハイライト」「メモ」「これについて聞く」。
@@ -386,6 +390,7 @@ UI/UX の判断に迷ったら以下に従う。
   - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings にトグルと「今すぐ同期」。初回は最大 500 件
   - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
+  - 直近 7 日の返信取得：`reply_context_enabled`（追加課金、$0.005/投稿。既定 OFF。上限はスレッド展開と共用）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
   - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
 - **X 連携**：接続中アカウント一覧（最大 3）。各アカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、再連携、個別解除、「アカウントを追加」（ユーザー名/メール入力 → X のログイン画面）、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。3 件に達したら追加ボタンを無効化。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
@@ -682,7 +687,15 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 - `GET /2/tweets/search/recent?query=conversation_id:{id} from:{author} to:{author}&max_results=100` → 同一著者の連投を `x_posts` に保存し `thread_root_id` で連結。Source は起点のみ（連投は Reader で連結表示、enrich 入力にも連結）。
 - 上限：1 スレッド 25 投稿、月次コスト上限（既定 $2）。超過時はスキップし Reader に「スレッド未取得」を表示。
 
-### 14.6 同期頻度・手動同期
+### 14.6 メディアのローカル保存（PC 前提、ADR-005）
+
+- 画像・動画の実ファイルは **ローカルディスク** に保存し、DB には `MEDIA_ROOT` 相対パスのみ保持（Turso 容量を使わない）。詳細は `docs/design/2026-09-05-context-media-x.md`。
+- `MEDIA_ROOT`（環境変数、既定 `./data/media`）配下に `{x_account_id}/{tweet_id}/{media_key}.{ext}`。引っ越しは同じパスにコピーするだけ（相対パスのため DB 変更不要）。
+- 画像は `?name=orig` の原寸、動画/GIF は `variants` の最大 `bit_rate` の mp4（最高解像度）。`media.fields` に `variants` を追加（課金は投稿 read 単位で変わらず）。メディアファイルの CDN 取得は課金対象外。
+- 4 時間超（`duration_ms > 14,400,000`）の動画は `awaiting_confirm` で保留し、Reader の確認でダウンロード。
+- 配信は `GET /api/media/[id]`（Range 対応、未保存時は X CDN へ 302）。**Vercel（揮発 FS）では `MEDIA_ROOT` 未設定＝ダウンロードせず CDN 表示**。
+
+### 14.7 同期頻度・手動同期
 
 | 項目 | 設計 |
 | --- | --- |
@@ -692,7 +705,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 | tick | 外部 Cron 1〜5 分＋アプリ起動時 |
 | レート制限 | `x-rate-limit-*` を `sync_runs` に記録。429 は reset＋ジッターで再試行 |
 
-### 14.7 料金概算
+### 14.8 料金概算
 
 | シナリオ | 月額 |
 | --- | --- |
@@ -703,7 +716,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 
 Developer Console のスペンディングリミット（例 $10）を必須とする。
 
-### 14.8 公式 API が使えない場合
+### 14.9 公式 API が使えない場合
 
 X データダウンロードからの手動補完、Quick Capture による手動登録のみ。非公式 API／スクレイピングは採用しない。
 
@@ -982,6 +995,7 @@ CREATE TABLE settings (
   observability_json TEXT NOT NULL DEFAULT '{"sentry":false,"uptime_robot":false}',
   thread_expand_enabled INTEGER NOT NULL DEFAULT 0,
   thread_expand_monthly_cap_usd REAL NOT NULL DEFAULT 2,
+  reply_context_enabled INTEGER NOT NULL DEFAULT 0, -- Phase B: 直近7日の返信取得（上限はスレッド展開と共用）
   briefing_time_local TEXT NOT NULL DEFAULT '07:00',
   timezone TEXT NOT NULL DEFAULT 'Asia/Tokyo',
   last_sync_head_tweet_id TEXT,
@@ -1135,6 +1149,11 @@ CREATE TABLE media_assets (
   duration_ms INTEGER,
   width INTEGER,
   height INTEGER,
+  local_path TEXT,                               -- ADR-005: MEDIA_ROOT 相対パス（実ファイルはローカル保存）
+  local_bytes INTEGER,
+  download_status TEXT NOT NULL DEFAULT 'pending', -- pending | downloading | ready | awaiting_confirm | skipped | failed
+  download_error TEXT,
+  downloaded_at TEXT,
   ai_ocr_text TEXT,                              -- P2
   ai_description TEXT,                           -- P2
   analysis_json TEXT,
@@ -1908,6 +1927,12 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-507 | エクスポート（Markdown/Obsidian frontmatter、JSON、zip ストリーミング） | `/api/export` | T-204 | Obsidian で開ける |
 | T-508 | コマンドパレット ⌘K（検索・移動・状態変更） | `components/CommandK.tsx` | T-208 | PC で主要操作到達 |
 | T-509 | スレッド展開（`expand_thread`、コスト上限、Reader 連結表示、enrich 入力） | `expandThread.ts` | T-104 | 上限で停止、表示 |
+| T-601 | `media_assets` 拡張（migration `0003`）＋ `media.fields` に `variants` 追加 | `drizzle/0003_*`, `src/server/x/client.ts`, `parse.ts` | — | variants が DB に入る |
+| T-602 | `media_download` ジョブ（画像 `name=orig`／動画 max bit_rate、4h 保留、空き容量チェック） | `src/server/media/download.ts`, jobs | T-601 | ローカルに保存される |
+| T-603 | `GET /api/media/[id]` 配信（Range、302 フォールバック、パス検証） | `src/app/api/media/[id]/route.ts` | T-602 | 動画がシークできる |
+| T-604 | Reader ギャラリー＋「X で開く」＋長時間動画の確認 UI | Reader コンポーネント | T-603 | 目視で確認 |
+| T-605 | 返信の親取得（`replied_to` → 1 件 lookup、Reader「返信先」カード） | `src/server/x/parent.ts` 等 | T-104 | 親が表示される |
+| T-606 | 直近返信コンテキスト（`reply_context_enabled`、既定 OFF、上限つき） | `replyContext.ts` | T-605 | 7 日内の返信が連結表示される |
 
 ---
 
@@ -2141,6 +2166,7 @@ images: [image_1, image_2]（添付）                 ← P2
 | `ARTICLE_FETCH_UA` | 任意 | 既定 `MarginaliaBot/1.0 (+mailto:...)` |
 | `MOCK_EXTERNAL` | 開発 | `1` で X/Gemini を msw モック |
 | `LOG_LEVEL` | 任意 | `info` |
+| `MEDIA_ROOT` | 任意（ローカル実行時） | メディア保存先（既定 `./data/media`）。**Vercel では設定しない**（ADR-005） |
 
 MCP / Capture トークンは環境変数ではなく `api_tokens` テーブル（Settings で発行）。
 
@@ -2284,6 +2310,7 @@ npx vercel env pull .env.local
 | `x_api_enabled` | 0 | 人間 | X クレジット残あり、スペンディングリミット設定済み |
 | `ai_paid_enabled` | 0 | 人間 | Gemini 課金アカウント接続済み |
 | `thread_expand_enabled` | 0 | 人間 | `x_api_enabled=1` かつ月次上限を理解した |
+| `reply_context_enabled` | 0 | 人間 | `x_api_enabled=1` かつ月次上限を理解した |
 | `paid_providers_json.anthropic` | false | 人間 | `ANTHROPIC_API_KEY` 設定済み |
 | `paid_providers_json.openai` | false | 人間 | `OPENAI_API_KEY` 設定済み |
 | `observability_json.sentry` | false | 人間 | `SENTRY_DSN` 設定済み |

@@ -10,6 +10,7 @@ export type SourceListItem = {
   savedAt: string;
   triageStatus: string;
   authorUsername: string | null;
+  url: string | null;
 };
 
 export async function listSources(input: {
@@ -31,7 +32,7 @@ export async function listSources(input: {
   args.push(input.limit);
   const result = await getClient().execute({
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.triage_status,
-                 p.author_username, p.text
+                 p.author_username, p.text, p.url
           FROM sources s
           LEFT JOIN x_posts p ON p.id = s.x_post_id
           WHERE ${where.join(" AND ")}
@@ -51,6 +52,7 @@ export async function listSources(input: {
       savedAt: String(row.saved_at),
       triageStatus: String(row.triage_status),
       authorUsername: row.author_username ? String(row.author_username) : null,
+      url: row.url ? String(row.url) : null,
     };
   });
 }
