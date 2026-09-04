@@ -13,6 +13,29 @@ const TABS = [
   { href: "/settings", label: "Settings" },
 ] as const;
 
+function SyncBullet({
+  enabled,
+  inverted = false,
+}: {
+  enabled: boolean;
+  inverted?: boolean;
+}) {
+  return (
+    <span
+      role="img"
+      aria-label={enabled ? "同期ON" : "同期OFF"}
+      title={enabled ? "同期ON" : "同期OFF"}
+      className={`ml-2 inline-block h-2 w-2 rounded-full ${
+        enabled
+          ? "bg-ok"
+          : inverted
+            ? "border border-paper/70"
+            : "border border-ink-2"
+      }`}
+    />
+  );
+}
+
 function currentTab(pathname: string): (typeof TABS)[number]["href"] {
   const hit = TABS.find(
     (tab) => pathname === tab.href || pathname.startsWith(`${tab.href}/`),
@@ -96,7 +119,10 @@ export function TabBar({
                           }`}
                         >
                           @{account.username}
-                          {account.syncEnabled ? "" : " · 同期OFF"}
+                          <SyncBullet
+                            enabled={account.syncEnabled}
+                            inverted={selected}
+                          />
                         </button>
                       </li>
                     );
@@ -111,13 +137,9 @@ export function TabBar({
               onClick={() => setOpen((value) => !value)}
               className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-sm"
             >
-              <span className="font-medium">
+              <span className="inline-flex items-center font-medium">
                 @{current.username}
-                {current.syncEnabled ? null : (
-                  <span className="ml-2 font-normal text-ink-2 text-xs">
-                    同期OFF
-                  </span>
-                )}
+                <SyncBullet enabled={current.syncEnabled} />
               </span>
               <span className="text-ink-2 text-xs">
                 {open ? "閉じる" : "切替"}
