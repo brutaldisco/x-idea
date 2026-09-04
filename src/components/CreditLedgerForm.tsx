@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { X_DEVELOPER_CONSOLE_URL } from "@/lib/x-console";
 
 export function CreditLedgerForm() {
   const router = useRouter();
@@ -42,16 +43,16 @@ export function CreditLedgerForm() {
       }}
     >
       <p className="text-ink-2 text-xs">
-        なくなったら{" "}
+        なくなったら Developer Console
+        で追加し、ここに記録します。残量をコンソールと合わせたいときは「いまの残量」。{" "}
         <a
-          href="https://console.x.com"
-          className="underline"
+          href={X_DEVELOPER_CONSOLE_URL}
+          className="break-all underline"
           target="_blank"
           rel="noreferrer"
         >
-          Developer Console
-        </a>{" "}
-        で追加し、ここに記録します。残量をコンソールと合わせたいときは「いまの残量」。
+          {X_DEVELOPER_CONSOLE_URL}
+        </a>
       </p>
       <div className="flex gap-2">
         <label className="flex items-center gap-1 text-xs">
@@ -76,9 +77,9 @@ export function CreditLedgerForm() {
       <div className="flex gap-2">
         <input
           type="number"
-          min={0.001}
+          min={0.01}
           max={1000}
-          step="0.01"
+          step="any"
           inputMode="decimal"
           required
           value={amount}

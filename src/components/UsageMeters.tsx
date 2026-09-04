@@ -9,6 +9,7 @@ import {
   RemainBar,
   RemainRing,
 } from "@/components/UsageCharts";
+import { X_DEVELOPER_CONSOLE_URL } from "@/lib/x-console";
 import type { UsageDashboard } from "@/server/usage/dashboard";
 
 const SOURCE_LABEL = {
@@ -60,7 +61,15 @@ export function UsageMeters({ data }: { data: UsageDashboard }) {
         </div>
         {data.x.low ? (
           <p className="mt-3 rounded-xl bg-warn/20 px-3 py-2 text-sm">
-            残量が少なくなっています。Developer Console で追加してください。
+            残量が少なくなっています。
+            <a
+              href={X_DEVELOPER_CONSOLE_URL}
+              className="ml-1 underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {X_DEVELOPER_CONSOLE_URL}
+            </a>
           </p>
         ) : null}
         {data.x.source === "unknown" ? (
