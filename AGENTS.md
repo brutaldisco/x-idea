@@ -4,7 +4,7 @@
 
 ## まず読むもの
 
-1. `実装設計書_Xブックマーク・ナレッジベース.md`（v3.0）— 唯一の正本。
+1. `実装設計書_Xブックマーク・ナレッジベース.md`（v3.1）— 唯一の正本。
    - 担当タスクは **35 章「実装タスク分解」** から選ぶ（T-xxx）。
    - 実装規約は **付録F「worker AI 向け実装ガイド」**。
    - 画面は 8・10 章、DB は 19 章、AI は 16 章＋付録B、API は 21 章、ジョブは 17 章。
@@ -29,4 +29,7 @@
 
 - GitHub: `https://github.com/brutaldisco/x-idea.git`
 - Turso（本番）: `libsql://x-idea-brutaldisco.aws-ap-northeast-1.turso.io`（トークンは環境変数 `TURSO_AUTH_TOKEN`）
-- Vercel: Hobby、リージョン `hnd1`
+- Vercel: Hobby、リージョン `hnd1`、本番 URL **`https://x-idea.vercel.app`**
+- アカウント作業と有料トグル: 設計書 **付録H**
+
+有料トグル（`x_api_enabled` / `ai_paid_enabled` / `thread_expand_enabled` / `paid_providers_json`）は既定 OFF。人間の指示なしに ON にしない。

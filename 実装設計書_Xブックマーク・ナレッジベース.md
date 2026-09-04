@@ -4,12 +4,13 @@
 | --- | --- |
 | ドキュメント種別 | 実装設計書（Implementation Design Document） |
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
-| 版 | **v3.0** |
+| 版 | **v3.1** |
 | 作成日 | 2026-07-12 |
 | 改訂日 | **2026-09-04** |
 | ステータス | 実装着手可能 |
 | 外部サービス情報の確認日 | 2026-09-04（Next.js / Turso / Gemini / X API / Vercel / AI SDK / MCP の各公式ドキュメント） |
 | リポジトリ | `https://github.com/brutaldisco/x-idea.git`（空。本書のコミットから開始） |
+| 本番URL | **`https://x-idea.vercel.app`**（Vercel Hobby、リージョン `hnd1`） |
 | 本番DB | Turso libSQL `libsql://x-idea-brutaldisco.aws-ap-northeast-1.turso.io`（東京リージョン） |
 | 旧版 | `docs/archive/実装設計書_v2.0_2026-08-11.md` |
 
@@ -21,7 +22,7 @@
 > 2. **Gemini 無料枠の激減に対応**：2026-09 実測で Flash 系は **20 リクエスト/日**、Flash-Lite は **500/日**、Embedding 2 は **1,000/日**。→ 「AI予算（AI Budget）」を第一級の設計概念にし、**レーン別モデルルーティング**・**バッチenrich**・**日次クォータ管理**を導入。インフラ/AI $0 の原則は維持。
 > 3. **「驚き」を生む体験を追加**：朝の **Daily Briefing**（音声つき）、引用と生成UIつきの **Ask**、知識の星図 **Atlas**、忘却に逆らう **Echo**、AIが余白に書き込む **Marginalia Reader**、スクショの文字まで検索できる **マルチモーダル取り込み**、自分の知識を Claude / ChatGPT / Cursor から使える **MCPサーバー**、Xの **ブックマークフォルダ連動**、自然言語で作る **Lens（スマートコレクション）**、ユーザー修正から学ぶ **「学習する司書」**。
 > 4. **個人用途・シングルテナント・アプリログインなし** は維持。ただし外部から機械アクセスする経路（MCP / Quick Capture / Cron）には **Bearer トークン必須**。任意で `APP_PASSCODE`。
-> 5. **リポジトリと本番DBを確定**：GitHub `brutaldisco/x-idea`、Turso 東京。Vercel Functions は `hnd1`（東京）に配置してDBと同一リージョンにする。
+> 5. **リポジトリと本番DB・本番URLを確定**：GitHub `brutaldisco/x-idea`、Turso 東京、Vercel `https://x-idea.vercel.app`（`hnd1`）。有料プランはすべて **設定トグル既定 OFF**。契約が遅れても実装は `MOCK_EXTERNAL=1` と無料枠で進められる（付録H）。
 
 ---
 
@@ -73,6 +74,7 @@
 - [付録E：リポジトリ構成](#付録eリポジトリ構成)
 - [付録F：worker AI 向け実装ガイド](#付録fworker-ai-向け実装ガイド)
 - [付録G：用語集](#付録g用語集)
+- [付録H：アカウント・契約チェックリスト](#付録hアカウント契約チェックリスト)
 
 ---
 
@@ -366,6 +368,12 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.7 SC-05 Settings
 
+- **外部サービス / 課金（最上部）**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
+  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）
+  - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
+  - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
+  - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
+  - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
 - **X 連携**：状態、再連携、解除、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。
 - **同期**：間隔（15/30/60/360 分/手動）、返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
@@ -737,7 +745,8 @@ article_fetch(url):
 
 - `thinkingLevel`：bulk は `MINIMAL`（分類）／`LOW`（要約）、quality は `MEDIUM`。
 - モデル ID は `settings.ai_models_json` で差し替え可能。**着手時に AI Studio の Rate limits 画面で実クォータを確認し、`ai_lane_caps_json` を合わせる**。
-- 有料利用（`ai_paid_enabled`）は既定 OFF。ON にしても月額上限（`ai_paid_monthly_cap_usd`、既定 $5）を超えたら無料枠挙動に戻す。
+- 有料利用（`ai_paid_enabled`）は既定 OFF。ON にしても月額上限（`ai_paid_monthly_cap_usd`、既定 $5）を超えたら無料枠挙動に戻す。**429 で自動 ON しない。**
+- `x_api_enabled` が 0 のあいだは `sync_bookmarks` / `sync_folders` / `expand_thread` を投入しない（T-104 のガード）。X クレジット契約は即日できないことがある（付録H）。
 
 ### 16.3 AI 予算管理（F-25）
 
@@ -936,10 +945,13 @@ CREATE TABLE settings (
   excluded_domains_json TEXT NOT NULL DEFAULT '[]',
   ai_models_json TEXT NOT NULL DEFAULT '{"bulk":"gemini-3.5-flash-lite","quality":"gemini-3.6-flash","embed":"gemini-embedding-2"}',
   ai_lane_caps_json TEXT NOT NULL DEFAULT '{"bulk":400,"quality":16,"embed":800}',
-  ai_paid_enabled INTEGER NOT NULL DEFAULT 0,
+  x_api_enabled INTEGER NOT NULL DEFAULT 0,          -- クレジット契約後に人間が ON。OFF なら sync 投入禁止
+  ai_paid_enabled INTEGER NOT NULL DEFAULT 0,        -- Gemini 有料。既定 OFF。429 で自動 ON しない
   ai_paid_monthly_cap_usd REAL NOT NULL DEFAULT 5,
   ai_paused INTEGER NOT NULL DEFAULT 0,
   allow_deep_think INTEGER NOT NULL DEFAULT 1,
+  paid_providers_json TEXT NOT NULL DEFAULT '{"anthropic":false,"openai":false}',
+  observability_json TEXT NOT NULL DEFAULT '{"sentry":false,"uptime_robot":false}',
   thread_expand_enabled INTEGER NOT NULL DEFAULT 0,
   thread_expand_monthly_cap_usd REAL NOT NULL DEFAULT 2,
   briefing_time_local TEXT NOT NULL DEFAULT '07:00',
@@ -1774,8 +1786,8 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-001 | Next.js 16.3 + TS + Tailwind v4 + shadcn/ui + Biome 初期化。`cacheComponents`/`partialPrefetching` 有効化 | `package.json`, `next.config.ts`, `src/app/layout.tsx`, `globals.css`（10.1 トークン） | — | `pnpm dev` で空 `/today` 表示、`pnpm lint`/`typecheck` 通過 |
 | T-002 | Turso 接続、Drizzle 1.0 セットアップ | `src/db/client.ts`, `drizzle.config.ts` | T-001 | ローカル `file:` と本番 URL 両方で `SELECT 1` |
 | T-003 | 19 章 DDL 全量をマイグレーションとして作成（vector/FTS はカスタム SQL）、初期 settings/カテゴリ/job_schedules seed | `drizzle/0000_init.sql`…, `src/db/schema.ts`, `src/db/seed.ts` | T-002 | 本番 DB に適用済み、`pnpm db:seed` 冪等 |
-| T-004 | Vercel プロジェクト（Hobby、hnd1、Fluid）、環境変数、Preview 動作 | `vercel.json`（region）, README | T-001 | Production URL で `/api/health` 200 |
-| T-005 | X Developer App（PKCE、callback）、クレジット購入、スペンディングリミット | README 手順 | — | `X_CLIENT_ID` 等が Vercel に設定済み |
+| T-004 | Vercel プロジェクトを **`x-idea.vercel.app`** に接続（Hobby、hnd1、Fluid）。GitHub `brutaldisco/x-idea` を Production にリンク。環境変数は付録D | `vercel.json`（`regions: ["hnd1"]`）, README | T-001 | `https://x-idea.vercel.app/api/health` が 200。カスタムドメイン追加は不要（`*.vercel.app` を使う） |
+| T-005 | X Developer App（PKCE、callback=`https://x-idea.vercel.app/api/x/oauth/callback`）。**クレジット購入は人間作業**。未完了なら `x_api_enabled=0` のままモックで実装継続 | README 手順、付録H | — | キー設定済みなら連携テスト。未契約でも `MOCK_EXTERNAL=1` で T-101〜T-109 を完了できる |
 | T-006 | Gemini API キー、AI Studio で実クォータ確認→ `ai_lane_caps_json` 初期値決定 | README | — | 3 レーン全モデルでテスト呼び出し成功 |
 | T-007 | `/api/jobs/tick` スケルトン（CRON_SECRET、ゾンビ回収、schedule 評価、払い出しループ）＋ cron-job.org 登録 | `src/app/api/jobs/tick/route.ts`, `src/server/jobs/{queue,runner,schedule}.ts` | T-003 | 1 分間隔で tick が届き `job_schedules.last_run_at` が更新 |
 | T-008 | CI（lint・型・Vitest・Playwright スモーク）、Renovate | `.github/workflows/ci.yml`, `renovate.json` | T-001 | PR で CI 緑 |
@@ -1808,7 +1820,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-207 | Reader SC-06（ヒーロー ViewTransition、セグメント、原文/記事/要約、メモ、状態バー、再処理） | `src/app/source/[id]/*` | T-204 | A-04 目視、共有要素遷移 |
 | T-208 | FTS 検索 `/api/search`（trigram、短語 LIKE、bm25 重み、フィルタ）＋ `/api/search/suggest` ＋ Ask SC-04（キーワードモード） | `src/server/search/keyword.ts`, `src/app/(tabs)/ask/*` | T-105 | 日本語 2/3/4 文字クエリでヒット |
 | T-209 | Today SC-01（同期ピル、新着サマリー、Inbox チップ、最近。Briefing/Echo/Insights はプレースホルダ） | `src/app/(tabs)/today/*` | T-204 | `use cache` + Suspense、空状態 3 種 |
-| T-210 | Settings SC-05（同期、AI レーン/キャップ/しきい値、除外ドメイン、表示、データ削除、エクスポート導線） | `src/app/(tabs)/settings/*` | T-204 | 設定変更が次回ジョブに反映 |
+| T-210 | Settings SC-05（**外部サービス/課金トグル**、同期、AI レーン/キャップ/しきい値、除外ドメイン、表示、データ削除、エクスポート導線）。有料は既定 OFF | `src/app/(tabs)/settings/*` | T-204 | 付録H のトグルが UI に並ぶ。OFF の機能はジョブ未投入。worker はトグルを勝手に ON にしない |
 | T-211 | Categories SC-08（階層 CRUD、統合） | `src/app/(tabs)/settings/categories/*` | T-204 | 統合で Source 再割当 |
 | T-212 | PWA（Serwist、manifest、オフライン閲覧、インストール案内） | `src/app/sw.ts`, `manifest` | T-209 | Lighthouse PWA 合格、機内モードで直近閲覧可 |
 | T-213 | Instant Navigations 適用と `instant()` E2E、`<Activity>` でタブ状態保持 | `tests/e2e/instant.spec.ts` | T-205〜T-210 | 5 タブすべて instant |
@@ -1949,6 +1961,8 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | P-15 | 初期カテゴリ | 社会学/AI/組織/デザイン/筋力トレーニング/健康/仕事/思想 | 要件例示 |
 | P-16 | Cron | cron-job.org 1 分 | Hobby 制約回避 |
 | P-17 | `APP_PASSCODE` | 未設定 | 最小セキュリティ |
+| P-24 | 本番 URL | `https://x-idea.vercel.app` | ユーザー指定（2026-09-04） |
+| P-25 | 有料トグル | すべて OFF | 契約遅延でも実装継続 |
 | P-18 | フォルダ写像のヒント加点 | +0.15 | 運用で調整 |
 | P-19 | 短語検索 | 2 文字以下は LIKE（直近 2,000 件） | trigram 制約 |
 | P-20 | 0 件日の Briefing | bulk で代替生成 | quality 節約 |
@@ -2063,13 +2077,16 @@ images: [image_1, image_2]（添付）                 ← P2
 | `TURSO_DATABASE_URL` | ✓ | `libsql://x-idea-brutaldisco.aws-ap-northeast-1.turso.io`（ローカルは `file:local.db`） |
 | `TURSO_AUTH_TOKEN` | ✓（本番） | Turso 認証トークン |
 | `X_CLIENT_ID` / `X_CLIENT_SECRET` | ✓ | X Developer App（PKCE。Confidential client の場合は secret） |
-| `X_REDIRECT_URI` | ✓ | `https://<domain>/api/x/oauth/callback` |
-| `GEMINI_API_KEY` | ✓ | Google AI Studio |
+| `X_REDIRECT_URI` | ✓ | `https://x-idea.vercel.app/api/x/oauth/callback`（ローカルは `http://localhost:3000/api/x/oauth/callback`） |
+| `GEMINI_API_KEY` | ✓ | Google AI Studio（無料キーで開始。有料は Settings トグル） |
 | `CRON_SECRET` | ✓ | `/api/jobs/tick` 用 |
-| `APP_URL` | ✓ | 絶対 URL（Push・MCP メタデータ用） |
+| `APP_URL` | ✓ | **`https://x-idea.vercel.app`**（Push・MCP・OAuth の絶対 URL） |
 | `SESSION_SECRET` | ✓ | OAuth state Cookie / APP_PASSCODE セッションの署名 |
 | `APP_PASSCODE` | 任意 | 設定時のみ全ページに要求 |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | P2 | Web Push |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | P2 | Web Push。契約不要。`npx web-push generate-vapid-keys` |
+| `ANTHROPIC_API_KEY` | 任意 | 有料トグル OFF のあいだ未使用 |
+| `OPENAI_API_KEY` | 任意 | 有料トグル OFF のあいだ未使用 |
+| `SENTRY_DSN` | 任意 | `observability_json.sentry` が true のときだけ初期化 |
 | `ARTICLE_FETCH_UA` | 任意 | 既定 `MarginaliaBot/1.0 (+mailto:...)` |
 | `MOCK_EXTERNAL` | 開発 | `1` で X/Gemini を msw モック |
 | `LOG_LEVEL` | 任意 | `info` |
@@ -2119,7 +2136,7 @@ x-idea/
 1. **入口**：`AGENTS.md` → 本書 35 章で担当タスクを選ぶ → 該当章（画面なら 8・10 章、DB なら 19 章、AI なら 16 章・付録B）を読む。
 2. **ブランチ／PR**：`feat/T-xxx-短い説明`。1 タスク 1 PR。PR 本文にタスク ID、DoD のチェックリスト、スクリーンショット（UI）を含める。
 3. **設計と実装が食い違ったら**：実挙動（API の実レスポンス、実クォータ）を正とし、本書の該当箇所と `docs/decisions/ADR-xxx.md` を **同じ PR で** 更新する。特に 14 章・16.2・付録C。
-4. **やってはいけないこと**：`user_id` の追加、ログイン UI の追加、全件 SELECT、`vector_distance_cos` によるフルスキャン、AI 429 時の有料切替、原文カラムの書き換え、ユーザー記述カラムへの AI 書き込み、トークンのログ出力。
+4. **やってはいけないこと**：`user_id` の追加、ログイン UI の追加、全件 SELECT、`vector_distance_cos` によるフルスキャン、AI 429 時の有料切替、**有料トグル（`x_api_enabled` / `ai_paid_enabled` / `thread_expand_enabled` / `paid_providers_json`）を人間の指示なしに ON にする**、原文カラムの書き換え、ユーザー記述カラムへの AI 書き込み、トークンのログ出力。
 5. **コーディング規約**：TypeScript strict、Biome 既定、Server Actions は Zod 入力検証＋`{ok, data|error}`、DB アクセスは `src/server/*` のみ（コンポーネントから直接叩かない）、時間は UTC ISO 保存・表示時に `Asia/Tokyo`、AI 呼び出しは必ず `budget.guard(lane)` 経由。
 6. **テスト**：単体はロジック（同期打ち切り、予算、SM-2、RRF、cron）。統合はローカル libSQL。E2E は msw でX/Gemini をモック。UI 変更は `instant()` を壊さない。
 7. **コミット**：Conventional Commits（`feat:`, `fix:`, `docs:`, `chore:`）。
@@ -2145,7 +2162,83 @@ x-idea/
 | MCP | Model Context Protocol。外部 AI クライアントから本アプリのツールを呼ぶ標準 |
 | Quick Capture | 共有シート／ショートカットから任意 URL を取り込む機能 |
 | tick | 外部 Cron またはクライアントから叩かれるワーカー実行 1 回 |
+| 有料トグル | Settings の課金スイッチ。既定 OFF。契約完了後に人間が ON |
+
+## 付録H：アカウント・契約チェックリスト
+
+実装は契約待ちで止めない。**有料はすべて Settings トグル既定 OFF**。未契約の間は `MOCK_EXTERNAL=1` と無料枠で進める。worker AI はトグルを勝手に ON にしない。
+
+本番 URL は **`https://x-idea.vercel.app`**。X OAuth の callback もここを使う。
+
+### H.1 今すぐ人間がやること（無料／即日）
+
+| # | サービス | 作業 | 料金 | アプリ側トグル | 未完了でも実装できるか |
+| --- | --- | --- | --- | --- | --- |
+| H-01 | **GitHub** `brutaldisco/x-idea` | リポジトリは作成済み。実装者（例: `takashinat`）に **Write** を付与し、設計書コミットを `main` に push | $0 | — | ローカル実装は可。CI / Vercel Git 連携は Write 必須 |
+| H-02 | **Vercel**（Hobby） | ① `vercel login` ② プロジェクト名 `x-idea` ③ GitHub `brutaldisco/x-idea` を Production に接続 ④ リージョン **hnd1** ⑤ ドメインは自動の **`x-idea.vercel.app`**（追加購入不要）⑥ 付録D の環境変数を Production / Preview に設定 | $0（Hobby、個人非商用） | — | ローカル `pnpm dev` は可。本番疎通は必須 |
+| H-03 | **Turso** | DB は作成済み（`libsql://x-idea-brutaldisco.aws-ap-northeast-1.turso.io`）。**Auth Token** を発行し、Vercel の `TURSO_AUTH_TOKEN` / `TURSO_DATABASE_URL` に入れる。ダッシュボードで rows read / storage を月次確認 | $0（Free） | — | ローカルは `file:local.db` で可 |
+| H-04 | **Google AI Studio** | プロジェクト作成 → API キー発行 → **Rate limits 画面で実クォータを記録** → `GEMINI_API_KEY` を Vercel に設定。課金アカウントは作らない（有料トグル OFF） | $0 | `ai_paid_enabled=OFF` | キーなしでも `MOCK_EXTERNAL=1` で UI/ジョブ実装可 |
+| H-05 | **cron-job.org**（または GitHub Actions `schedule`） | `POST https://x-idea.vercel.app/api/jobs/tick`、ヘッダー `Authorization: Bearer <CRON_SECRET>`、間隔 1〜5 分。シークレットを URL に載せない | $0 | — | アプリ起動時 tick で代替可。本番の定期同期には必要 |
+| H-06 | **Vercel 環境変数** | 付録D をすべて登録。最低限: `TURSO_*`, `GEMINI_API_KEY`, `CRON_SECRET`, `APP_URL=https://x-idea.vercel.app`, `SESSION_SECRET`, `X_*`（未発行なら空で Preview のみ） | $0 | — | キー欠落時は該当機能を OFF のまま |
+| H-07 | **VAPID**（P2） | `npx web-push generate-vapid-keys` をローカルで実行し、3 変数を Vercel に設定。外部契約なし | $0 | 通知トグル（P2、既定 OFF） | Phase 4 まで不要 |
+
+### H.2 契約・審査が必要（すぐできないことがある）
+
+| # | サービス | 作業 | 料金 | アプリ側トグル（既定） | 未完了時の挙動 |
+| --- | --- | --- | --- | --- | --- |
+| H-10 | **X Developer Portal** | ① developer.x.com で開発者アカウント（審査・待ちがあり得る）② Project + App ③ User authentication: OAuth 2.0 PKCE、Callback `https://x-idea.vercel.app/api/x/oauth/callback`、Scopes `bookmark.read tweet.read users.read offline.access` ④ **クレジット購入** ⑤ **スペンディングリミット**（推奨 $10） | 従量。Owned Reads $0.001/リソース。初回 5,000 件で約 $5。通常月 $1〜4 | **`x_api_enabled=OFF`** | 同期ジョブを投入しない。Today に「X API のクレジット設定が必要」。T-101〜T-109 は msw モックで完了させる |
+| H-11 | **Gemini 有料（Tier 1）** | AI Studio で課金アカウントをリンク。無料枠入力が学習利用されるのが嫌なとき、または RPD 不足のときだけ | 従量。月額上限 `$5` を Settings で設定 | **`ai_paid_enabled=OFF`** | 無料枠のみ。429 はクールダウン。**自動で有料に切替しない** |
+| H-12 | **X スレッド展開** | H-10 完了後。追加で Post read $0.005/投稿 | 月上限 `$2`（Settings） | **`thread_expand_enabled=OFF`** | ジョブ未投入。Reader に「スレッド未取得」 |
+| H-13 | **Anthropic / OpenAI** | 各社で API キー取得・課金設定。`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` を Vercel に追加 | 従量 | **`paid_providers_json` 両方 false** | プロバイダ選択肢を Settings で無効表示 |
+| H-14 | **Turso Developer** | Free の rows/storage が 80% を超えたら検討 | $4.99〜/月 | インフラ側。アプリトグルなし | 超過時は読み取り専用バナー（E-14） |
+| H-15 | **Vercel Pro** | Hobby の Functions / 商用制限に当たったら検討。Workflows を主系にするならここ | $20/月 | インフラ側。アプリトグルなし | 現状は Hobby で足りる前提 |
+| H-16 | **Sentry / UptimeRobot** | 任意。Sentry は DSN を環境変数に。UptimeRobot は `https://x-idea.vercel.app/api/health` を 5 分間隔 | 各無料枠あり | **`observability_json` 両方 false** | 監視なしでも MVP 可 |
+
+### H.3 契約不要・後回しでよいもの
+
+| 項目 | 理由 |
+| --- | --- |
+| 独自ドメイン（`marginalia.example` 等） | `x-idea.vercel.app` を使う。DNS / 証明書の追加契約は不要 |
+| Apple Developer / Google Play | ネイティブアプリは作らない。PWA |
+| MCP OAuth（ChatGPT / Claude.ai Web） | P3。Claude Desktop / Cursor は Bearer で足りる |
+| Gemini TTS | 端末の `speechSynthesis` で代替。有料 |
+| Cloudflare / 別キュー基盤 | 不採用 |
+
+### H.4 接続手順（Vercel → `x-idea.vercel.app`）
+
+ローカルの Vercel CLI トークンが無効な場合、**人間がブラウザで**次を行う（worker は代行できない）。
+
+1. [vercel.com](https://vercel.com) にログイン（Hobby）。
+2. Add New → Project → Import `brutaldisco/x-idea`（H-01 の Write が必要）。
+3. Project Name を **`x-idea`** にする。これで本番 URL は `https://x-idea.vercel.app`。
+4. Framework Preset: Next.js。Root: `/`。Build: `pnpm build`。Install: `pnpm install`。
+5. Project Settings → Functions → Region **`hnd1`（Tokyo）**。`vercel.json` の `regions: ["hnd1"]` と一致させる。
+6. Settings → Environment Variables に付録D を登録。`APP_URL=https://x-idea.vercel.app`。
+7. Settings → Git で Production Branch = `main`。
+8. 初回デプロイ後、`https://x-idea.vercel.app/api/health` が 200 になること（T-004 の DoD）。
+9. X Developer App の Callback / Website URL に `https://x-idea.vercel.app` を登録（H-10）。
+
+CLI を使う場合（ログイン済みなら）:
+
+```bash
+npx vercel login
+npx vercel link --yes --project x-idea
+npx vercel env pull .env.local
+```
+
+### H.5 設定値の対応表（実装の正）
+
+| Settings カラム / JSON キー | 既定 | ON にする人 | ON の条件 |
+| --- | --- | --- | --- |
+| `x_api_enabled` | 0 | 人間 | X クレジット残あり、スペンディングリミット設定済み |
+| `ai_paid_enabled` | 0 | 人間 | Gemini 課金アカウント接続済み |
+| `thread_expand_enabled` | 0 | 人間 | `x_api_enabled=1` かつ月次上限を理解した |
+| `paid_providers_json.anthropic` | false | 人間 | `ANTHROPIC_API_KEY` 設定済み |
+| `paid_providers_json.openai` | false | 人間 | `OPENAI_API_KEY` 設定済み |
+| `observability_json.sentry` | false | 人間 | `SENTRY_DSN` 設定済み |
+| `ai_paused` | 0 | 人間 | 収集のみにしたいとき 1 |
+| `allow_deep_think` | 1 | 人間 | quality レーンを使わないなら 0 |
 
 ---
 
-*本書はここまで。実装中に本書と実際の API 挙動・クォータが食い違った場合は、実挙動を正とし、本書の該当箇所（特に 14 章・16.2・付録C）と ADR を更新してから先に進むこと。*
+*本書はここまで。実装中に本書と実際の API 挙動・クォータが食い違った場合は、実挙動を正とし、本書の該当箇所（特に 14 章・16.2・付録C・付録H）と ADR を更新してから先に進むこと。*
