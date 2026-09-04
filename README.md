@@ -12,7 +12,7 @@ X でブックマークするだけで、AI が要約・分類・画像解読・
 
 Next.js 16.3 / React 19.2 / Tailwind v4 / shadcn/ui / AI SDK 6 / Drizzle ORM 1.0 / Turso libSQL（vector + FTS5 trigram）/ Vercel Hobby（hnd1）/ Gemini（3.5 Flash-Lite・3.6 Flash・Embedding 2）/ mcp-handler 2.x / Serwist
 
-## セットアップ（Phase 0 完了後に有効）
+## セットアップ
 
 ```bash
 pnpm install

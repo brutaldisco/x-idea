@@ -933,6 +933,8 @@ RETURNING *;
 
 Turso / libSQL（SQLite 方言）。Drizzle スキーマ（`src/db/schema.ts`）はこの DDL と一致させ、マイグレーションは `drizzle/` に SQL として生成・Git 管理する。**MVP 時点で全テーブルを作成**する（P2 テーブルも空で作る）。
 
+**適用順（ADR-001）**: 下記は説明用の並び。実行正本は `drizzle/0000_init.sql`。`categories` を `x_bookmark_folders` より先、`knowledge_cards` を `source_chunks` より先に作る（FK）。ベクトル索引は Turso 専用で、ローカル `file:` ではスキップしてよい。
+
 ```sql
 PRAGMA foreign_keys = ON;
 

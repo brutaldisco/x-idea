@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: oklch(98% 0.005 90);
+  --color-paper-2: oklch(95.5% 0.008 90);
+  --color-ink: oklch(22% 0.02 260);
+  --color-ink-2: oklch(45% 0.02 260);
+  --color-line: oklch(88% 0.01 90);
+  --color-ai: oklch(62% 0.14 290);
+  --color-ai-soft: oklch(94% 0.04 290);
+  --color-marker: oklch(90% 0.16 95);
+  --color-accent: oklch(55% 0.16 250);
+  --color-danger: oklch(58% 0.2 25);
+  --color-warn: oklch(75% 0.15 70);
+  --color-ok: oklch(65% 0.15 150);
+  --radius-card: 1rem;
+  --shadow-card:
+    0 1px 2px oklch(0% 0 0 / 6%), 0 8px 24px -12px oklch(0% 0 0 / 12%);
+  --font-sans: var(--font-inter), var(--font-noto), system-ui, sans-serif;
+  --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: oklch(18% 0.015 260);
+    --color-paper-2: oklch(22% 0.018 260);
+    --color-ink: oklch(96% 0.008 90);
+    --color-ink-2: oklch(78% 0.015 90);
+    --color-line: oklch(32% 0.02 260);
+    --color-ai-soft: oklch(28% 0.05 290);
+  }
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.75;
+  font-feature-settings: "palt";
+  text-wrap: pretty;
+  line-break: strict;
+  hanging-punctuation: allow-end;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

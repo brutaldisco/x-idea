@@ -29,3 +29,9 @@ test-results/
 # os / editor
 .DS_Store
 *.log
+
+# next / ts
+*.tsbuildinfo
+.pnp
+.pnp.*
+*.pem
