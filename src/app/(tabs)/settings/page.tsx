@@ -2,7 +2,6 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { DisconnectX } from "@/components/DisconnectX";
-import { TabBar } from "@/components/TabBar";
 import { getHealth } from "@/server/health";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
@@ -145,18 +144,15 @@ export default function SettingsPage({
   searchParams: Promise<{ x?: string }>;
 }) {
   return (
-    <>
-      <main className="px-4 pt-8">
-        <p className="text-ink-2 text-sm">Settings</p>
-        <h1 className="font-semibold text-2xl">設定</h1>
-        <p className="mt-2 mb-6 text-ink-2 text-sm">
-          有料プランはすべて OFF です。契約後に人間が切り替えます。
-        </p>
-        <Suspense fallback={<p className="text-ink-2 text-sm">読み込み中…</p>}>
-          <SettingsBody searchParams={searchParams} />
-        </Suspense>
-      </main>
-      <TabBar current="/settings" />
-    </>
+    <main className="px-4 pt-8">
+      <p className="text-ink-2 text-sm">Settings</p>
+      <h1 className="font-semibold text-2xl">設定</h1>
+      <p className="mt-2 mb-6 text-ink-2 text-sm">
+        有料プランはすべて OFF です。契約後に人間が切り替えます。
+      </p>
+      <Suspense fallback={<p className="text-ink-2 text-sm">読み込み中…</p>}>
+        <SettingsBody searchParams={searchParams} />
+      </Suspense>
+    </main>
   );
 }

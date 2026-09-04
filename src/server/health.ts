@@ -54,13 +54,16 @@ export async function getHealth(ctx?: AccountContext): Promise<HealthPayload> {
     return base;
   }
 
+  const scoped = Boolean(ctx);
   const accountId = ctx ? contextAccountId(ctx) : null;
 
   try {
     await ensureSchema();
     const client = getClient();
 
-    const inboxScope = sourceScopeSql(accountId);
+    const inboxScope = scoped
+      ? sourceScopeSql(accountId)
+      : { clause: "1 = 1", args: [] as string[] };
     const inboxSql = `SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' AND ${inboxScope.clause} LIMIT 1`;
     const inboxArgs = inboxScope.args;
 

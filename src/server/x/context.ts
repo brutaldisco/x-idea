@@ -1,40 +1,30 @@
 import { cookies } from "next/headers";
 import { listXAccounts, type XAccountPublic } from "@/server/x/account";
-import { ALL_CONTEXT, X_CTX_COOKIE } from "@/server/x/context-const";
+import { X_CTX_COOKIE } from "@/server/x/context-const";
 
-export { ALL_CONTEXT, X_CTX_COOKIE };
+export { X_CTX_COOKIE };
 
 export type AccountContext =
-  | { kind: "all" }
+  | { kind: "none" }
   | { kind: "account"; account: XAccountPublic };
 
 export async function getAccountContext(): Promise<AccountContext> {
+  const accounts = await listXAccounts();
+  if (accounts.length === 0) {
+    return { kind: "none" };
+  }
   const jar = await cookies();
   const raw = jar.get(X_CTX_COOKIE)?.value;
-  if (!raw || raw === ALL_CONTEXT) {
-    return { kind: "all" };
-  }
-  const accounts = await listXAccounts();
-  const found = accounts.find((a) => a.id === raw);
-  return found ? { kind: "account", account: found } : { kind: "all" };
+  const found = accounts.find((account) => account.id === raw);
+  return { kind: "account", account: found ?? accounts[0] };
 }
 
 export async function setAccountContext(value: string): Promise<void> {
-  const jar = await cookies();
-  if (value === ALL_CONTEXT) {
-    jar.set(X_CTX_COOKIE, ALL_CONTEXT, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365,
-    });
-    return;
-  }
   const accounts = await listXAccounts();
-  if (!accounts.some((a) => a.id === value)) {
+  if (!accounts.some((account) => account.id === value)) {
     return;
   }
+  const jar = await cookies();
   jar.set(X_CTX_COOKIE, value, {
     httpOnly: true,
     sameSite: "lax",
@@ -44,11 +34,11 @@ export async function setAccountContext(value: string): Promise<void> {
   });
 }
 
-/** SQL の WHERE 句に使う x_account_id フィルタを返す。all なら null。 */
+/** SQL の WHERE 句に使う x_account_id。未連携なら null。 */
 export function contextAccountId(ctx: AccountContext): string | null {
   return ctx.kind === "account" ? ctx.account.id : null;
 }
 
 export function contextLabel(ctx: AccountContext): string {
-  return ctx.kind === "account" ? `@${ctx.account.username}` : "すべて";
+  return ctx.kind === "account" ? `@${ctx.account.username}` : "未連携";
 }

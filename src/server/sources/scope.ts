@@ -1,4 +1,4 @@
-/** 選択中アカウントに絞る。all のときは NULL 行も含める。 */
+/** 選択中アカウントに絞る。未選択なら 0 件。混ぜない。 */
 export function sourceScopeSql(
   accountId: string | null,
   alias = "",
@@ -10,5 +10,5 @@ export function sourceScopeSql(
   if (accountId) {
     return { clause: `${col} = ?`, args: [accountId] };
   }
-  return { clause: "1 = 1", args: [] };
+  return { clause: "1 = 0", args: [] };
 }

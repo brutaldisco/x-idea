@@ -9,8 +9,8 @@ describe("sourceScopeSql", () => {
     });
   });
 
-  it("includes NULL rows when all", () => {
-    expect(sourceScopeSql(null)).toEqual({ clause: "1 = 1", args: [] });
+  it("matches nothing when no account is selected", () => {
+    expect(sourceScopeSql(null)).toEqual({ clause: "1 = 0", args: [] });
   });
 
   it("qualifies the column with an alias", () => {

@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { TabBar } from "@/components/TabBar";
 import { listSources } from "@/server/sources/query";
 import { getTodayState } from "@/server/today";
-import { listXAccounts } from "@/server/x/account";
 import { type AccountContext, contextLabel } from "@/server/x/context";
 
 function formatRelative(iso: string | null): string {
@@ -72,30 +70,15 @@ async function TodayBody() {
   }
 
   if (empty === "importing") {
-    const accounts = ctx.kind === "all" ? await listXAccounts() : [];
     return (
       <section className="flex min-h-[70dvh] flex-col items-center justify-center px-6 text-center">
-        <p className="text-sm text-ink-2">
-          {scopeName === "すべて"
-            ? "初回取り込み中…"
-            : `${scopeName} の初回取り込み中…`}
-        </p>
+        <p className="text-sm text-ink-2">{scopeName} の初回取り込み中…</p>
         <p className="mt-2 font-semibold text-2xl tabular-nums">
           準備しています
         </p>
         <p className="mt-3 text-ink-2 text-sm">
           同期が始まると、ここに件数が表示されます。
         </p>
-        {accounts.length > 1 ? (
-          <ul className="mt-6 space-y-1 text-ink-2 text-sm">
-            {accounts.map((account) => (
-              <li key={account.id}>
-                @{account.username} ·{" "}
-                {account.lastSyncedAt ? "同期済み" : "未同期"}
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </section>
     );
   }
@@ -184,7 +167,6 @@ export default function TodayPage() {
       >
         <TodayBody />
       </Suspense>
-      <TabBar current="/today" />
     </>
   );
 }

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { TabBar } from "@/components/TabBar";
 import { ensureSchema } from "@/db/ensure";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 import { safeNextPath } from "@/server/x/oauth";
@@ -84,18 +83,15 @@ export default function AddXAccountPage({
   searchParams: Promise<{ next?: string; x?: string }>;
 }) {
   return (
-    <>
-      <main className="px-4 pt-8">
-        <p className="text-ink-2 text-sm">Settings</p>
-        <h1 className="font-semibold text-2xl">アカウントを追加</h1>
-        <p className="mt-2 mb-6 text-ink-2 text-sm">
-          追加したい X のユーザー名またはメールアドレスを入力してください。
-        </p>
-        <Suspense fallback={<p className="text-ink-2 text-sm">読み込み中…</p>}>
-          <AddBody searchParams={searchParams} />
-        </Suspense>
-      </main>
-      <TabBar current="/settings" />
-    </>
+    <main className="px-4 pt-8">
+      <p className="text-ink-2 text-sm">Settings</p>
+      <h1 className="font-semibold text-2xl">アカウントを追加</h1>
+      <p className="mt-2 mb-6 text-ink-2 text-sm">
+        追加したい X のユーザー名またはメールアドレスを入力してください。
+      </p>
+      <Suspense fallback={<p className="text-ink-2 text-sm">読み込み中…</p>}>
+        <AddBody searchParams={searchParams} />
+      </Suspense>
+    </main>
   );
 }

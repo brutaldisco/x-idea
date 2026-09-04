@@ -1,11 +1,9 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { TabBar } from "@/components/TabBar";
-
-export const instant = false;
-
 import { countSources, listSources } from "@/server/sources/query";
 import { contextLabel, getAccountContext } from "@/server/x/context";
+
+export const instant = false;
 
 async function InboxBody() {
   await connection();
@@ -43,17 +41,14 @@ async function InboxBody() {
 
 export default function InboxPage() {
   return (
-    <>
-      <main className="px-4 pt-8">
-        <p className="text-ink-2 text-sm">Inbox</p>
-        <h1 className="font-semibold text-2xl">要確認</h1>
-        <Suspense
-          fallback={<p className="mt-16 text-ink-2 text-sm">読み込み中…</p>}
-        >
-          <InboxBody />
-        </Suspense>
-      </main>
-      <TabBar current="/inbox" />
-    </>
+    <main className="px-4 pt-8">
+      <p className="text-ink-2 text-sm">Inbox</p>
+      <h1 className="font-semibold text-2xl">要確認</h1>
+      <Suspense
+        fallback={<p className="mt-16 text-ink-2 text-sm">読み込み中…</p>}
+      >
+        <InboxBody />
+      </Suspense>
+    </main>
   );
 }
