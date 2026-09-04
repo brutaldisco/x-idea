@@ -377,7 +377,7 @@ UI/UX の判断に迷ったら以下に従う。
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
   - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
-- **X 連携**：接続中アカウント一覧（最大 3）。各アカウントの状態、再連携、個別解除、「アカウントを追加」、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。3 件に達したら追加ボタンを無効化。
+- **X 連携**：接続中アカウント一覧（最大 3）。各アカウントの状態、再連携、個別解除、「アカウントを追加」（ユーザー名/メール入力 → X のログイン画面）、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。3 件に達したら追加ボタンを無効化。
 - **同期**：間隔（15/30/60/360 分/手動）、返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
@@ -605,14 +605,20 @@ UI/UX の判断に迷ったら以下に従う。
 **v3.2（ADR-002）**：`x_account` はシングルトンではなく **最大 3 行**。追加は Settings の「アカウントを追加」から行い、同じ X アカウント（`x_user_id`）は上書き更新する。アプリ側のログイン／ユーザー切替は作らない。
 
 ```
-[Settings/Onboarding] 「X と連携」または「アカウントを追加」
-  → GET /api/x/oauth/start
+[Settings] 「アカウントを追加」
+  → /settings/x/add でユーザー名またはメールを入力（パスワードは預からない）
+  → GET /api/x/oauth/start?force_login=1&hint=...
+      連携済みの同一ユーザー名なら拒否（?x=same）
       state / code_verifier を HttpOnly 暗号化 Cookie（10分）に保存
-      → https://x.com/i/oauth2/authorize?...&code_challenge_method=S256
-  → 同意 → GET /api/x/oauth/callback?code&state
+      → https://x.com/logout?redirect_after_logout=
+          https://x.com/i/oauth2/authorize?...&force_login=true&screen_name=hint
+  → 入力したアカウントでログイン → 同意 → GET /api/x/oauth/callback?code&state
   → トークン交換 → GET /2/users/me
-  → x_account に upsert（x_user_id 一意、最大 3）→ /onboarding?step=3 へ
+  → x_account に upsert（x_user_id 一意、最大 3）
+      追加なのに同一 x_user_id なら Settings に ?x=same
 ```
+
+初回の「X と連携」は `force_login` なしで `/api/x/oauth/start` へ進む。パスワードは X 側でのみ入力する。
 
 - ジョブ実行時に期限を確認し、失効 5 分前ならリフレッシュ。失敗はその行の `status='reauth_required'`、Today に赤ピル、（P2）Push。
 - 3 件目以降の追加は拒否し、Settings に「上限 3」と表示する。

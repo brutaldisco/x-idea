@@ -18,7 +18,73 @@ export type OauthPayload = {
   state: string;
   verifier: string;
   exp: number;
+  intent?: "link" | "add";
+  next?: string;
 };
+
+export function normalizeXHint(raw: string | null | undefined): string | null {
+  if (!raw) {
+    return null;
+  }
+  const trimmed = raw.trim().replace(/^@+/, "");
+  if (trimmed.length < 1 || trimmed.length > 254) {
+    return null;
+  }
+  if (/\s/.test(trimmed) || trimmed.includes("://")) {
+    return null;
+  }
+  return trimmed;
+}
+
+export function safeNextPath(raw: string | null | undefined): string {
+  if (
+    !raw ||
+    !raw.startsWith("/") ||
+    raw.startsWith("//") ||
+    raw.includes("\\")
+  ) {
+    return "/settings";
+  }
+  return raw;
+}
+
+export function withQuery(path: string, key: string, value: string): string {
+  const url = new URL(path, "https://x-idea.vercel.app");
+  url.searchParams.set(key, value);
+  return `${url.pathname}${url.search}`;
+}
+
+export function buildAuthorizeUrl(input: {
+  clientId: string;
+  redirectUri: string;
+  state: string;
+  challenge: string;
+  forceLogin?: boolean;
+  screenName?: string;
+}): string {
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: input.clientId,
+    redirect_uri: input.redirectUri,
+    scope: X_SCOPES,
+    state: input.state,
+    code_challenge: input.challenge,
+    code_challenge_method: "S256",
+  });
+  if (input.forceLogin) {
+    params.set("force_login", "true");
+  }
+  if (input.screenName) {
+    params.set("screen_name", input.screenName);
+  }
+  return `https://x.com/i/oauth2/authorize?${params.toString()}`;
+}
+
+export function wrapForceLoginSession(authorizeUrl: string): string {
+  const logout = new URL("https://x.com/logout");
+  logout.searchParams.set("redirect_after_logout", authorizeUrl);
+  return logout.toString();
+}
 
 function aesKey(): Buffer {
   return createHash("sha256")
@@ -64,26 +130,39 @@ export function decryptPayload(value: string | undefined): OauthPayload | null {
   }
 }
 
-export function beginOauth(): { url: string; cookie: string } {
+export function beginOauth(
+  options: {
+    forceLogin?: boolean;
+    screenName?: string;
+    intent?: "link" | "add";
+    next?: string;
+  } = {},
+): { url: string; cookie: string } {
   const clientId = process.env.X_CLIENT_ID;
   if (!clientId) {
     throw new Error("X_CLIENT_ID is not set");
   }
   const verifier = createVerifier();
   const state = createState();
-  const callback = redirectUri();
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: clientId,
-    redirect_uri: callback,
-    scope: X_SCOPES,
+  const authorizeUrl = buildAuthorizeUrl({
+    clientId,
+    redirectUri: redirectUri(),
     state,
-    code_challenge: challengeS256(verifier),
-    code_challenge_method: "S256",
+    challenge: challengeS256(verifier),
+    forceLogin: options.forceLogin,
+    screenName: options.screenName,
   });
   return {
-    url: `https://x.com/i/oauth2/authorize?${params.toString()}`,
-    cookie: encryptPayload({ state, verifier, exp: Date.now() + TTL_MS }),
+    url: options.forceLogin
+      ? wrapForceLoginSession(authorizeUrl)
+      : authorizeUrl,
+    cookie: encryptPayload({
+      state,
+      verifier,
+      exp: Date.now() + TTL_MS,
+      intent: options.intent ?? "link",
+      next: safeNextPath(options.next ?? "/onboarding?step=3"),
+    }),
   };
 }
 

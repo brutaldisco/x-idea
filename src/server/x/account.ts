@@ -24,10 +24,16 @@ export async function countXAccounts(): Promise<number> {
   return Number(result.rows[0]?.n ?? 0);
 }
 
+export async function isLinkedUsername(hint: string): Promise<boolean> {
+  const accounts = await listXAccounts();
+  const needle = hint.replace(/^@+/, "").toLowerCase();
+  return accounts.some((account) => account.username.toLowerCase() === needle);
+}
+
 export async function saveXAccount(
   me: XMe,
   tokens: TokenResponse,
-): Promise<void> {
+): Promise<{ created: boolean }> {
   const expires = new Date(
     Date.now() + (tokens.expires_in ?? 7200) * 1000,
   ).toISOString();
@@ -61,7 +67,7 @@ export async function saveXAccount(
       ],
     });
     logger.info({ username: me.username }, "x_account updated");
-    return;
+    return { created: false };
   }
 
   const count = await countXAccounts();
@@ -92,6 +98,7 @@ export async function saveXAccount(
     ],
   });
   logger.info({ username: me.username }, "x_account saved");
+  return { created: true };
 }
 
 export async function deleteXAccount(id: string): Promise<void> {

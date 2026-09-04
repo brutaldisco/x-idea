@@ -35,6 +35,16 @@ async function SettingsBody({
           X アカウントは最大 {MAX_X_ACCOUNTS} 件までです。
         </p>
       ) : null}
+      {params.x === "same" ? (
+        <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">
+          同じアカウントが再連携されました。追加するときは、別のユーザー名またはメールを入力してください。
+        </p>
+      ) : null}
+      {params.x === "hint" ? (
+        <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">
+          ユーザー名またはメールアドレスを入力してください。
+        </p>
+      ) : null}
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">X 連携</h2>
@@ -68,7 +78,11 @@ async function SettingsBody({
         )}
         {canAdd ? (
           <Link
-            href="/api/x/oauth/start"
+            href={
+              accounts.length === 0
+                ? "/api/x/oauth/start?next=/settings"
+                : "/settings/x/add"
+            }
             className="mt-3 inline-block rounded-full bg-ink px-4 py-2 text-paper text-sm"
           >
             {accounts.length === 0 ? "X と連携" : "アカウントを追加"}

@@ -9,6 +9,8 @@ import {
   exchangeCode,
   fetchMe,
   OAUTH_COOKIE,
+  safeNextPath,
+  withQuery,
 } from "@/server/x/oauth";
 
 export const instant = false;
@@ -41,8 +43,12 @@ export async function GET(request: Request) {
     await ensureSchema();
     const tokens = await exchangeCode(code, payload.verifier);
     const me = await fetchMe(tokens.access_token);
-    await saveXAccount(me, tokens);
-    return Response.redirect(`${appUrl()}/onboarding?step=3`);
+    const saved = await saveXAccount(me, tokens);
+    const next = safeNextPath(payload.next ?? "/onboarding?step=3");
+    if (!saved.created && payload.intent === "add") {
+      return Response.redirect(`${appUrl()}${withQuery(next, "x", "same")}`);
+    }
+    return Response.redirect(`${appUrl()}${next}`);
   } catch (error) {
     return Response.json(toErrorBody(error), { status: 500 });
   }

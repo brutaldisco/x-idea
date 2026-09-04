@@ -49,7 +49,7 @@ async function OnboardingBody({
             </p>
             {accounts.length < MAX_X_ACCOUNTS ? (
               <Link
-                href="/api/x/oauth/start"
+                href={`/settings/x/add?next=${encodeURIComponent("/onboarding?step=3")}`}
                 className="inline-block text-sm underline"
               >
                 別のアカウントを追加
@@ -58,7 +58,7 @@ async function OnboardingBody({
           </div>
         ) : (
           <Link
-            href="/api/x/oauth/start"
+            href="/api/x/oauth/start?next=/onboarding%3Fstep=3"
             className="mt-10 inline-block rounded-full bg-ink px-5 py-3 font-medium text-paper"
           >
             X と連携する
