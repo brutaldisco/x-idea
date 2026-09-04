@@ -4,7 +4,7 @@
 | --- | --- |
 | ドキュメント種別 | 実装設計書（Implementation Design Document） |
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
-| 版 | **v3.2** |
+| 版 | **v3.3** |
 | 作成日 | 2026-07-12 |
 | 改訂日 | **2026-09-05** |
 | ステータス | 実装着手可能 |
@@ -26,6 +26,9 @@
 
 > **v3.2 の要点（v3.1 からの変更）**
 > 1. **X 連携を複数アカウント（最大 3）に変更**（ADR-002）。`x_account` は複数行になり、`sources` は `x_account_id` でどのアカウント由来かを保持する。同期カーソルはアカウント別に分離する。アプリのユーザー概念やログインは追加しない。
+
+> **v3.3 の要点（v3.2 からの変更）**
+> 1. **アカウントコンテキスト（ビュー切替）を追加**（ADR-003）。指向性の異なるアカウント同士を混ぜないため、Today / Inbox / Library / Ask は **選択中の 1 アカウント**（または明示的な「すべて」）にスコープする。既定は「すべて」。切替はタブバー上のアカウントピルで行い、HttpOnly Cookie `x_ctx` に保持する。`user_id` は引き続き追加しない。
 
 ---
 
@@ -319,7 +322,8 @@ UI/UX の判断に迷ったら以下に従う。
   5. **Insights**（P2）：今週のテーマ1〜3個。
   6. **最近の Source**：横スクロールカード（8件）。
 - **空状態**：X 未連携→「X と連携して始める」CTA 1つのみ。連携済み・0件→「初回取り込み中… 120/5,000」進捗。複数アカウント時はアカウントごとの進捗を並べる。
-- **キャッシュ**：Briefing/Insights は `use cache`（`cacheTag('today')`）。同期ピルは Suspense で後ストリーム。
+- **アカウントコンテキスト**（v3.3）：タブバー直上にアカウントピル（「すべて / @a / @b / @c」）を出し、Today の同期ピル・Inbox 件数・最近の Source は選択中コンテキストに絞る。
+- **キャッシュ**：Briefing/Insights は `use cache`（`cacheTag('today')`）。同期ピルは Suspense で後ストリーム。コンテキスト切替は Cookie なのでキャッシュキーに含める。
 
 ### 8.2 SC-02 Inbox
 
@@ -915,6 +919,7 @@ RETURNING *;
 
 - Source と Knowledge Card の分離。AI 出力とユーザー入力の分離（`ai_*` / `user_*`、`*_source`）。原文不変。
 - シングルテナント：`user_id` なし。設定はシングルトン。**X 連携は最大 3 アカウント**（v3.2、ADR-002）。`user_id` は追加しない。
+- **アカウントコンテキスト**（v3.3、ADR-003）：`sources.x_account_id` で物理的に帰属を分け、閲覧は **選択中コンテキスト**（`x_ctx` Cookie）で絞る。`NULL`（手動保存や解除済み由来）は「すべて」のときだけ表示する。
 - SQLite 型：ID は TEXT（ULID）、真偽は INTEGER 0/1、時刻は ISO8601 TEXT（UTC）、JSON は TEXT、ベクトルは `F32_BLOB(768)`。
 - rows read 抑制：一覧はカーソルページネーション必須、フィルタ用インデックスを最初から張る、ベクトルは索引経由のみ。
 
@@ -1820,6 +1825,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | --- | --- | --- | --- | --- |
 | T-101 | X OAuth PKCE（start/callback/解除）、`x_account` 保存、Onboarding ステップ 2 | `src/app/api/x/oauth/*`, `src/server/x/oauth.ts` | T-003, T-005 | 実アカウントで連携・解除 |
 | T-101b | X 複数アカウント（最大 3、v3.2）：`x_account` 複数行化、`sources.x_account_id`、`sync_runs.x_account_id`、アカウント別カーソル、Settings の一覧/追加/個別解除 | `drizzle/0001_multi_account.sql`, `src/server/x/*`, Settings UI | T-101 | 2 つ目のアカウントを追加・解除できる。既存データは最初の 1 件に帰属 |
+| T-101c | アカウントコンテキスト切替（v3.3、ADR-003）：`x_ctx` Cookie、タブバーのアカウントピル、Today/Inbox/Library/Ask のスコープリング | `src/server/x/context.ts`, `src/components/AccountSwitcher.tsx`, 各タブ | T-101b | 2 アカウントで切り替えると Today の同期ピルと Inbox 件数が変わる。既定は「すべて」 |
 | T-102 | トークンリフレッシュ、`reauth_required` 遷移（E-02） | `src/server/x/token.ts` | T-101 | 失効フィクスチャで状態遷移 |
 | T-103 | X API クライアント（fields/expansions、レート制限記録、`withRetry`、Zod 解析） | `src/server/x/client.ts`, `fixtures/x/*.json` | T-009 | 契約テスト |
 | T-104 | `sync_bookmarks`（差分／初回 `initial_limit`、errors→availability、`note_tweet`、sync_runs、コスト推定） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | 実データ取り込み、既知 ID 打ち切り |
@@ -1981,6 +1987,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | P-13 | 引用 | 1 階層スナップショット | ノイズ抑制 |
 | P-14 | アプリ認証 | なし | 個人用途 |
 | P-26 | X 連携アカウント数 | 最大 3（v3.2） | ユーザー要望。アプリのユーザー概念は追加しない |
+| P-27 | アカウントコンテキスト | 既定「すべて」、ピルで切替（v3.3） | 指向性の異なるアカウントを混ぜない |
 | P-15 | 初期カテゴリ | 社会学/AI/組織/デザイン/筋力トレーニング/健康/仕事/思想 | 要件例示 |
 | P-16 | Cron | cron-job.org 1 分 | Hobby 制約回避 |
 | P-17 | `APP_PASSCODE` | 未設定 | 最小セキュリティ |

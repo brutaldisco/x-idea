@@ -1,6 +1,7 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { logger } from "@/lib/logger";
+import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 export type HealthPayload = {
   ok: true;
@@ -34,7 +35,7 @@ function pacificDay(at = new Date()): string {
   }).format(at);
 }
 
-export async function getHealth(): Promise<HealthPayload> {
+export async function getHealth(ctx?: AccountContext): Promise<HealthPayload> {
   const base: HealthPayload = {
     ok: true,
     app: "marginalia",
@@ -52,9 +53,22 @@ export async function getHealth(): Promise<HealthPayload> {
     return base;
   }
 
+  const accountId = ctx ? contextAccountId(ctx) : null;
+
   try {
     await ensureSchema();
     const client = getClient();
+
+    const inboxSql = accountId
+      ? "SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' AND x_account_id = ? LIMIT 1"
+      : "SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' LIMIT 1";
+    const inboxArgs = accountId ? [accountId] : [];
+
+    const accountSql = accountId
+      ? "SELECT last_synced_at, COUNT(*) AS n FROM x_account WHERE id = ? LIMIT 1"
+      : "SELECT MAX(last_synced_at) AS last_synced_at, COUNT(*) AS n FROM x_account LIMIT 1";
+    const accountArgs = accountId ? [accountId] : [];
+
     const [settings, pending, inbox, account, usage] = await Promise.all([
       client.execute(
         "SELECT x_api_enabled, ai_paid_enabled, ai_lane_caps_json FROM settings WHERE id = 1 LIMIT 1",
@@ -62,12 +76,8 @@ export async function getHealth(): Promise<HealthPayload> {
       client.execute(
         "SELECT COUNT(*) AS n FROM jobs WHERE status = 'pending' LIMIT 1",
       ),
-      client.execute(
-        "SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' LIMIT 1",
-      ),
-      client.execute(
-        "SELECT MAX(last_synced_at) AS last_synced_at, COUNT(*) AS n FROM x_account LIMIT 1",
-      ),
+      client.execute({ sql: inboxSql, args: inboxArgs }),
+      client.execute({ sql: accountSql, args: accountArgs }),
       client.execute({
         sql: "SELECT lane, requests FROM ai_usage_daily WHERE day_pt = ? LIMIT 16",
         args: [pacificDay()],

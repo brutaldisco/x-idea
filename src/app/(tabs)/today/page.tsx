@@ -25,7 +25,8 @@ function formatRelative(iso: string | null): string {
 
 async function TodayBody() {
   await connection();
-  const { empty, health } = await getTodayState();
+  const { empty, health, ctx } = await getTodayState();
+  const ctxLabel = ctx.kind === "account" ? `@${ctx.account.username}` : null;
 
   if (empty === "unlinked") {
     return (
@@ -90,7 +91,8 @@ async function TodayBody() {
         href="/settings"
         className="block rounded-full border border-line bg-paper-2 px-4 py-2 text-center text-sm tabular-nums"
       >
-        最終同期 {formatRelative(health.last_synced_at)} · AI 処理待ち{" "}
+        {ctxLabel ? `${ctxLabel} · ` : ""}最終同期{" "}
+        {formatRelative(health.last_synced_at)} · AI 処理待ち{" "}
         {health.pending_jobs} · 予算 {budgetPct}%
       </Link>
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-5 shadow-[var(--shadow-card)]">
