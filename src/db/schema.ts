@@ -58,7 +58,7 @@ export const xAccount = sqliteTable("x_account", {
   tokenExpiresAt: text("token_expires_at").notNull(),
   scopesJson: text("scopes_json").notNull(),
   status: text("status").notNull().default("active"),
-  syncEnabled: integer("sync_enabled").notNull().default(1),
+  syncEnabled: integer("sync_enabled").notNull().default(0),
   lastSyncHeadTweetId: text("last_sync_head_tweet_id"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { AccountSyncToggle } from "@/components/AccountSyncToggle";
 import { DisconnectX } from "@/components/DisconnectX";
 import { getHealth } from "@/server/health";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
@@ -67,9 +68,14 @@ async function SettingsBody({
                   <span className="text-ink-2 text-xs">{account.status}</span>
                 </div>
                 <p className="mt-1 text-ink-2 text-xs">
-                  同期トグルは OFF のままです。クレジット購入後に人間が ON
-                  にします。
+                  OFF
+                  のあいだ、このアカウントのブックマーク同期は走りません。必要なアカウントだけ
+                  ON にしてください。
                 </p>
+                <AccountSyncToggle
+                  id={account.id}
+                  enabled={account.syncEnabled}
+                />
                 <DisconnectX id={account.id} />
               </li>
             ))}

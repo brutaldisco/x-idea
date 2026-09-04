@@ -80,7 +80,7 @@ export async function saveXAccount(
       id, x_user_id, x_username, x_name, x_avatar_url,
       access_token, refresh_token, token_expires_at, scopes_json, status,
       sync_enabled, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, datetime('now'), datetime('now'))`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, datetime('now'), datetime('now'))`,
     args: [
       newId(),
       me.id,
@@ -99,6 +99,27 @@ export async function saveXAccount(
   });
   logger.info({ username: me.username }, "x_account saved");
   return { created: true };
+}
+
+export async function setXAccountSyncEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  await getClient().execute({
+    sql: "UPDATE x_account SET sync_enabled = ?, updated_at = datetime('now') WHERE id = ?",
+    args: [enabled ? 1 : 0, id],
+  });
+  logger.info({ id, enabled }, "x_account sync_enabled updated");
+}
+
+export async function countSyncEnabledAccounts(): Promise<number> {
+  if (!isDbConfigured()) {
+    return 0;
+  }
+  const result = await getClient().execute(
+    "SELECT COUNT(*) AS n FROM x_account WHERE sync_enabled = 1 LIMIT 1",
+  );
+  return Number(result.rows[0]?.n ?? 0);
 }
 
 export async function deleteXAccount(id: string): Promise<void> {

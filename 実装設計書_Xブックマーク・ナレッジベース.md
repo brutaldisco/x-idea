@@ -383,7 +383,7 @@ UI/UX の判断に迷ったら以下に従う。
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
   - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
-- **X 連携**：接続中アカウント一覧（最大 3）。各アカウントの状態、再連携、個別解除、「アカウントを追加」（ユーザー名/メール入力 → X のログイン画面）、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。3 件に達したら追加ボタンを無効化。
+- **X 連携**：接続中アカウント一覧（最大 3）。各アカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、再連携、個別解除、「アカウントを追加」（ユーザー名/メール入力 → X のログイン画面）、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。3 件に達したら追加ボタンを無効化。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
 - **同期**：間隔（15/30/60/360 分/手動）、返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
@@ -682,6 +682,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 | 項目 | 設計 |
 | --- | --- |
 | 定期 | 既定 30 分（15/30/60/360 分/手動） |
+| アカウント単位 | `x_account.sync_enabled`（Settings トグル、既定 OFF）。OFF のアカウントは `sync_bookmarks` 対象外 |
 | 手動 | Today のピルから。最短 60 秒 |
 | tick | 外部 Cron 1〜5 分＋アプリ起動時 |
 | レート制限 | `x-rate-limit-*` を `sync_runs` に記録。429 は reset＋ジッターで再試行 |
@@ -1000,7 +1001,7 @@ CREATE TABLE x_account (
   token_expires_at TEXT NOT NULL,
   scopes_json TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active', -- active | reauth_required | revoked
-  sync_enabled INTEGER NOT NULL DEFAULT 1,
+  sync_enabled INTEGER NOT NULL DEFAULT 0, -- アカウント単位の同期。既定 OFF（課金防止）
   last_sync_head_tweet_id TEXT,           -- アカウント別の同期カーソル
   last_synced_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

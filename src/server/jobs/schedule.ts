@@ -50,6 +50,18 @@ export async function evaluateSchedules(now = new Date()): Promise<string[]> {
       });
       continue;
     }
+    if (row.job_type === "sync_bookmarks") {
+      const enabled = await client.execute(
+        "SELECT COUNT(*) AS n FROM x_account WHERE sync_enabled = 1 LIMIT 1",
+      );
+      if (Number(enabled.rows[0]?.n ?? 0) === 0) {
+        await client.execute({
+          sql: "UPDATE job_schedules SET next_run_at = ? WHERE key = ?",
+          args: [nextRunAfter(row.cron_expr, now, tz).toISOString(), row.key],
+        });
+        continue;
+      }
+    }
 
     const inserted = await enqueueJob({
       type: row.job_type,

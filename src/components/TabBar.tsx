@@ -96,6 +96,7 @@ export function TabBar({
                           }`}
                         >
                           @{account.username}
+                          {account.syncEnabled ? "" : " · 同期OFF"}
                         </button>
                       </li>
                     );
@@ -110,7 +111,14 @@ export function TabBar({
               onClick={() => setOpen((value) => !value)}
               className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-sm"
             >
-              <span className="font-medium">@{current.username}</span>
+              <span className="font-medium">
+                @{current.username}
+                {current.syncEnabled ? null : (
+                  <span className="ml-2 font-normal text-ink-2 text-xs">
+                    同期OFF
+                  </span>
+                )}
+              </span>
               <span className="text-ink-2 text-xs">
                 {open ? "閉じる" : "切替"}
               </span>

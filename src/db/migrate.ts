@@ -41,6 +41,28 @@ export async function applyMigration(): Promise<{
     }
   }
 
+  await applyOneShotPatches();
   logger.info({ applied, skipped, remote }, "migration applied");
   return { applied, skipped };
+}
+
+/** 再実行してもユーザーが ON にした値を消さない。 */
+async function applyOneShotPatches(): Promise<void> {
+  const client = getClient();
+  await client.execute(`CREATE TABLE IF NOT EXISTS schema_patches (
+    id TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+  )`);
+  const done = await client.execute(
+    "SELECT id FROM schema_patches WHERE id = 'sync_enabled_default_off' LIMIT 1",
+  );
+  if (done.rows[0]) {
+    return;
+  }
+  await client.execute("UPDATE x_account SET sync_enabled = 0");
+  await client.execute({
+    sql: "INSERT INTO schema_patches (id, applied_at) VALUES (?, datetime('now'))",
+    args: ["sync_enabled_default_off"],
+  });
+  logger.info("patched x_account.sync_enabled default off");
 }
