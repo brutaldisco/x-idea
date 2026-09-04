@@ -20,7 +20,7 @@ async function Footer() {
 
 export default function TabsLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto min-h-dvh max-w-lg pb-36">
+    <div className="mx-auto min-h-dvh max-w-lg pb-24">
       <TickOnMount />
       {children}
       <Suspense fallback={null}>
