@@ -18,7 +18,7 @@ async function Switcher() {
 
 export default function TabsLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto min-h-dvh max-w-lg pb-24">
+    <div className="mx-auto min-h-dvh max-w-lg pb-32">
       <TickOnMount />
       {children}
       <div className="fixed inset-x-0 bottom-14 z-10 mx-auto max-w-lg">

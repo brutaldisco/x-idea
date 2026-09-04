@@ -1,6 +1,7 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { logger } from "@/lib/logger";
+import { sourceScopeSql } from "@/server/sources/scope";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 export type HealthPayload = {
@@ -59,10 +60,9 @@ export async function getHealth(ctx?: AccountContext): Promise<HealthPayload> {
     await ensureSchema();
     const client = getClient();
 
-    const inboxSql = accountId
-      ? "SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' AND x_account_id = ? LIMIT 1"
-      : "SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' LIMIT 1";
-    const inboxArgs = accountId ? [accountId] : [];
+    const inboxScope = sourceScopeSql(accountId);
+    const inboxSql = `SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' AND ${inboxScope.clause} LIMIT 1`;
+    const inboxArgs = inboxScope.args;
 
     const accountSql = accountId
       ? "SELECT last_synced_at, COUNT(*) AS n FROM x_account WHERE id = ? LIMIT 1"

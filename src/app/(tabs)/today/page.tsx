@@ -2,7 +2,10 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { TabBar } from "@/components/TabBar";
+import { listSources } from "@/server/sources/query";
 import { getTodayState } from "@/server/today";
+import { listXAccounts } from "@/server/x/account";
+import { type AccountContext, contextLabel } from "@/server/x/context";
 
 function formatRelative(iso: string | null): string {
   if (!iso) {
@@ -27,6 +30,7 @@ async function TodayBody() {
   await connection();
   const { empty, health, ctx } = await getTodayState();
   const ctxLabel = ctx.kind === "account" ? `@${ctx.account.username}` : null;
+  const scopeName = contextLabel(ctx);
 
   if (empty === "unlinked") {
     return (
@@ -68,15 +72,30 @@ async function TodayBody() {
   }
 
   if (empty === "importing") {
+    const accounts = ctx.kind === "all" ? await listXAccounts() : [];
     return (
       <section className="flex min-h-[70dvh] flex-col items-center justify-center px-6 text-center">
-        <p className="text-sm text-ink-2">初回取り込み中…</p>
+        <p className="text-sm text-ink-2">
+          {scopeName === "すべて"
+            ? "初回取り込み中…"
+            : `${scopeName} の初回取り込み中…`}
+        </p>
         <p className="mt-2 font-semibold text-2xl tabular-nums">
           準備しています
         </p>
         <p className="mt-3 text-ink-2 text-sm">
           同期が始まると、ここに件数が表示されます。
         </p>
+        {accounts.length > 1 ? (
+          <ul className="mt-6 space-y-1 text-ink-2 text-sm">
+            {accounts.map((account) => (
+              <li key={account.id}>
+                @{account.username} ·{" "}
+                {account.lastSyncedAt ? "同期済み" : "未同期"}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
     );
   }
@@ -110,9 +129,45 @@ async function TodayBody() {
           要確認 {health.inbox_count}件 →
         </Link>
       ) : null}
+      <RecentSources ctx={ctx} label={scopeName} />
       <article className="rounded-[var(--radius-card)] border border-dashed border-line p-5 text-ink-2 text-sm">
         Echo と Insights は次のフェーズで開きます。
       </article>
+    </section>
+  );
+}
+
+async function RecentSources({
+  ctx,
+  label,
+}: {
+  ctx: AccountContext;
+  label: string;
+}) {
+  const items = await listSources({ ctx, limit: 8 });
+  if (items.length === 0) {
+    return (
+      <article className="rounded-[var(--radius-card)] border border-dashed border-line p-5 text-ink-2 text-sm">
+        {label}の最近の Source はまだありません。
+      </article>
+    );
+  }
+  return (
+    <section>
+      <p className="mb-2 text-ink-2 text-xs">最近の Source · {label}</p>
+      <ul className="flex gap-3 overflow-x-auto pb-1">
+        {items.map((item) => (
+          <li
+            key={item.id}
+            className="w-48 shrink-0 rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
+          >
+            {item.authorUsername ? (
+              <p className="text-ink-2 text-xs">@{item.authorUsername}</p>
+            ) : null}
+            <p className="mt-1 line-clamp-4 text-sm">{item.summary}</p>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

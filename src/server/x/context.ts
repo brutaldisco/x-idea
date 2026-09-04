@@ -48,3 +48,7 @@ export async function setAccountContext(value: string): Promise<void> {
 export function contextAccountId(ctx: AccountContext): string | null {
   return ctx.kind === "account" ? ctx.account.id : null;
 }
+
+export function contextLabel(ctx: AccountContext): string {
+  return ctx.kind === "account" ? `@${ctx.account.username}` : "すべて";
+}

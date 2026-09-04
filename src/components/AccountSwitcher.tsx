@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { XAccountPublic } from "@/server/x/account";
 import { ALL_CONTEXT } from "@/server/x/context-const";
@@ -11,11 +11,12 @@ type Props = {
 };
 
 export function AccountSwitcher({ accounts, current }: Props) {
+  const pathname = usePathname();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
 
-  if (accounts.length === 0) {
+  if (accounts.length < 2 || pathname.startsWith("/settings")) {
     return null;
   }
 
