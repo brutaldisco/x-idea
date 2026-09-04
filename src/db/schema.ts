@@ -43,6 +43,7 @@ export const settings = sqliteTable("settings", {
   lastSyncedAt: text("last_synced_at"),
   initialImportStateJson: text("initial_import_state_json"),
   onboardingDone: integer("onboarding_done").notNull().default(0),
+  xUsageCacheJson: text("x_usage_cache_json"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -289,4 +290,16 @@ export const apiTokens = sqliteTable(
     revokedAt: text("revoked_at"),
   },
   (table) => [uniqueIndex("api_tokens_token_hash").on(table.tokenHash)],
+);
+
+export const xCreditLedger = sqliteTable(
+  "x_credit_ledger",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    amountUsd: real("amount_usd").notNull(),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_x_credit_ledger_created").on(table.createdAt)],
 );

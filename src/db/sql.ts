@@ -17,7 +17,11 @@ export function splitSql(sql: string): string[] {
     .filter(Boolean);
 }
 
-const MIGRATION_FILES = ["0000_init.sql", "0001_multi_account.sql"];
+const MIGRATION_FILES = [
+  "0000_init.sql",
+  "0001_multi_account.sql",
+  "0002_usage_credits.sql",
+];
 
 export function loadInitSql(): string {
   return MIGRATION_FILES.map((file) =>

@@ -12,6 +12,7 @@ export const logger = pino({
       "TURSO_AUTH_TOKEN",
       "GEMINI_API_KEY",
       "X_CLIENT_SECRET",
+      "X_BEARER_TOKEN",
     ],
     remove: true,
   },

@@ -3,7 +3,9 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { AccountSyncToggle } from "@/components/AccountSyncToggle";
 import { DisconnectX } from "@/components/DisconnectX";
+import { UsageMeters } from "@/components/UsageMeters";
 import { getHealth } from "@/server/health";
+import { getUsageDashboard } from "@/server/usage/dashboard";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
 async function SettingsBody({
@@ -12,14 +14,16 @@ async function SettingsBody({
   searchParams: Promise<{ x?: string }>;
 }) {
   await connection();
-  const [health, accounts, params] = await Promise.all([
+  const [health, accounts, usage, params] = await Promise.all([
     getHealth(),
     listXAccounts(),
+    getUsageDashboard(),
     searchParams,
   ]);
   const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
     <div className="space-y-3">
+      <UsageMeters data={usage} />
       {params.x === "missing" ? (
         <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">
           X_CLIENT_ID が未設定です。Vercel の環境変数を入れてください。
@@ -101,7 +105,11 @@ async function SettingsBody({
       <ServiceCard
         name="X API"
         state={health.x_api_enabled ? "有料ON" : "停止"}
-        note="クレジット未購入のため同期は OFF のままです。"
+        note={
+          health.x_api_enabled
+            ? "同期ジョブが走ります。残量は上のメーターを見てください。"
+            : "クレジット購入後も、同期はトグルを人間が ON するまで止まります。"
+        }
       />
       <ServiceCard
         name="Gemini"
@@ -154,7 +162,7 @@ export default function SettingsPage({
       <p className="text-ink-2 text-sm">Settings</p>
       <h1 className="font-semibold text-2xl">設定</h1>
       <p className="mt-2 mb-6 text-ink-2 text-sm">
-        有料プランはすべて OFF です。契約後に人間が切り替えます。
+        残量が減ったら追加する運用です。有料トグルは人間が切り替えます。
       </p>
       <Suspense fallback={<p className="text-ink-2 text-sm">読み込み中…</p>}>
         <SettingsBody searchParams={searchParams} />

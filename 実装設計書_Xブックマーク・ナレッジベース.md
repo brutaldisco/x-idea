@@ -28,7 +28,8 @@
 > 1. **X 連携を複数アカウント（最大 3）に変更**（ADR-002）。`x_account` は複数行になり、`sources` は `x_account_id` でどのアカウント由来かを保持する。同期カーソルはアカウント別に分離する。アプリのユーザー概念やログインは追加しない。
 
 > **v3.3 の要点（v3.2 からの変更）**
-> 1. **アカウントコンテキスト（ビュー切替）を追加**（ADR-003）。指向性の異なるアカウント同士を混ぜないため、Today / Inbox / Library / Ask は **選択中の 1 アカウントだけ** にスコープする。「すべて」は持たない。既定は先頭アカウント。フッターに現在の `@name` を出し、タップで「アカウントを切り替える」と候補を開く。HttpOnly Cookie `x_ctx`。`user_id` は追加しない。
+> 1. **アカウントコンテキスト（ビュー切替）を追加**（ADR-003）。指向性の異なるアカウント同士を混ぜないため、Today / Inbox / Library / Ask は **選択中の 1 アカウントだけ** にスコープする。「すべて」は持たない。既定は先頭アカウント。画面左下に現在の `@name` を出し（タブバーには入れない）、タップで「アカウントを切り替える」と候補を開く。HttpOnly Cookie `x_ctx`。`user_id` は追加しない。
+> 2. **Settings 使用量メーター**（ADR-004）。X クレジットと Gemini 枠は「残量」を主表示し、なくなったら追加する。アカウント別の推定使用も出す。`x_api_enabled` は人間が ON にする。
 
 ---
 
@@ -322,7 +323,7 @@ UI/UX の判断に迷ったら以下に従う。
   5. **Insights**（P2）：今週のテーマ1〜3個。
   6. **最近の Source**：横スクロールカード（8件）。
 - **空状態**：X 未連携→「X と連携して始める」CTA 1つのみ。連携済み・0件→「初回取り込み中… 120/5,000」進捗。複数アカウント時はアカウントごとの進捗を並べる。
-- **アカウントコンテキスト**（v3.3）：フッターに現在の `@name` を出す。タップで「アカウントを切り替える」と候補一覧。Today の同期ピル・Inbox 件数・最近の Source は選択中アカウントだけに絞る。
+- **アカウントコンテキスト**（v3.3）：画面左下に現在の `@name` を出す（タブバーの外）。タップで「アカウントを切り替える」と候補一覧。Today の同期ピル・Inbox 件数・最近の Source は選択中アカウントだけに絞る。
 - **キャッシュ**：Briefing/Insights は `use cache`（`cacheTag('today')`）。同期ピルは Suspense で後ストリーム。コンテキスト切替は Cookie なのでキャッシュキーに含める。
 
 ### 8.2 SC-02 Inbox
@@ -377,7 +378,11 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.7 SC-05 Settings
 
-- **外部サービス / 課金（最上部）**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
+- **使用量メーター（最上部）**：なくなったら追加する運用。残量を大きく出し、日次バーとアカウント別バーを添える。
+  - X API：残量 USD（`GET /2/usage/credits` が取れればそれを優先。取れなければ追加記録／コンソール残量スナップショット − 推定使用）。推定使用は `sources`（Owned Reads $0.001）と `sync_runs.est_cost_usd`。アカウント別に件数と推定コスト。
+  - Gemini：レーン別「残り / 上限」。リセットは太平洋時間 0:00。
+  - 追加記録は `x_credit_ledger`（`topup` / `snapshot`）。`X_BEARER_TOKEN` があれば残量を再取得（15 分キャッシュ）。
+- **外部サービス / 課金**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
   - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）
   - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
@@ -983,6 +988,7 @@ CREATE TABLE settings (
   last_synced_at TEXT,
   initial_import_state_json TEXT, -- {requested, fetched, enriched, embedded, done}
   onboarding_done INTEGER NOT NULL DEFAULT 0,
+  x_usage_cache_json TEXT,                       -- X usage/credits の短時間キャッシュ
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1194,6 +1200,14 @@ CREATE TABLE ai_usage_daily (
   cooldown_until TEXT,
   last_error TEXT,
   PRIMARY KEY (day_pt, lane, model)
+);
+
+CREATE TABLE x_credit_ledger (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,                            -- topup | snapshot
+  amount_usd REAL NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- 検索チャンク＋埋め込み（P2）
@@ -1488,7 +1502,7 @@ recall_items ─▶ sources | knowledge_cards ; recall_items 1──* recall_eve
 x_bookmark_folders 1──* x_post_folders ─▶ x_posts.tweet_id
 briefings / insights ─▶ sources (source_ids_json)
 qa_sessions 1──* qa_messages
-jobs, job_schedules, sync_runs, ai_usage_daily, push_subscriptions, api_tokens（独立）
+jobs, job_schedules, sync_runs, ai_usage_daily, x_credit_ledger, push_subscriptions, api_tokens（独立）
 ```
 
 - Source : x_post = 1 : 1（ブックマーク 1 件）。スレッド展開の連投は `x_posts` のみ（Source なし）。
@@ -1508,6 +1522,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | GET | `/api/x/oauth/start` | X OAuth 開始 | なし | P1 |
 | GET | `/api/x/oauth/callback` | コールバック | state | P1 |
 | DELETE | `/api/x/connection` | 連携解除 | 同一オリジン | P1 |
+| POST | `/api/x/credits` | クレジット追加/残量合わせ/再取得 | 同一オリジン | P1 |
 | POST | `/api/sync` | 手動同期（60秒スロットル、`after()` で後続消化） | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
 | GET | `/api/sources` | 一覧（フィルタ・カーソル `?cursor=saved_at,id&limit=30`） | 同一オリジン | P1 |
@@ -1828,7 +1843,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | --- | --- | --- | --- | --- |
 | T-101 | X OAuth PKCE（start/callback/解除）、`x_account` 保存、Onboarding ステップ 2 | `src/app/api/x/oauth/*`, `src/server/x/oauth.ts` | T-003, T-005 | 実アカウントで連携・解除 |
 | T-101b | X 複数アカウント（最大 3、v3.2）：`x_account` 複数行化、`sources.x_account_id`、`sync_runs.x_account_id`、アカウント別カーソル、Settings の一覧/追加/個別解除 | `drizzle/0001_multi_account.sql`, `src/server/x/*`, Settings UI | T-101 | 2 つ目のアカウントを追加・解除できる。既存データは最初の 1 件に帰属 |
-| T-101c | アカウントコンテキスト切替（v3.3、ADR-003）：`x_ctx` Cookie、フッターに現在アカウント、タップで切替メニュー、Today/Inbox/Library/Ask のスコープリング | `src/server/x/context.ts`, `src/components/TabBar.tsx`, 各タブ | T-101b | フッターの `@name` をタップすると「アカウントを切り替える」と候補が出る。切替で Today / Inbox が変わる。既定は先頭アカウント |
+| T-101c | アカウントコンテキスト切替（v3.3、ADR-003）：`x_ctx` Cookie、画面左下に現在アカウント（タブバー外）、タップで切替メニュー、Today/Inbox/Library/Ask のスコープリング | `src/server/x/context.ts`, `src/components/AccountSwitcher.tsx`, 各タブ | T-101b | 左下の `@name` をタップすると「アカウントを切り替える」と候補が出る。切替で Today / Inbox が変わる。既定は先頭アカウント |
 | T-102 | トークンリフレッシュ、`reauth_required` 遷移（E-02） | `src/server/x/token.ts` | T-101 | 失効フィクスチャで状態遷移 |
 | T-103 | X API クライアント（fields/expansions、レート制限記録、`withRetry`、Zod 解析） | `src/server/x/client.ts`, `fixtures/x/*.json` | T-009 | 契約テスト |
 | T-104 | `sync_bookmarks`（差分／初回 `initial_limit`、errors→availability、`note_tweet`、sync_runs、コスト推定） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | 実データ取り込み、既知 ID 打ち切り |
@@ -1851,7 +1866,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-207 | Reader SC-06（ヒーロー ViewTransition、セグメント、原文/記事/要約、メモ、状態バー、再処理） | `src/app/source/[id]/*` | T-204 | A-04 目視、共有要素遷移 |
 | T-208 | FTS 検索 `/api/search`（trigram、短語 LIKE、bm25 重み、フィルタ）＋ `/api/search/suggest` ＋ Ask SC-04（キーワードモード） | `src/server/search/keyword.ts`, `src/app/(tabs)/ask/*` | T-105 | 日本語 2/3/4 文字クエリでヒット |
 | T-209 | Today SC-01（同期ピル、新着サマリー、Inbox チップ、最近。Briefing/Echo/Insights はプレースホルダ） | `src/app/(tabs)/today/*` | T-204 | `use cache` + Suspense、空状態 3 種 |
-| T-210 | Settings SC-05（**外部サービス/課金トグル**、同期、AI レーン/キャップ/しきい値、除外ドメイン、表示、データ削除、エクスポート導線）。有料は既定 OFF | `src/app/(tabs)/settings/*` | T-204 | 付録H のトグルが UI に並ぶ。OFF の機能はジョブ未投入。worker はトグルを勝手に ON にしない |
+| T-210 | Settings SC-05（**使用量メーター**、外部サービス/課金トグル、同期、AI レーン/キャップ/しきい値、除外ドメイン、表示、データ削除、エクスポート導線）。有料は既定 OFF | `src/app/(tabs)/settings/*`, `src/server/usage/*` | T-204 | 残量・日次バー・アカウント別が見える。付録H のトグルが UI に並ぶ。OFF の機能はジョブ未投入。worker はトグルを勝手に ON にしない |
 | T-211 | Categories SC-08（階層 CRUD、統合） | `src/app/(tabs)/settings/categories/*` | T-204 | 統合で Source 再割当 |
 | T-212 | PWA（Serwist、manifest、オフライン閲覧、インストール案内） | `src/app/sw.ts`, `manifest` | T-209 | Lighthouse PWA 合格、機内モードで直近閲覧可 |
 | T-213 | Instant Navigations 適用と `instant()` E2E、`<Activity>` でタブ状態保持 | `tests/e2e/instant.spec.ts` | T-205〜T-210 | 5 タブすべて instant |
@@ -1990,7 +2005,8 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | P-13 | 引用 | 1 階層スナップショット | ノイズ抑制 |
 | P-14 | アプリ認証 | なし | 個人用途 |
 | P-26 | X 連携アカウント数 | 最大 3（v3.2） | ユーザー要望。アプリのユーザー概念は追加しない |
-| P-27 | アカウントコンテキスト | 既定は先頭アカウント。フッターで切替。「すべて」なし（v3.3） | 指向性の異なるアカウントを混ぜない |
+| P-27 | アカウントコンテキスト | 既定は先頭アカウント。画面左下で切替（タブバー外）。「すべて」なし（v3.3） | 指向性の異なるアカウントを混ぜない |
+| P-28 | クレジット残量 | 公式残量 API → スナップショット → 追加記録の順。不足は $2 以下で警告 | なくなったら追加する運用 |
 | P-15 | 初期カテゴリ | 社会学/AI/組織/デザイン/筋力トレーニング/健康/仕事/思想 | 要件例示 |
 | P-16 | Cron | cron-job.org 1 分 | Hobby 制約回避 |
 | P-17 | `APP_PASSCODE` | 未設定 | 最小セキュリティ |
@@ -2110,6 +2126,7 @@ images: [image_1, image_2]（添付）                 ← P2
 | `TURSO_DATABASE_URL` | ✓ | `libsql://x-idea-brutaldisco.aws-ap-northeast-1.turso.io`（ローカルは `file:local.db`） |
 | `TURSO_AUTH_TOKEN` | ✓（本番） | Turso 認証トークン |
 | `X_CLIENT_ID` / `X_CLIENT_SECRET` | ✓ | X Developer App（PKCE。Confidential client の場合は secret） |
+| `X_BEARER_TOKEN` | 任意 | App-only Bearer。Settings の X 残量を `GET /2/usage/credits` で取るとき |
 | `X_REDIRECT_URI` | ✓ | `https://x-idea.vercel.app/api/x/oauth/callback`（ローカルは `http://localhost:3000/api/x/oauth/callback`） |
 | `GEMINI_API_KEY` | ✓ | Google AI Studio（無料キーで開始。有料は Settings トグル） |
 | `CRON_SECRET` | ✓ | `/api/jobs/tick` 用 |
