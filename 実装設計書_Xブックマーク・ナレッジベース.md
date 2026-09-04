@@ -383,7 +383,7 @@ UI/UX の判断に迷ったら以下に従う。
   - Gemini：レーン別「残り / 上限」。リセットは太平洋時間 0:00。
   - 追加記録は `x_credit_ledger`（`topup` / `snapshot`）。`X_BEARER_TOKEN` があれば残量を再取得（15 分キャッシュ）。
 - **外部サービス / 課金**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
-  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）
+  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings にトグルと「今すぐ同期」。初回は最大 500 件
   - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
@@ -1523,7 +1523,8 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | GET | `/api/x/oauth/callback` | コールバック | state | P1 |
 | DELETE | `/api/x/connection` | 連携解除 | 同一オリジン | P1 |
 | POST | `/api/x/credits` | クレジット追加/残量合わせ/再取得 | 同一オリジン | P1 |
-| POST | `/api/sync` | 手動同期（60秒スロットル、`after()` で後続消化） | 同一オリジン | P1 |
+| POST | `/api/sync` | 手動同期（60秒スロットル、最大 3 ジョブ消化） | 同一オリジン | P1 |
+| PATCH | `/api/settings` | `x_api_enabled` のみ。人間が切り替える | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
 | GET | `/api/sources` | 一覧（フィルタ・カーソル `?cursor=saved_at,id&limit=30`） | 同一オリジン | P1 |
 | GET | `/api/sources/:id` | 詳細（原文・記事・要約・タグ・関連） | 同一オリジン | P1 |
@@ -1844,9 +1845,9 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-101 | X OAuth PKCE（start/callback/解除）、`x_account` 保存、Onboarding ステップ 2 | `src/app/api/x/oauth/*`, `src/server/x/oauth.ts` | T-003, T-005 | 実アカウントで連携・解除 |
 | T-101b | X 複数アカウント（最大 3、v3.2）：`x_account` 複数行化、`sources.x_account_id`、`sync_runs.x_account_id`、アカウント別カーソル、Settings の一覧/追加/個別解除 | `drizzle/0001_multi_account.sql`, `src/server/x/*`, Settings UI | T-101 | 2 つ目のアカウントを追加・解除できる。既存データは最初の 1 件に帰属 |
 | T-101c | アカウントコンテキスト切替（v3.3、ADR-003）：`x_ctx` Cookie、画面左下に現在アカウント（タブバー外）、タップで切替メニュー、Today/Inbox/Library/Ask のスコープリング | `src/server/x/context.ts`, `src/components/AccountSwitcher.tsx`, 各タブ | T-101b | 左下の `@name` をタップすると「アカウントを切り替える」と候補が出る。切替で Today / Inbox が変わる。既定は先頭アカウント |
-| T-102 | トークンリフレッシュ、`reauth_required` 遷移（E-02） | `src/server/x/token.ts` | T-101 | 失効フィクスチャで状態遷移 |
-| T-103 | X API クライアント（fields/expansions、レート制限記録、`withRetry`、Zod 解析） | `src/server/x/client.ts`, `fixtures/x/*.json` | T-009 | 契約テスト |
-| T-104 | `sync_bookmarks`（差分／初回 `initial_limit`、errors→availability、`note_tweet`、sync_runs、コスト推定） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | 実データ取り込み、既知 ID 打ち切り |
+| T-102 | トークンリフレッシュ、`reauth_required` 遷移（E-02） | `src/server/x/token.ts` | T-101 | 失効 5 分前に refresh。失敗で `reauth_required` |
+| T-103 | X API クライアント（fields/expansions、レート制限記録、`withRetry`、ページ解析） | `src/server/x/client.ts`, `fixtures/x/*.json` | T-009 | fixtures で note_tweet / 既知 ID 打ち切り |
+| T-104 | `sync_bookmarks`（差分／初回 500 件、errors→availability、`note_tweet`、sync_runs、コスト推定） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | `x_api_enabled` かつ `sync_enabled` のアカウントだけ。既知 ID で打ち切り |
 | T-105 | 投稿保存（x_posts/media/引用/URL 抽出/source_articles pending/FTS upsert） | `src/server/ingest/*` | T-104 | DB に全項目、FTS ヒット |
 | T-106 | 手動同期 API（60 秒スロットル、`after()` で 3 ジョブ消化）、クライアント起動時 tick | `src/app/api/sync/route.ts` | T-104 | 連打で 429 |
 | T-107 | `article_fetch`（正規化・robots・Readability・sanitize・scope・除外ドメイン） | `src/server/jobs/handlers/articleFetch.ts` | T-105 | 10 URL の scope が期待どおり |

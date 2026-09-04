@@ -3,7 +3,9 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { AccountSyncToggle } from "@/components/AccountSyncToggle";
 import { DisconnectX } from "@/components/DisconnectX";
+import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { UsageMeters } from "@/components/UsageMeters";
+import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
 import { getHealth } from "@/server/health";
 import { getUsageDashboard } from "@/server/usage/dashboard";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
@@ -102,15 +104,20 @@ async function SettingsBody({
           </p>
         )}
       </article>
-      <ServiceCard
-        name="X API"
-        state={health.x_api_enabled ? "有料ON" : "停止"}
-        note={
-          health.x_api_enabled
-            ? "同期ジョブが走ります。残量は上のメーターを見てください。"
-            : "クレジット購入後も、同期はトグルを人間が ON するまで止まります。"
-        }
-      />
+      <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">X API</h2>
+          <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
+            {health.x_api_enabled ? "有料ON" : "停止"}
+          </span>
+        </div>
+        <p className="mt-2 text-ink-2 text-sm">
+          全体トグルと、アカウントごとの「同期（課金）」が両方 ON
+          のときだけブックマークを取り込みます。初回は最大 500 件です。
+        </p>
+        <XApiEnabledToggle enabled={health.x_api_enabled} />
+        <ManualSyncButton disabled={!health.x_api_enabled} />
+      </article>
       <ServiceCard
         name="Gemini"
         state="無料枠"

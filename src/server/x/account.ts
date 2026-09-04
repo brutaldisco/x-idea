@@ -15,6 +15,14 @@ export type XAccountPublic = {
   lastSyncedAt: string | null;
 };
 
+export type XAccountSecret = XAccountPublic & {
+  xUserId: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiresAt: string;
+  lastSyncHeadTweetId: string | null;
+};
+
 export async function countXAccounts(): Promise<number> {
   if (!isDbConfigured()) {
     return 0;
@@ -153,4 +161,96 @@ export async function listXAccounts(): Promise<XAccountPublic[]> {
 export async function getXAccountPublic(): Promise<XAccountPublic | null> {
   const list = await listXAccounts();
   return list[0] ?? null;
+}
+
+function asSecret(row: Record<string, unknown>): XAccountSecret {
+  return {
+    id: String(row.id),
+    xUserId: String(row.x_user_id),
+    username: String(row.x_username),
+    name: row.x_name ? String(row.x_name) : null,
+    status: String(row.status),
+    syncEnabled: Number(row.sync_enabled) === 1,
+    lastSyncedAt: row.last_synced_at ? String(row.last_synced_at) : null,
+    accessToken: String(row.access_token),
+    refreshToken: String(row.refresh_token ?? ""),
+    tokenExpiresAt: String(row.token_expires_at),
+    lastSyncHeadTweetId: row.last_sync_head_tweet_id
+      ? String(row.last_sync_head_tweet_id)
+      : null,
+  };
+}
+
+const SECRET_COLUMNS = `id, x_user_id, x_username, x_name, status, sync_enabled,
+  last_synced_at, access_token, refresh_token, token_expires_at,
+  last_sync_head_tweet_id`;
+
+export async function getXAccountSecret(
+  id: string,
+): Promise<XAccountSecret | null> {
+  if (!isDbConfigured()) {
+    return null;
+  }
+  await ensureSchema();
+  const result = await getClient().execute({
+    sql: `SELECT ${SECRET_COLUMNS} FROM x_account WHERE id = ? LIMIT 1`,
+    args: [id],
+  });
+  const row = result.rows[0];
+  return row ? asSecret(row as Record<string, unknown>) : null;
+}
+
+export async function listSyncableAccounts(): Promise<XAccountSecret[]> {
+  if (!isDbConfigured()) {
+    return [];
+  }
+  await ensureSchema();
+  const result = await getClient().execute(
+    `SELECT ${SECRET_COLUMNS} FROM x_account
+     WHERE sync_enabled = 1 AND status = 'active'
+     ORDER BY created_at ASC
+     LIMIT ${MAX_X_ACCOUNTS}`,
+  );
+  return result.rows.map((row) => asSecret(row as Record<string, unknown>));
+}
+
+export async function updateXAccountTokens(
+  id: string,
+  tokens: TokenResponse,
+): Promise<void> {
+  const expires = new Date(
+    Date.now() + (tokens.expires_in ?? 7200) * 1000,
+  ).toISOString();
+  await getClient().execute({
+    sql: `UPDATE x_account SET
+      access_token = ?,
+      refresh_token = COALESCE(?, refresh_token),
+      token_expires_at = ?,
+      status = 'active',
+      updated_at = datetime('now')
+    WHERE id = ?`,
+    args: [tokens.access_token, tokens.refresh_token ?? null, expires, id],
+  });
+}
+
+export async function markXAccountReauth(id: string): Promise<void> {
+  await getClient().execute({
+    sql: "UPDATE x_account SET status = 'reauth_required', updated_at = datetime('now') WHERE id = ?",
+    args: [id],
+  });
+  logger.warn({ id }, "x_account reauth_required");
+}
+
+export async function markXAccountSynced(
+  id: string,
+  headTweetId: string | null,
+): Promise<void> {
+  await getClient().execute({
+    sql: `UPDATE x_account SET
+      last_sync_head_tweet_id = COALESCE(?, last_sync_head_tweet_id),
+      last_synced_at = datetime('now'),
+      updated_at = datetime('now')
+    WHERE id = ?`,
+    args: [headTweetId, id],
+  });
 }

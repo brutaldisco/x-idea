@@ -56,8 +56,8 @@ async function TodayBody() {
           クレジット設定が必要です
         </h2>
         <p className="mt-3 max-w-sm text-ink-2 text-sm">
-          同期は <code>x_api_enabled</code> が OFF のあいだ動きません。購入後に
-          Settings で人間が ON にします。
+          同期は Settings の「X API 同期」が OFF
+          のあいだ動きません。クレジットを入れたあと、人間が ON にしてください。
         </p>
         <Link
           href="/settings"
