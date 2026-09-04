@@ -9,7 +9,12 @@
       "conversation_id": "2001",
       "note_tweet": { "text": "新しい論文メモ。長い本文です。" },
       "entities": {
-        "urls": [{ "url": "https://t.co/abcd", "expanded_url": "https://example.com/paper" }]
+        "urls": [
+          {
+            "url": "https://t.co/abcd",
+            "expanded_url": "https://example.com/paper"
+          }
+        ]
       },
       "attachments": { "media_keys": ["3_111"] }
     },
