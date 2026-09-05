@@ -18,6 +18,7 @@ export type MediaItem = {
   height: number | null;
   src: string;
   previewSrc: string;
+  videoSaveStatus: string | null;
 };
 
 export type PostCard = {
@@ -80,6 +81,9 @@ function asMedia(row: Record<string, unknown>): MediaItem {
     height: row.height == null ? null : Number(row.height),
     src: `/api/media/${id}`,
     previewSrc: `/api/media/${id}?preview=1`,
+    videoSaveStatus: row.video_save_status
+      ? String(row.video_save_status)
+      : null,
   };
 }
 
@@ -126,9 +130,11 @@ function asPost(row: Record<string, unknown>, media: MediaItem[]): PostCard {
 
 async function loadMedia(postId: string): Promise<MediaItem[]> {
   const result = await getClient().execute({
-    sql: `SELECT id, type, alt_text, preview_url, media_url, download_status,
-                 download_error, duration_ms, width, height
-          FROM media_assets WHERE x_post_id = ? ORDER BY created_at LIMIT 8`,
+    sql: `SELECT m.id, m.type, m.alt_text, m.preview_url, m.media_url,
+                 m.download_status, m.download_error, m.duration_ms, m.width, m.height,
+                 (SELECT vd.status FROM video_downloads vd
+                  WHERE vd.media_id = m.id LIMIT 1) AS video_save_status
+          FROM media_assets m WHERE m.x_post_id = ? ORDER BY m.created_at LIMIT 8`,
     args: [postId],
   });
   return result.rows.map((row) => asMedia(row as Record<string, unknown>));

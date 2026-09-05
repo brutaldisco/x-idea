@@ -1,14 +1,10 @@
 import { getClient } from "@/db/client";
 import { enqueueJob } from "@/server/jobs/queue";
-import { isLocalMediaEnabled } from "@/server/media/paths";
 
 export async function enqueuePendingMediaDownloads(
   accountId: string,
   limit = 40,
 ): Promise<number> {
-  if (!isLocalMediaEnabled()) {
-    return 0;
-  }
   const result = await getClient().execute({
     sql: `SELECT m.id FROM media_assets m
           JOIN x_posts p ON p.id = m.x_post_id

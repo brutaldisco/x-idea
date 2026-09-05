@@ -1,19 +1,22 @@
-import { mkdir, statfs, unlink, writeFile } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 import { getClient } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { withRetry } from "@/lib/retry";
 import { enqueueJob } from "@/server/jobs/queue";
+import {
+  hasMediaBlob,
+  MAX_BLOB_BYTES,
+  saveMediaBlob,
+} from "@/server/media/blob";
 import { fetchRemoteMedia } from "@/server/media/fetch-remote";
 import {
   ensureMediaDir,
   isLocalMediaEnabled,
-  mediaRoot,
   relativeMediaPath,
 } from "@/server/media/paths";
 import { refreshMediaFromTweet } from "@/server/media/refresh";
 import {
   downloadUrlFor,
-  MIN_FREE_BYTES,
   parseVariantsJson,
   previewUrlFor,
 } from "@/server/media/select";
@@ -84,16 +87,7 @@ async function setStatus(
   });
 }
 
-async function assertFreeSpace(): Promise<void> {
-  await mkdir(mediaRoot(), { recursive: true });
-  const info = await statfs(mediaRoot());
-  const free = Number(info.bavail) * Number(info.bsize);
-  if (free < MIN_FREE_BYTES) {
-    throw new Error("disk space below 1GB");
-  }
-}
-
-async function fetchToWebpFile(url: string, dest: string): Promise<number> {
+async function fetchToWebp(url: string): Promise<Buffer> {
   const res = await withRetry(
     async () => {
       const response = await fetchRemoteMedia(url);
@@ -110,9 +104,7 @@ async function fetchToWebpFile(url: string, dest: string): Promise<number> {
     { attempts: 3 },
   );
   const buf = Buffer.from(await res.arrayBuffer());
-  const webp = await encodePhotoWebp(buf);
-  await writeFile(dest, webp);
-  return webp.length;
+  return encodePhotoWebp(buf);
 }
 
 export async function downloadMediaAsset(input: {
@@ -120,19 +112,17 @@ export async function downloadMediaAsset(input: {
   accountId: string;
   force?: boolean;
 }): Promise<void> {
-  if (!isLocalMediaEnabled()) {
-    logger.info(
-      { mediaId: input.mediaId },
-      "media_download skipped: no local store",
-    );
-    return;
-  }
-
   const row = await loadMediaRow(input.mediaId);
   if (!row) {
     throw new Error("media not found");
   }
-  if (row.download_status === "ready") {
+  if (!input.force && (await hasMediaBlob(row.id))) {
+    if (row.download_status !== "ready") {
+      await setStatus(row.id, "ready");
+    }
+    return;
+  }
+  if (row.download_status === "ready" && !input.force) {
     return;
   }
   if (row.download_status === "awaiting_confirm" && !input.force) {
@@ -176,28 +166,57 @@ export async function downloadMediaAsset(input: {
     return;
   }
 
-  const relative = relativeMediaPath({
-    accountId: input.accountId,
-    tweetId: fresh.tweet_id,
-    mediaKey: fresh.media_key,
-    ext: ".webp",
-  });
-
   try {
-    await ensureMediaDir(relative);
-    await assertFreeSpace();
     await setStatus(fresh.id, "downloading");
-    const abs = await ensureMediaDir(relative);
-    const bytes = await fetchToWebpFile(url, abs);
-    await setStatus(fresh.id, "ready", { path: relative, bytes });
-    logger.info({ mediaId: fresh.id, bytes }, "media_download ready");
+    const webp = await fetchToWebp(url);
+    if (webp.length > MAX_BLOB_BYTES) {
+      await setStatus(fresh.id, "failed", {
+        error: "converted image too large",
+      });
+      return;
+    }
+    const bytes = await saveMediaBlob({
+      mediaId: fresh.id,
+      data: new Uint8Array(webp),
+    });
+
+    let path: string | undefined;
+    if (isLocalMediaEnabled()) {
+      const relative = relativeMediaPath({
+        accountId: input.accountId,
+        tweetId: fresh.tweet_id,
+        mediaKey: fresh.media_key,
+        ext: ".webp",
+      });
+      try {
+        const abs = await ensureMediaDir(relative);
+        await writeFile(abs, webp);
+        path = relative;
+      } catch (error) {
+        logger.warn(
+          { err: error, mediaId: fresh.id },
+          "local webp write skipped after blob save",
+        );
+      }
+    }
+
+    await setStatus(fresh.id, "ready", { path, bytes });
+    logger.info({ mediaId: fresh.id, bytes }, "media_blob ready");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    try {
-      const abs = await ensureMediaDir(relative);
-      await unlink(abs);
-    } catch {
-      // ignore cleanup
+    if (isLocalMediaEnabled()) {
+      try {
+        const relative = relativeMediaPath({
+          accountId: input.accountId,
+          tweetId: fresh.tweet_id,
+          mediaKey: fresh.media_key,
+          ext: ".webp",
+        });
+        const abs = await ensureMediaDir(relative);
+        await unlink(abs);
+      } catch {
+        // ignore cleanup
+      }
     }
     await setStatus(fresh.id, "failed", { error: message.slice(0, 400) });
     throw error;

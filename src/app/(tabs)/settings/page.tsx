@@ -5,12 +5,13 @@ import { AccountSyncToggle } from "@/components/AccountSyncToggle";
 import { DisconnectX } from "@/components/DisconnectX";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { MediaFolderLink } from "@/components/MediaFolderLink";
-import { MediaSaveGuide } from "@/components/MediaSaveGuide";
+import { MediaUsageCard } from "@/components/MediaUsageCard";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { UsageMeters } from "@/components/UsageMeters";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
 import { getHealth } from "@/server/health";
+import { getMediaBlobUsage } from "@/server/media/blob";
 import {
   accountMediaDir,
   isLocalMediaEnabled,
@@ -19,6 +20,7 @@ import {
 } from "@/server/media/paths";
 import { getContextSettings, getSyncSettings } from "@/server/settings";
 import { getUsageDashboard } from "@/server/usage/dashboard";
+import { getVideoLibraryUsage } from "@/server/videos/queue";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
 async function SettingsBody({
@@ -27,14 +29,17 @@ async function SettingsBody({
   searchParams: Promise<{ x?: string }>;
 }) {
   await connection();
-  const [health, accounts, usage, params, flags, sync] = await Promise.all([
-    getHealth(),
-    listXAccounts(),
-    getUsageDashboard(),
-    searchParams,
-    getContextSettings(),
-    getSyncSettings(),
-  ]);
+  const [health, accounts, usage, params, flags, sync, blobUsage, videoUsage] =
+    await Promise.all([
+      getHealth(),
+      listXAccounts(),
+      getUsageDashboard(),
+      searchParams,
+      getContextSettings(),
+      getSyncSettings(),
+      getMediaBlobUsage(),
+      getVideoLibraryUsage(),
+    ]);
   const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
     <div className="space-y-3">
@@ -132,10 +137,7 @@ async function SettingsBody({
           </p>
         )}
       </article>
-      <MediaSaveGuide
-        localEnabled={isLocalMediaEnabled()}
-        localRoot={mediaRoot()}
-      />
+      <MediaUsageCard blobs={blobUsage} videos={videoUsage} />
       <MediaFoldersCard accounts={accounts} />
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
         <div className="flex items-center justify-between">
@@ -195,58 +197,31 @@ function MediaFoldersCard({
   const enabled = isLocalMediaEnabled();
   const root = mediaRoot();
   return (
-    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">メディアの保存先</h2>
-        <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
-          {enabled ? "ローカル" : "保存なし"}
-        </span>
-      </div>
+    <details className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
+      <summary className="cursor-pointer font-semibold text-sm">
+        開発者向け（MEDIA_ROOT）
+      </summary>
+      <p className="mt-2 text-ink-2 text-sm">
+        普段の動画保存は Videos タブのフォルダ選択を使います。
+        <code className="text-xs">MEDIA_ROOT</code> と{" "}
+        <code className="text-xs">pnpm dev</code> 保存役は開発用途だけです。
+      </p>
       {enabled ? (
         <>
-          <p className="mt-2 text-ink-2 text-sm">
-            保存先は{" "}
-            <code className="text-xs">
-              {root}/{"{アカウントID}/{tweet_id}/"}
-            </code>
-            です。画像と動画のサムネイルは WebP で保存します。動画本体は保存せず
-            X で見ます。Reader を開くと未保存分を保存します。PC
-            を移すときは、そのアカウントのフォルダだけを新しい PC
-            の同じ相対パスへコピーしてください。
-          </p>
-          <div className="mt-3 rounded-xl border border-line bg-paper p-3">
-            <p className="text-ink-2 text-xs">ルート</p>
-            <MediaFolderLink href={mediaFolderHref()} path={root} />
-          </div>
-          {accounts.length > 0 ? (
-            <ul className="mt-3 space-y-2">
-              {accounts.map((account) => (
-                <li
-                  key={account.id}
-                  className="rounded-xl border border-line bg-paper p-3"
-                >
-                  <p className="text-sm">@{account.username}</p>
-                  <MediaFolderLink
-                    href={mediaFolderHref(account.id)}
-                    path={accountMediaDir(account.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-ink-2 text-xs">
-              アカウントを連携すると、ここに個別フォルダが出ます。
+          <p className="mt-2 break-all font-mono text-ink-2 text-xs">{root}</p>
+          <MediaFolderLink href={mediaFolderHref()} path={root} />
+          {accounts.map((account) => (
+            <p key={account.id} className="mt-2 text-ink-2 text-xs">
+              @{account.username}: {accountMediaDir(account.id)}
             </p>
-          )}
+          ))}
         </>
       ) : (
-        <p className="mt-2 text-ink-2 text-sm">
-          本番サーバー上にはファイルを置きません。上の手順でこの PC の保存役（
-          <code>pnpm dev</code>
-          ）を起動したまま本番を開くと、同じフォルダへ保存されます。
+        <p className="mt-2 text-ink-2 text-xs">
+          この環境ではローカルディスクへ書きません。
         </p>
       )}
-    </article>
+    </details>
   );
 }
 

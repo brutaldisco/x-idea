@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 import type { MediaItem } from "@/server/sources/detail";
 
@@ -112,8 +113,7 @@ function MediaTile({
         </figcaption>
       ) : null}
       {isVideo ? (
-        <div className="flex items-center justify-between gap-2 border-line border-t px-3 py-2">
-          <p className="text-ink-2 text-xs">動画は保存しません。X で見ます。</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-line border-t px-3 py-2">
           {postUrl ? (
             <a
               href={postUrl}
@@ -125,12 +125,15 @@ function MediaTile({
             >
               X で見る
             </a>
-          ) : null}
+          ) : (
+            <span className="text-ink-2 text-xs">動画は X で見ます。</span>
+          )}
+          <VideoSaveControl item={item} />
         </div>
       ) : null}
       {pending && !isVideo ? (
         <p className="px-3 py-2 text-ink-2 text-xs">
-          ローカル保存中…（表示はこのままできます）
+          画像を保存しています…（表示はこのままできます）
         </p>
       ) : null}
       {failed && !isVideo ? (
@@ -140,5 +143,71 @@ function MediaTile({
         </p>
       ) : null}
     </figure>
+  );
+}
+
+function VideoSaveControl({ item }: { item: MediaItem }) {
+  const [status, setStatus] = useState(item.videoSaveStatus);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  if (status === "ready") {
+    return (
+      <span className="flex items-center gap-2 text-xs">
+        <span className="rounded-full bg-ok/15 px-2 py-0.5 text-ok">
+          保存済み
+        </span>
+        <Link href="/videos" className="text-accent hover:underline">
+          Videos で開く
+        </Link>
+      </span>
+    );
+  }
+  if (status === "queued" || status === "downloading") {
+    return (
+      <Link href="/videos" className="text-accent text-xs hover:underline">
+        キューに追加済み
+      </Link>
+    );
+  }
+
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setMessage(null);
+          void fetch("/api/videos/queue", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ media_id: item.id }),
+          })
+            .then(async (res) => {
+              const body = (await res.json().catch(() => null)) as {
+                error?: { message?: string };
+              } | null;
+              if (!res.ok) {
+                throw new Error(body?.error?.message ?? "追加できませんでした");
+              }
+              setStatus("queued");
+              setMessage("キューに追加しました（Videos タブで実行）");
+            })
+            .catch((error: unknown) => {
+              setMessage(
+                error instanceof Error ? error.message : "追加できませんでした",
+              );
+            })
+            .finally(() => setBusy(false));
+        }}
+        className="rounded-full border border-line px-3 py-1 text-xs hover:bg-paper-2 disabled:opacity-50"
+      >
+        {busy ? "追加中…" : "あとで保存"}
+      </button>
+      {message ? (
+        <span className="text-ink-2 text-[11px]">{message}</span>
+      ) : null}
+    </span>
   );
 }

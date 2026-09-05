@@ -1,13 +1,9 @@
 import { downloadMediaAsset } from "@/server/media/download";
-import { isLocalMediaEnabled } from "@/server/media/paths";
 
 export async function persistLocalMedia(input: {
   accountId: string;
   items: { id: string; type: string; downloadStatus: string }[];
 }): Promise<void> {
-  if (!isLocalMediaEnabled()) {
-    return;
-  }
   const pending = input.items.filter(
     (item) =>
       item.downloadStatus === "pending" || item.downloadStatus === "failed",

@@ -7,6 +7,7 @@ const TABS = [
   { href: "/today", label: "Today" },
   { href: "/inbox", label: "Inbox" },
   { href: "/library", label: "Library" },
+  { href: "/videos", label: "Videos" },
   { href: "/ask", label: "Ask" },
   { href: "/settings", label: "Settings" },
 ] as const;
@@ -27,14 +28,14 @@ export function TabBar() {
       lang="ja"
       translate="no"
     >
-      <ul className="mx-auto flex max-w-3xl justify-between px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <ul className="mx-auto flex max-w-3xl justify-between gap-0.5 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {TABS.map((tab) => {
           const isActive = tab.href === active;
           return (
             <li key={tab.href}>
               <Link
                 href={tab.href}
-                className={`block rounded-full px-2 py-2 text-sm ${
+                className={`block rounded-full px-1.5 py-2 text-xs min-[48rem]:px-2 min-[48rem]:text-sm ${
                   isActive ? "bg-paper-2 font-semibold text-ink" : "text-ink-2"
                 }`}
               >

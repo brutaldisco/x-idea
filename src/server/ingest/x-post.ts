@@ -1,7 +1,6 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { enqueueJob } from "@/server/jobs/queue";
-import { isLocalMediaEnabled } from "@/server/media/paths";
 import { downloadUrlFor, initialDownloadStatus } from "@/server/media/select";
 import {
   type BookmarksPage,
@@ -163,7 +162,7 @@ export async function enqueueMediaDownloads(
   mediaIds: string[],
   accountId: string,
 ): Promise<void> {
-  if (!isLocalMediaEnabled() || mediaIds.length === 0) {
+  if (mediaIds.length === 0) {
     return;
   }
   const client = getClient();

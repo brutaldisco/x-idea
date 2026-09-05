@@ -1,5 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { safeMediaSegment } from "@/lib/media-segment";
+
+export { safeMediaSegment };
 
 const DEFAULT_ROOT = "./data/media";
 
@@ -17,10 +20,6 @@ export function isLocalMediaEnabled(): boolean {
 export function mediaRoot(): string {
   const raw = process.env.MEDIA_ROOT?.trim();
   return resolve(raw && raw.length > 0 ? raw : DEFAULT_ROOT);
-}
-
-export function safeMediaSegment(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
 }
 
 export function relativeMediaPath(input: {

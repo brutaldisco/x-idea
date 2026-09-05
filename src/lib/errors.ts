@@ -7,6 +7,7 @@ export type AppErrorCode =
   | "LANE_COOLDOWN"
   | "LANE_CAP"
   | "X_DISABLED"
+  | "CONFLICT"
   | "INTERNAL";
 
 export class AppError extends Error {
@@ -42,6 +43,7 @@ function statusFor(code: AppErrorCode): number {
     case "LANE_CAP":
       return 429;
     case "X_DISABLED":
+    case "CONFLICT":
       return 409;
     default:
       return 500;

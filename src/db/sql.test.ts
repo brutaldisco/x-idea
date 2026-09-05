@@ -17,6 +17,10 @@ describe("sql helpers", () => {
     expect(statements.some((sql) => sql.includes("knowledge_cards"))).toBe(
       true,
     );
+    expect(statements.some((sql) => sql.includes("media_blobs"))).toBe(true);
+    expect(statements.some((sql) => sql.includes("video_downloads"))).toBe(
+      true,
+    );
     expect(
       statements.filter((sql) => isOptionalStatement(sql)).length,
     ).toBeGreaterThan(0);

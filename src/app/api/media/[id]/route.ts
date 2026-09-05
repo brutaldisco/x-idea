@@ -7,9 +7,10 @@ import { getClient } from "@/db/client";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { accountIdForMedia } from "@/server/media/account";
+import { loadMediaBlob } from "@/server/media/blob";
 import { downloadMediaAsset, loadMediaRow } from "@/server/media/download";
 import { proxyRemoteMedia } from "@/server/media/fetch-remote";
-import { isLocalMediaEnabled, resolveMediaPath } from "@/server/media/paths";
+import { resolveMediaPath } from "@/server/media/paths";
 import { refreshMediaFromTweet } from "@/server/media/refresh";
 import {
   contentTypeForExt,
@@ -35,6 +36,39 @@ function parseRange(
     return null;
   }
   return { start: Math.max(0, start), end: Math.min(size - 1, end) };
+}
+
+function serveBlob(
+  blob: { data: Uint8Array; contentType: string; bytes: number },
+  rangeHeader: string | null,
+): Response {
+  const size = blob.bytes || blob.data.byteLength;
+  const range = parseRange(rangeHeader, size);
+  const type = blob.contentType || "image/webp";
+  if (range) {
+    return new Response(
+      Buffer.from(blob.data.subarray(range.start, range.end + 1)),
+      {
+        status: 206,
+        headers: {
+          "Content-Type": type,
+          "Content-Length": String(range.end - range.start + 1),
+          "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "private, immutable",
+        },
+      },
+    );
+  }
+  return new Response(Buffer.from(blob.data), {
+    status: 200,
+    headers: {
+      "Content-Type": type,
+      "Content-Length": String(size),
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "private, immutable",
+    },
+  });
 }
 
 async function serveLocal(
@@ -74,9 +108,6 @@ async function serveLocal(
 }
 
 function schedulePersist(mediaId: string): void {
-  if (!isLocalMediaEnabled()) {
-    return;
-  }
   after(async () => {
     try {
       const accountId = await accountIdForMedia(mediaId);
@@ -114,11 +145,15 @@ export async function GET(
       );
     }
 
+    const blob = await loadMediaBlob(id);
+    if (blob) {
+      return serveBlob(blob, rangeHeader);
+    }
+
     const status = String(row.download_status ?? "");
     const localPath = row.local_path ? String(row.local_path) : null;
     const type = String(row.type ?? "photo");
-    const canServeLocal = status === "ready" && localPath;
-    if (canServeLocal && localPath) {
+    if (status === "ready" && localPath) {
       return serveLocal(localPath, rangeHeader);
     }
 
@@ -141,7 +176,7 @@ export async function GET(
       media_url: mediaUrl,
       preview_url: previewUrl,
       variants,
-      previewOnly,
+      previewOnly: previewOnly || type !== "photo",
     });
 
     if (
@@ -163,7 +198,7 @@ export async function GET(
         }
       }
     }
-    if (previewOnly && !url) {
+    if ((previewOnly || type !== "photo") && !url) {
       const accountId = await accountIdForMedia(id);
       if (accountId) {
         await refreshMediaFromTweet({ mediaId: id, accountId });
