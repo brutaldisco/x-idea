@@ -2,6 +2,7 @@ import { getClient } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { fetchArticlePage } from "@/server/fetch/article";
 import { hostOf, isXStatusUrl } from "@/server/ingest/url";
+import { enqueueEnrichBatch } from "@/server/jobs/enrich";
 import { getExcludedDomains } from "@/server/settings";
 
 export async function articleFetch(payload?: {
@@ -118,4 +119,15 @@ async function saveResult(
       id,
     ],
   });
+  if (result.scope === "full" || result.scope === "partial") {
+    await getClient().execute({
+      sql: `UPDATE sources
+            SET needs_reenrich = 1, updated_at = datetime('now')
+            WHERE id IN (
+              SELECT source_id FROM source_articles WHERE article_id = ? LIMIT 8
+            )`,
+      args: [id],
+    });
+    await enqueueEnrichBatch();
+  }
 }

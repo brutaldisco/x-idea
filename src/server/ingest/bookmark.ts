@@ -8,6 +8,7 @@ import {
   findPostIdByTweetId,
   upsertXPost,
 } from "@/server/ingest/x-post";
+import { enqueueEnrichBatch } from "@/server/jobs/enrich";
 import { enqueueJob } from "@/server/jobs/queue";
 import { getContextSettings } from "@/server/settings";
 import {
@@ -166,5 +167,6 @@ export async function ingestBookmark(input: {
     page: input.page,
     sourceId,
   });
+  await enqueueEnrichBatch();
   return { created: true, sourceId, postId };
 }

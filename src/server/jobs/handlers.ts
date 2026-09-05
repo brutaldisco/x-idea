@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { articleFetch } from "@/server/jobs/handlers/articleFetch";
+import { enrichBatch } from "@/server/jobs/handlers/enrichBatch";
 import { expandThread } from "@/server/jobs/handlers/expandThread";
 import { fetchParent } from "@/server/jobs/handlers/fetchParent";
 import { mediaDownload } from "@/server/jobs/handlers/mediaDownload";
@@ -27,6 +28,9 @@ export async function runHandler(job: JobRow): Promise<void> {
       return;
     case "article_fetch":
       await articleFetch(payload);
+      return;
+    case "enrich_batch":
+      await enrichBatch();
       return;
     default:
       logger.info({ jobId: job.id, type: job.type }, "job stub");
