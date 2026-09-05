@@ -164,7 +164,10 @@ export async function downloadMediaAsset(input: {
   });
   if (!url) {
     await setStatus(fresh.id, "failed", {
-      error: "no downloadable url (mp4 variant missing)",
+      error:
+        fresh.type === "photo"
+          ? "no downloadable url (photo url missing)"
+          : "no downloadable url (mp4 variant missing)",
     });
     return;
   }

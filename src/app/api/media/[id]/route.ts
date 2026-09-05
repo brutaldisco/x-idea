@@ -154,6 +154,22 @@ export async function GET(
         }
       }
     }
+    if (previewOnly && !url) {
+      const accountId = await accountIdForMedia(id);
+      if (accountId) {
+        await refreshMediaFromTweet({ mediaId: id, accountId });
+        const fresh = await loadMediaRow(id);
+        if (fresh) {
+          url = remoteUrlFor({
+            type: fresh.type,
+            media_url: fresh.media_url,
+            preview_url: fresh.preview_url,
+            variants: parseVariantsJson(fresh.variants_json),
+            previewOnly: true,
+          });
+        }
+      }
+    }
 
     if (!url) {
       return Response.json(

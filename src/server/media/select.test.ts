@@ -129,6 +129,23 @@ describe("remoteUrlFor / needsTweetRefresh", () => {
         variants_json: null,
       }),
     ).toBe(false);
+    expect(
+      needsTweetRefresh({
+        type: "photo",
+        media_url: null,
+        variants: [],
+        variants_json: null,
+      }),
+    ).toBe(true);
+    expect(
+      needsTweetRefresh({
+        type: "video",
+        media_url:
+          "https://video.twimg.com/ext_tw_video/a/pu/vid/avc1/640x360/x.mp4",
+        variants: [],
+        variants_json: null,
+      }),
+    ).toBe(true);
   });
 });
 

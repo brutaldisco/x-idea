@@ -103,10 +103,12 @@ export function needsTweetRefresh(media: {
   variants?: XMediaVariant[];
   variants_json?: string | null;
 }): boolean {
-  if (downloadUrlFor(media)) {
-    return false;
+  if (media.type === "photo") {
+    return !media.media_url;
   }
-  return media.variants_json == null;
+  return (
+    media.variants_json == null && pickBestMp4Url(media.variants ?? []) == null
+  );
 }
 
 export function extensionFor(media: {

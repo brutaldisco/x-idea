@@ -7,6 +7,7 @@ import {
 } from "@/server/media/select";
 import { getXAccountSecret } from "@/server/x/account";
 import { fetchTweetById } from "@/server/x/client";
+import { writeContextRun } from "@/server/x/context-spend";
 import { ensureValidToken } from "@/server/x/token";
 
 export async function refreshMediaFromTweet(input: {
@@ -52,6 +53,12 @@ export async function refreshMediaFromTweet(input: {
     }
     const token = await ensureValidToken(account);
     const page = await fetchTweetById(token, String(media.tweet_id));
+    await writeContextRun({
+      accountId: account.id,
+      mode: "parent",
+      resources: Math.max(1, page.resourcesRead),
+      status: "ok",
+    });
     const key = String(media.media_key);
     const fresh =
       page.media.get(key) ??
