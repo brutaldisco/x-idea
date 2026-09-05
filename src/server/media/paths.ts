@@ -18,7 +18,7 @@ export function mediaRoot(): string {
   return resolve(raw && raw.length > 0 ? raw : DEFAULT_ROOT);
 }
 
-function safeSegment(value: string): string {
+export function safeMediaSegment(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
 }
 
@@ -30,10 +30,25 @@ export function relativeMediaPath(input: {
 }): string {
   const ext = input.ext.startsWith(".") ? input.ext : `.${input.ext}`;
   return [
-    safeSegment(input.accountId),
-    safeSegment(input.tweetId),
-    `${safeSegment(input.mediaKey)}${ext}`,
+    accountMediaRelativeDir(input.accountId),
+    safeMediaSegment(input.tweetId),
+    `${safeMediaSegment(input.mediaKey)}${ext}`,
   ].join("/");
+}
+
+export function accountMediaRelativeDir(accountId: string): string {
+  return safeMediaSegment(accountId);
+}
+
+export function accountMediaDir(accountId: string): string {
+  return resolveMediaPath(accountMediaRelativeDir(accountId));
+}
+
+export function mediaFolderHref(accountId?: string | null): string {
+  if (!accountId) {
+    return "/api/media/folder";
+  }
+  return `/api/media/folder?account=${encodeURIComponent(accountId)}`;
 }
 
 export function resolveMediaPath(relativePath: string): string {

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
+import { after, connection } from "next/server";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
 import { PostBlock } from "@/components/PostBlock";
+import { runJobs } from "@/server/jobs/runner";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { getContextSettings } from "@/server/settings";
 import { getSourceDetail } from "@/server/sources/detail";
@@ -27,6 +28,9 @@ export default async function SourcePage({
   }
   if (source.xAccountId) {
     await enqueuePendingMediaDownloads(source.xAccountId, 16);
+    after(() => {
+      void runJobs({ max: 3 });
+    });
   }
 
   return (

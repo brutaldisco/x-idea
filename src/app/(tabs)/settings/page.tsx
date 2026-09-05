@@ -4,10 +4,17 @@ import { Suspense } from "react";
 import { AccountSyncToggle } from "@/components/AccountSyncToggle";
 import { DisconnectX } from "@/components/DisconnectX";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
+import { MediaFolderLink } from "@/components/MediaFolderLink";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { UsageMeters } from "@/components/UsageMeters";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
 import { getHealth } from "@/server/health";
+import {
+  accountMediaDir,
+  isLocalMediaEnabled,
+  mediaFolderHref,
+  mediaRoot,
+} from "@/server/media/paths";
 import { getContextSettings } from "@/server/settings";
 import { getUsageDashboard } from "@/server/usage/dashboard";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
@@ -107,6 +114,7 @@ async function SettingsBody({
           </p>
         )}
       </article>
+      <MediaFoldersCard accounts={accounts} />
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">X API</h2>
@@ -149,6 +157,63 @@ async function SettingsBody({
         note="https://x-idea.vercel.app · hnd1"
       />
     </div>
+  );
+}
+
+function MediaFoldersCard({
+  accounts,
+}: {
+  accounts: { id: string; username: string }[];
+}) {
+  const enabled = isLocalMediaEnabled();
+  const root = mediaRoot();
+  return (
+    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold">メディアの保存先</h2>
+        <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
+          {enabled ? "ローカル" : "保存なし"}
+        </span>
+      </div>
+      {enabled ? (
+        <>
+          <p className="mt-2 text-ink-2 text-sm">
+            画像・動画はアカウントごとのフォルダに保存します。PC
+            を移すときは、そのアカウントのフォルダだけを新しい PC
+            の同じ相対パスへコピーしてください。
+          </p>
+          <div className="mt-3 rounded-xl border border-line bg-paper p-3">
+            <p className="text-ink-2 text-xs">ルート</p>
+            <MediaFolderLink href={mediaFolderHref()} path={root} />
+          </div>
+          {accounts.length > 0 ? (
+            <ul className="mt-3 space-y-2">
+              {accounts.map((account) => (
+                <li
+                  key={account.id}
+                  className="rounded-xl border border-line bg-paper p-3"
+                >
+                  <p className="text-sm">@{account.username}</p>
+                  <MediaFolderLink
+                    href={mediaFolderHref(account.id)}
+                    path={accountMediaDir(account.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-ink-2 text-xs">
+              アカウントを連携すると、ここに個別フォルダが出ます。
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="mt-2 text-ink-2 text-sm">
+          この環境（Vercel など）ではファイルを保存しません。ローカル実行時に
+          Settings でパスを確認できます。
+        </p>
+      )}
+    </article>
   );
 }
 

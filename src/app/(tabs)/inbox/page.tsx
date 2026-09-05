@@ -32,6 +32,8 @@ async function InboxBody() {
           authorUsername={item.authorUsername}
           summary={item.summary}
           url={item.url}
+          mediaId={item.mediaId}
+          mediaType={item.mediaType}
         />
       ))}
     </ul>

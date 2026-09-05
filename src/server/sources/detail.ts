@@ -17,6 +17,7 @@ export type MediaItem = {
   width: number | null;
   height: number | null;
   src: string;
+  previewSrc: string;
 };
 
 export type PostCard = {
@@ -69,6 +70,7 @@ function asMedia(row: Record<string, unknown>): MediaItem {
     width: row.width == null ? null : Number(row.width),
     height: row.height == null ? null : Number(row.height),
     src: `/api/media/${id}`,
+    previewSrc: `/api/media/${id}?preview=1`,
   };
 }
 

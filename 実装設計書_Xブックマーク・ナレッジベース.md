@@ -32,7 +32,7 @@
 > 2. **Settings 使用量メーター**（ADR-004）。X クレジットと Gemini 枠は「残量」を主表示し、なくなったら追加する。アカウント別の推定使用も出す。`x_api_enabled` は人間が ON にする。
 
 > **v3.4 の要点（v3.3 からの変更）**
-> 1. **メディアのローカル保存**（ADR-005）。PC 利用を主前提とし、画像・動画の実ファイルはローカルディスク（`MEDIA_ROOT`、既定 `./data/media`）に **最高解像度** で保存する。DB には相対パスのみ持ち、引っ越しは同じパスへのコピーで引き継げる。**4 時間超の動画は確認してから保存**。Vercel では保存せず CDN 表示。詳細は `docs/design/2026-09-05-context-media-x.md`。
+> 1. **メディアのローカル保存**（ADR-005）。PC 利用を主前提とし、画像・動画の実ファイルはローカルディスク（`MEDIA_ROOT`、既定 `./data/media`）に **最高解像度** で保存する。DB には相対パスのみ持ち、引っ越しは同じパスへのコピーで引き継げる。**4 時間超の動画は確認してから保存**。未保存時は自前プロキシで表示（X CDN へ 302 しない）。Vercel では保存せずプロキシ表示。詳細は `docs/design/2026-09-05-context-media-x.md`。
 > 2. **返信コンテキスト**：返信の親 1 件取得（Phase A）、直近 7 日の返信取得（Phase B、`reply_context_enabled` 既定 OFF）。「X で開く」を全 Source に常設。
 
 ---
@@ -398,6 +398,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
 - **連携**（P2）：MCP エンドポイント URL とトークン（再発行）、Quick Capture トークン、iOS ショートカット導入手順。
+- **メディアの保存先**：ローカル実行時、`MEDIA_ROOT` の絶対パスとアカウントごとのフォルダ（`{MEDIA_ROOT}/{x_account_id}`）を表示し、リンクで開く。PC 引っ越しはアカウントフォルダ単位。Vercel では保存しない旨を表示。
 - **データ**：エクスポート（Markdown/JSON）、全削除（危険ゾーン）。
 - **表示**：テーマ（システム/ライト/ダーク）、文字サイズ、モーション低減。
 
@@ -690,10 +691,10 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 ### 14.6 メディアのローカル保存（PC 前提、ADR-005）
 
 - 画像・動画の実ファイルは **ローカルディスク** に保存し、DB には `MEDIA_ROOT` 相対パスのみ保持（Turso 容量を使わない）。詳細は `docs/design/2026-09-05-context-media-x.md`。
-- `MEDIA_ROOT`（環境変数、既定 `./data/media`）配下に `{x_account_id}/{tweet_id}/{media_key}.{ext}`。引っ越しは同じパスにコピーするだけ（相対パスのため DB 変更不要）。
+- `MEDIA_ROOT`（環境変数、既定 `./data/media`）配下に `{x_account_id}/{tweet_id}/{media_key}.{ext}`。**アカウントごとにフォルダが分かれる**。引っ越しは `{MEDIA_ROOT}/{x_account_id}/` を同じ相対パスへコピーする（1 アカウント単位でも可）。Settings にパスとフォルダを開くリンクを出す。
 - 画像は `?name=orig` の原寸、動画/GIF は `variants` の最大 `bit_rate` の mp4（最高解像度）。`media.fields` に `variants` を追加（課金は投稿 read 単位で変わらず）。メディアファイルの CDN 取得は課金対象外。
 - 4 時間超（`duration_ms > 14,400,000`）の動画は `awaiting_confirm` で保留し、Reader の確認でダウンロード。
-- 配信は `GET /api/media/[id]`（Range 対応、未保存時は X CDN へ 302）。**Vercel（揮発 FS）では `MEDIA_ROOT` 未設定＝ダウンロードせず CDN 表示**。
+- 配信は `GET /api/media/[id]`（Range 対応、未保存時は **自前プロキシ**。X CDN へ 302 しない）。動画 URL が無い既存行は tweet lookup で 1 回補完。`?preview=1` はポスター／一覧サムネ。**Vercel（揮発 FS）では `MEDIA_ROOT` 未設定＝ダウンロードせずプロキシ表示**。
 
 ### 14.7 同期頻度・手動同期
 
@@ -1929,7 +1930,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-509 | スレッド展開（`expand_thread`、コスト上限、Reader 連結表示、enrich 入力） | `expandThread.ts` | T-104 | 上限で停止、表示 |
 | T-601 | `media_assets` 拡張（migration `0003`）＋ `media.fields` に `variants` 追加 | `drizzle/0003_*`, `src/server/x/client.ts`, `parse.ts` | — | variants が DB に入る |
 | T-602 | `media_download` ジョブ（画像 `name=orig`／動画 max bit_rate、4h 保留、空き容量チェック） | `src/server/media/download.ts`, jobs | T-601 | ローカルに保存される |
-| T-603 | `GET /api/media/[id]` 配信（Range、302 フォールバック、パス検証） | `src/app/api/media/[id]/route.ts` | T-602 | 動画がシークできる |
+| T-603 | `GET /api/media/[id]` 配信（Range、未保存時プロキシ、パス検証、variants 補完） | `src/app/api/media/[id]/route.ts` | T-602 | 動画がシークできる |
 | T-604 | Reader ギャラリー＋「X で開く」＋長時間動画の確認 UI | Reader コンポーネント | T-603 | 目視で確認 |
 | T-605 | 返信の親取得（`replied_to` → 1 件 lookup、Reader「返信先」カード） | `src/server/x/parent.ts` 等 | T-104 | 親が表示される |
 | T-606 | 直近返信コンテキスト（`reply_context_enabled`、既定 OFF、上限つき） | `replyContext.ts` | T-605 | 7 日内の返信が連結表示される |

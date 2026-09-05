@@ -11,6 +11,8 @@ export type SourceListItem = {
   triageStatus: string;
   authorUsername: string | null;
   url: string | null;
+  mediaId: string | null;
+  mediaType: string | null;
 };
 
 export async function listSources(input: {
@@ -32,7 +34,13 @@ export async function listSources(input: {
   args.push(input.limit);
   const result = await getClient().execute({
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.triage_status,
-                 p.author_username, p.text, p.url
+                 p.author_username, p.text, p.url,
+                 (SELECT m.id FROM media_assets m
+                  WHERE m.x_post_id = p.id
+                  ORDER BY m.created_at ASC LIMIT 1) AS media_id,
+                 (SELECT m.type FROM media_assets m
+                  WHERE m.x_post_id = p.id
+                  ORDER BY m.created_at ASC LIMIT 1) AS media_type
           FROM sources s
           LEFT JOIN x_posts p ON p.id = s.x_post_id
           WHERE ${where.join(" AND ")}
@@ -53,6 +61,8 @@ export async function listSources(input: {
       triageStatus: String(row.triage_status),
       authorUsername: row.author_username ? String(row.author_username) : null,
       url: row.url ? String(row.url) : null,
+      mediaId: row.media_id ? String(row.media_id) : null,
+      mediaType: row.media_type ? String(row.media_type) : null,
     };
   });
 }

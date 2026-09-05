@@ -11,11 +11,13 @@
 ## 決定
 
 - 画像・動画の実ファイルは **ローカルディスク** `MEDIA_ROOT`（既定 `./data/media`）に保存し、DB（`media_assets`）には **MEDIA_ROOT 相対パス・バイト数・ダウンロード状態** のみ持つ。
-- パスは `{x_account_id}/{tweet_id}/{media_key}.{ext}`。**引っ越しは同じパスにコピーするだけ**（相対パスのため DB 変更不要）。
+- パスは `{x_account_id}/{tweet_id}/{media_key}.{ext}`。アカウントごとにフォルダが分かれる。**引っ越しはアカウントフォルダ単位**で、`{MEDIA_ROOT}/{x_account_id}/` を新しい PC の同じ相対パスへコピーする（DB 変更不要）。全アカウントを移すときはルートごとコピーしてもよい。
+- Settings に保存先の絶対パスを表示し、フォルダを開くリンクを置く。
 - 画像は `?name=orig` の原寸、動画/GIF は `variants` の **最大 `bit_rate` の mp4**（最高解像度）。HLS は保存しない。
 - **`duration_ms` が 4 時間（14,400,000ms）を超える動画は `awaiting_confirm` で保留** し、Reader の確認 UI で承認されたときだけダウンロードする。
-- 配信は `GET /api/media/[id]`（Range 対応、未保存時は X CDN へ 302）。
-- **Vercel では `MEDIA_ROOT` を設定しない**（＝ダウンロード無効、CDN 直接表示）。ローカル実行（`pnpm dev` / `next start`）時のみ保存する。
+- 配信は `GET /api/media/[id]`（Range 対応）。未保存時は **302 せず自前プロキシ**する（X のホットリンク拒否と `next/image` の 302 弱さを避ける）。`?preview=1` は動画のポスター／一覧サムネ用。
+- 既存ブックマークで動画 `variants` が無い場合は `GET /2/tweets/:id` で **1 回だけ** URL を補完する（投稿 read $0.005。スレッド月次上限には入れない）。
+- **Vercel では `MEDIA_ROOT` を設定しない**（＝ダウンロード無効、プロキシ表示）。ローカル実行（`pnpm dev` / `next start`）時のみ保存する。
 - メディアファイルの CDN 取得は X API の課金対象外（課金は投稿 read 単位）。
 
 ## 影響

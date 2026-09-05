@@ -5,8 +5,10 @@ import {
   formatDuration,
   isLongVideo,
   LONG_VIDEO_MS,
+  needsTweetRefresh,
   originalImageUrl,
   pickBestMp4Url,
+  remoteUrlFor,
 } from "./select";
 
 describe("pickBestMp4Url", () => {
@@ -79,6 +81,54 @@ describe("extensionFor", () => {
     expect(extensionFor({ type: "video", url: "https://x/a.mp4" })).toBe(
       ".mp4",
     );
+  });
+});
+
+describe("remoteUrlFor / needsTweetRefresh", () => {
+  it("prefers mp4, then preview, and refreshes only when variants are unknown", () => {
+    expect(
+      remoteUrlFor({
+        type: "video",
+        media_url: null,
+        preview_url: "https://pbs.twimg.com/preview.jpg",
+        variants: [
+          { bit_rate: 9, content_type: "video/mp4", url: "https://v/b.mp4" },
+        ],
+      }),
+    ).toBe("https://v/b.mp4");
+    expect(
+      remoteUrlFor({
+        type: "video",
+        media_url: null,
+        preview_url: "https://pbs.twimg.com/preview.jpg",
+        variants: [],
+        previewOnly: true,
+      }),
+    ).toBe("https://pbs.twimg.com/preview.jpg");
+    expect(
+      needsTweetRefresh({
+        type: "video",
+        media_url: null,
+        variants: [],
+        variants_json: null,
+      }),
+    ).toBe(true);
+    expect(
+      needsTweetRefresh({
+        type: "video",
+        media_url: null,
+        variants: [],
+        variants_json: "[]",
+      }),
+    ).toBe(false);
+    expect(
+      needsTweetRefresh({
+        type: "photo",
+        media_url: "https://pbs.twimg.com/media/a.jpg",
+        variants: [],
+        variants_json: null,
+      }),
+    ).toBe(false);
   });
 });
 

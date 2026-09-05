@@ -73,6 +73,7 @@
 - `MEDIA_ROOT` は環境変数。既定 `./data/media`（リポジトリ直下、`.gitignore` 登録）。
 - `ext`：photo は URL の拡張子（なければ `.jpg`）、video / animated_gif は `.mp4`。
 - DB には **MEDIA_ROOT からの相対パス**（`{x_account_id}/{tweet_id}/{media_key}.{ext}`）だけを保存する。絶対パスは保存しない。
+- **アカウントごとにフォルダが分かれる**。Settings にルートと `@username` ごとの絶対パスを出し、リンクで Finder 等を開く（`GET /api/media/folder`）。
 
 ### 4.2 DB スキーマ（`media_assets` 拡張、migration `0003`）
 
@@ -104,7 +105,9 @@
 - `id` → `media_assets` を引き、`ready` なら `local_path` のファイルをストリーム返却。
 - **Range リクエスト対応必須**（`206 Partial Content`）。長時間動画のシークに必要。
 - `Content-Type` は拡張子から（`.jpg`→`image/jpeg`、`.png`→`image/png`、`.webp`→`image/webp`、`.mp4`→`video/mp4`）。`Cache-Control: private, immutable`（media_key は不変）。
-- 未保存（`pending` / `awaiting_confirm` / `failed`）は `media_url` / `preview_url` の X CDN へ **302 リダイレクト**。
+- 未保存（`pending` / `awaiting_confirm` / `failed`）は X CDN へ **302 しない**。サーバーがブラウザ相当の UA で取得し、Range を転送してプロキシする（ホットリンク拒否対策）。`?preview=1` はプレビュー画像。
+- 動画 URL（mp4 variant）が DB に無い既存行は、`GET /2/tweets/:id` で **1 回だけ**補完してからプロキシする。`variants_json` を書いたあとは再リクエストしない。
+- レスポンス後に `after()` でローカル保存を進める（表示を待たない）。
 - **パストラバーサル防止**：`path.resolve(MEDIA_ROOT, local_path)` が MEDIA_ROOT 配下であることを必ず検証。
 - `APP_PASSCODE` ゲートは他ルートと同じ扱い。
 
@@ -113,12 +116,13 @@
 | 環境 | `MEDIA_ROOT` | 動作 |
 | --- | --- | --- |
 | ローカル（`pnpm dev` / `next start`） | 設定あり | ダウンロードしてローカル表示（**本格利用はこちら**） |
-| Vercel（serverless） | 未設定 | FS は揮発するためダウンロードしない。X CDN の URL で直接表示 |
+| Vercel（serverless） | 未設定 | FS は揮発するためダウンロードしない。未保存時は自前プロキシで表示 |
 
 ### 4.7 引っ越し手順
 
-1. メディアディレクトリを新環境の **同じパス** にコピーする。
-2. パスを変えたい場合は `MEDIA_ROOT` を変えるだけ（DB は相対パスのため変更不要）。
+1. **1 アカウントだけ移す**：Settings に出るそのアカウントのフォルダ（`{MEDIA_ROOT}/{x_account_id}/`）を、新しい PC の同じ相対パスへコピーする。
+2. **全部移す**：`MEDIA_ROOT` ごとコピーする。
+3. パスを変えたい場合は `MEDIA_ROOT` を変えるだけ（DB は相対パスのため変更不要）。フォルダ名（アカウント ID）は変えない。
 
 ## 5. 返信コンテキスト
 

@@ -6,12 +6,14 @@ import { getClient } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { withRetry } from "@/lib/retry";
 import { enqueueJob } from "@/server/jobs/queue";
+import { fetchRemoteMedia } from "@/server/media/fetch-remote";
 import {
   ensureMediaDir,
   isLocalMediaEnabled,
   mediaRoot,
   relativeMediaPath,
 } from "@/server/media/paths";
+import { refreshMediaFromTweet } from "@/server/media/refresh";
 import {
   downloadUrlFor,
   extensionFor,
@@ -96,10 +98,7 @@ async function assertFreeSpace(): Promise<void> {
 async function fetchToFile(url: string, dest: string): Promise<number> {
   const res = await withRetry(
     async () => {
-      const response = await fetch(url, {
-        cache: "no-store",
-        redirect: "follow",
-      });
+      const response = await fetchRemoteMedia(url);
       if (response.status === 429 || response.status >= 500) {
         const error = new Error(`media fetch ${response.status}`);
         (error as { status?: number }).status = response.status;
@@ -145,14 +144,26 @@ export async function downloadMediaAsset(input: {
   if (row.download_status === "skipped" && !input.force) {
     return;
   }
+  if (row.download_status === "downloading" && !input.force) {
+    return;
+  }
+
+  await refreshMediaFromTweet({
+    mediaId: input.mediaId,
+    accountId: input.accountId,
+  });
+  const fresh = await loadMediaRow(input.mediaId);
+  if (!fresh) {
+    throw new Error("media not found");
+  }
 
   const url = downloadUrlFor({
-    type: row.type,
-    media_url: row.media_url,
-    variants: parseVariantsJson(row.variants_json),
+    type: fresh.type,
+    media_url: fresh.media_url,
+    variants: parseVariantsJson(fresh.variants_json),
   });
   if (!url) {
-    await setStatus(row.id, "failed", {
+    await setStatus(fresh.id, "failed", {
       error: "no downloadable url (mp4 variant missing)",
     });
     return;
@@ -160,19 +171,19 @@ export async function downloadMediaAsset(input: {
 
   const relative = relativeMediaPath({
     accountId: input.accountId,
-    tweetId: row.tweet_id,
-    mediaKey: row.media_key,
-    ext: extensionFor({ type: row.type, url }),
+    tweetId: fresh.tweet_id,
+    mediaKey: fresh.media_key,
+    ext: extensionFor({ type: fresh.type, url }),
   });
 
   try {
     await ensureMediaDir(relative);
     await assertFreeSpace();
-    await setStatus(row.id, "downloading");
+    await setStatus(fresh.id, "downloading");
     const abs = await ensureMediaDir(relative);
     const bytes = await fetchToFile(url, abs);
-    await setStatus(row.id, "ready", { path: relative, bytes });
-    logger.info({ mediaId: row.id, bytes }, "media_download ready");
+    await setStatus(fresh.id, "ready", { path: relative, bytes });
+    logger.info({ mediaId: fresh.id, bytes }, "media_download ready");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     try {
@@ -181,7 +192,7 @@ export async function downloadMediaAsset(input: {
     } catch {
       // ignore cleanup
     }
-    await setStatus(row.id, "failed", { error: message.slice(0, 400) });
+    await setStatus(fresh.id, "failed", { error: message.slice(0, 400) });
     throw error;
   }
 }

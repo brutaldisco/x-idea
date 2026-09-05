@@ -35,6 +35,8 @@ async function LibraryBody() {
           authorUsername={item.authorUsername}
           summary={item.summary}
           url={item.url}
+          mediaId={item.mediaId}
+          mediaType={item.mediaType}
         />
       ))}
     </ul>
