@@ -1,9 +1,12 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { SourceCard } from "@/components/SourceCard";
-import { SourceSortSelect } from "@/components/SourceSortSelect";
+import { InboxWorkspace } from "@/components/InboxWorkspace";
 import { parseSourceSort } from "@/lib/source-sort";
-import { countSources, listSources } from "@/server/sources/query";
+import {
+  countInboxBulk,
+  countSources,
+  listInbox,
+} from "@/server/sources/query";
 import { contextLabel, getAccountContext } from "@/server/x/context";
 
 export const instant = false;
@@ -17,9 +20,10 @@ async function InboxBody({
   const params = await searchParams;
   const sort = parseSourceSort(params.sort);
   const ctx = await getAccountContext();
-  const [count, items] = await Promise.all([
+  const [count, items, bulkCount] = await Promise.all([
     countSources({ ctx, triage: "needs_review" }),
-    listSources({ ctx, triage: "needs_review", limit: 30, sort }),
+    listInbox({ ctx, limit: 30, sort }),
+    countInboxBulk(ctx, 0.7),
   ]);
   const label = contextLabel(ctx);
 
@@ -32,28 +36,12 @@ async function InboxBody({
   }
 
   return (
-    <ul className="mt-4 space-y-3">
-      <li className="flex items-center justify-between gap-3 text-ink-2 text-xs">
-        <span>
-          {label} · {count}件
-        </span>
-        <SourceSortSelect value={sort} />
-      </li>
-      {items.map((item) => (
-        <SourceCard
-          key={item.id}
-          id={item.id}
-          authorUsername={item.authorUsername}
-          summary={item.summary}
-          url={item.url}
-          mediaId={item.mediaId}
-          mediaType={item.mediaType}
-          lang={item.lang}
-          summaryFromAi={item.summaryFromAi}
-          postedAt={item.postedAt}
-        />
-      ))}
-    </ul>
+    <InboxWorkspace
+      items={items}
+      label={label}
+      bulkCount={bulkCount}
+      sort={sort}
+    />
   );
 }
 

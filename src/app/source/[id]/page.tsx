@@ -5,6 +5,7 @@ import { ArticleBlock } from "@/components/ArticleBlock";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
 import { PostBlock } from "@/components/PostBlock";
+import { SourceActions } from "@/components/SourceActions";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
 import { ensureSourceArticles } from "@/server/fetch/attach";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
@@ -162,12 +163,14 @@ export default async function SourcePage({
         </section>
       ) : null}
 
-      {source.userNote ? (
-        <section className="mt-6 border-ink border-l-2 pl-4" translate="no">
-          <p className="text-ink-2 text-xs">自分のメモ</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm">{source.userNote}</p>
-        </section>
-      ) : null}
+      <SourceActions
+        id={source.id}
+        triageStatus={source.triageStatus}
+        readStatus={source.readStatus}
+        userNote={source.userNote}
+        categoryId={source.categoryId}
+        infoType={source.infoType}
+      />
     </main>
   );
 }

@@ -56,7 +56,11 @@ export async function getHealth(ctx?: AccountContext): Promise<HealthPayload> {
     const inboxScope = scoped
       ? sourceScopeSql(accountId)
       : { clause: "1 = 1", args: [] as string[] };
-    const inboxSql = `SELECT COUNT(*) AS n FROM sources WHERE triage_status = 'needs_review' AND ${inboxScope.clause} LIMIT 1`;
+    const inboxSql = `SELECT COUNT(*) AS n FROM sources
+      WHERE triage_status = 'needs_review'
+        AND (snoozed_until IS NULL OR snoozed_until <= datetime('now'))
+        AND ${inboxScope.clause}
+      LIMIT 1`;
     const inboxArgs = inboxScope.args;
 
     const accountSql = accountId

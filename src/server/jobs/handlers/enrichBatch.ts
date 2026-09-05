@@ -288,13 +288,16 @@ async function persistEnrichment(
             ai_importance = ?,
             ai_key_sentences_json = ?,
             ai_uncertainty_reason = ?,
-            category_id = ?,
-            category_source = 'ai',
-            category_confidence = ?,
+            category_id = CASE WHEN category_source = 'user' THEN category_id ELSE ? END,
+            category_source = CASE WHEN category_source = 'user' THEN 'user' ELSE 'ai' END,
+            category_confidence = CASE WHEN category_source = 'user' THEN category_confidence ELSE ? END,
             category_candidates_json = ?,
-            info_type = ?,
-            info_type_source = 'ai',
-            triage_status = ?,
+            info_type = CASE WHEN info_type_source = 'user' THEN info_type ELSE ? END,
+            info_type_source = CASE WHEN info_type_source = 'user' THEN 'user' ELSE 'ai' END,
+            triage_status = CASE
+              WHEN triage_status IN ('confirmed', 'archived') THEN triage_status
+              ELSE ?
+            END,
             language = COALESCE(?, language),
             needs_reenrich = 0,
             updated_at = datetime('now')

@@ -1613,7 +1613,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 
 `confirmSource(id, {category_id?, info_type?, tags?})`, `archiveSource(id)`, `snoozeSource(id, until)`, `bulkConfirm(minConfidence)`, `updateSource(id, patch)`, `setReadStatus(id, status)`, `saveNote(id, note)`, `reenrich(id)`, `createHighlight(...)`, `categoryCreate/Update/Merge/Delete`, `lensCreate/Update/Delete`, `kcCreate/Update/Draft/Delete`, `recallAnswer(itemId, result)`, `settingsUpdate(patch)`, `tokenIssue(kind)`, `tokenRevoke(id)`, `briefingMarkOpened(date)`.
 
-規約：入力は Zod で検証、返り値は `{ok:true, data} | {ok:false, error:{code,message}}`、成功時に `revalidateTag('sources' | 'today' | ...)`。
+規約：入力は Zod で検証、返り値は `{ok:true, data} | {ok:false, error:{code,message}}`、成功時に Next.js 16 の `updateTag('sources' | 'today' | ...)` と `refresh()`（Server Action では `revalidateTag` より即時）。
 
 ### 21.3 共通規約
 
@@ -1932,7 +1932,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-201 | AI 基盤：AI SDK 7 + `@ai-sdk/google`、レーン設定、`Output.object`、`ai_usage_daily` 予算ガード、429 解析、PT 日付 | `src/server/ai/{client,budget,lanes}.ts` | T-006, T-009 | 単体：キャップ到達・クールダウン・日付境界 |
 | T-202 | `enrich_batch`（coalesce、プロンプト v3、Zod、後処理、タグ正規化、key_sentences 検証、enrichments 記録） | `src/server/jobs/handlers/enrichBatch.ts`, `src/server/ai/prompts/enrich.ts` | T-201, T-105 | 評価セット 50 件で precision ≥ 0.7 |
 | T-203 | `feedback_examples` 蓄積（confirm/update 時の差分検出） | `src/server/actions/sources.ts` | T-202 | 修正で 1 行追加 |
-| T-204 | Server Actions 一式（confirm/archive/snooze/bulk/update/readStatus/note/reenrich、revalidateTag） | `src/server/actions/*` | T-105 | 単体＋統合 |
+| T-204 | Server Actions 一式（confirm/archive/snooze/bulk/update/readStatus/note/reenrich、`updateTag` + `refresh()`） | `src/server/actions/*` | T-105 | 単体＋統合 |
 | T-205 | Inbox SC-02（SwipeCard、候補チップ、迷い理由、Undo、一括、キーボード、`useOptimistic`） | `src/app/(tabs)/inbox/*`, `components/SwipeCard.tsx` | T-204 | 実機 375px で操作完結 |
 | T-206 | Library SC-03（フィルタ、リスト/グリッド、カーソル無限スクロール、TanStack Query 永続化） | `src/app/(tabs)/library/*`, `/api/sources` | T-204 | rows read < 200/ページ |
 | T-207 | Reader SC-06（ヒーロー ViewTransition、セグメント、原文/記事/要約、メモ、状態バー、再処理） | `src/app/source/[id]/*` | T-204 | A-04 目視、共有要素遷移 |

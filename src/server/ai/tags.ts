@@ -34,10 +34,14 @@ export async function loadTagContext(): Promise<{
 export async function attachTags(
   sourceId: string,
   names: string[],
+  addedBy: "ai" | "user" = "ai",
 ): Promise<void> {
   const client = getClient();
   await client.execute({
-    sql: "DELETE FROM source_tags WHERE source_id = ? AND added_by = 'ai'",
+    sql:
+      addedBy === "user"
+        ? "DELETE FROM source_tags WHERE source_id = ?"
+        : "DELETE FROM source_tags WHERE source_id = ? AND added_by = 'ai'",
     args: [sourceId],
   });
   for (const name of names) {
@@ -60,8 +64,8 @@ export async function attachTags(
     }
     await client.execute({
       sql: `INSERT OR IGNORE INTO source_tags (source_id, tag_id, added_by)
-            VALUES (?, ?, 'ai')`,
-      args: [sourceId, tagId],
+            VALUES (?, ?, ?)`,
+      args: [sourceId, tagId, addedBy],
     });
   }
 }

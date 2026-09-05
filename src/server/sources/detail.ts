@@ -44,6 +44,9 @@ export type SourceDetail = {
   xAccountId: string | null;
   availability: string;
   triageStatus: string;
+  readStatus: string;
+  categoryId: string | null;
+  infoType: string | null;
   userNote: string | null;
   aiSummary: string | null;
   post: PostCard;
@@ -169,6 +172,7 @@ export async function getSourceDetail(
   const scope = sourceScopeSql(contextAccountId(ctx), "s");
   const result = await getClient().execute({
     sql: `SELECT s.id, s.x_account_id, s.availability, s.triage_status,
+                 s.read_status, s.category_id, s.info_type,
                  s.user_note, s.ai_summary,
                  p.id AS post_id, p.tweet_id, p.url, p.text, p.lang,
                  p.author_username, p.author_name, p.author_avatar_url,
@@ -264,6 +268,9 @@ export async function getSourceDetail(
     xAccountId: row.x_account_id ? String(row.x_account_id) : null,
     availability: String(row.availability),
     triageStatus: String(row.triage_status),
+    readStatus: String(row.read_status ?? "unread"),
+    categoryId: row.category_id ? String(row.category_id) : null,
+    infoType: row.info_type ? String(row.info_type) : null,
     userNote: row.user_note ? String(row.user_note) : null,
     aiSummary: row.ai_summary ? String(row.ai_summary) : null,
     post,
