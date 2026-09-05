@@ -1,7 +1,10 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
-import { attachArticleLinks } from "@/server/fetch/attach";
+import {
+  attachArticleLinks,
+  attachNativeXArticle,
+} from "@/server/fetch/attach";
 import {
   attachMedia,
   enqueueMediaDownloads,
@@ -122,12 +125,19 @@ export async function ingestBookmark(input: {
   }
 
   const existingSource = await getClient().execute({
-    sql: `SELECT s.id FROM sources s
+    sql: `SELECT s.id, s.x_post_id FROM sources s
           JOIN x_posts p ON p.id = s.x_post_id
           WHERE p.tweet_id = ? LIMIT 1`,
     args: [input.tweet.id],
   });
   if (existingSource.rows[0]) {
+    await attachNativeXArticle(
+      String(existingSource.rows[0].id),
+      input.tweet,
+      existingSource.rows[0].x_post_id
+        ? String(existingSource.rows[0].x_post_id)
+        : undefined,
+    );
     return { created: false, skipped: "exists" };
   }
 
@@ -160,6 +170,7 @@ export async function ingestBookmark(input: {
   });
 
   await attachArticleLinks(sourceId, tweetUrlEntries(input.tweet.entities));
+  await attachNativeXArticle(sourceId, input.tweet, postId);
   await upsertFts(sourceId, tweetText(input.tweet));
   await enqueueContextJobs({
     accountId: input.accountId,

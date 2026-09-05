@@ -18,13 +18,25 @@ export async function enqueuePendingArticleFetches(
     ? await getClient().execute({
         sql: `SELECT a.id FROM articles a
               JOIN source_articles sa ON sa.article_id = a.id
-              WHERE sa.source_id = ? AND a.fetch_scope IN ('pending', 'failed')
+              WHERE sa.source_id = ? AND (
+                a.fetch_scope IN ('pending', 'failed')
+                OR (
+                  a.fetch_scope = 'metadata_only'
+                  AND a.normalized_url LIKE '%/i/article/%'
+                  AND length(COALESCE(a.content_text, '')) < 400
+                )
+              )
               ORDER BY a.created_at DESC LIMIT ?`,
         args: [sourceId, limit],
       })
     : await getClient().execute({
         sql: `SELECT id FROM articles
               WHERE fetch_scope = 'pending'
+                 OR (
+                   fetch_scope = 'metadata_only'
+                   AND normalized_url LIKE '%/i/article/%'
+                   AND length(COALESCE(content_text, '')) < 400
+                 )
               ORDER BY created_at DESC LIMIT ?`,
         args: [limit],
       });

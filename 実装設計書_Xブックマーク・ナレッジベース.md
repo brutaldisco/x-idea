@@ -667,7 +667,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
   max_pages = mode == 'initial' ? ceil(initial_limit / 100) : 10
   loop max_pages:
     page = GET /2/users/:id/bookmarks?max_results=(incremental ? 10 : 100)
-             &tweet.fields=id,text,author_id,created_at,lang,entities,attachments,referenced_tweets,conversation_id,note_tweet,public_metrics
+             &tweet.fields=id,text,author_id,created_at,lang,entities,attachments,referenced_tweets,conversation_id,note_tweet,article,public_metrics
              &expansions=author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id
              &user.fields=username,name,profile_image_url
              &media.fields=media_key,type,url,preview_image_url,alt_text,duration_ms,width,height
@@ -685,7 +685,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
     sync_runs に記録（x_account_id, pages, new, cost_estimate = resources * 0.001）
 ```
 
-- `note_tweet` があれば長文本文を優先。
+- `note_tweet` があれば長文本文を優先。X Articles は `tweet.fields=article` の `title` / `plain_text` を本文として保存する（`text` は t.co だけのことがある）。
 - 削除・非公開は `errors[]` から `sources.availability` を更新。
 - 返信投稿は `settings.save_replies`（既定 保存）。
 - 編集追跡は行わない **[仮定]**。
@@ -771,7 +771,7 @@ article_fetch(url):
 ### 15.3 X 内リンク・X Articles
 
 - 別 X 投稿（`/status/`）：`x_posts` に保存し関係記録。記事化しない。
-- X Articles（`/i/article/` など）：取得を試み、取れた本文を Reader に表示。取れなければカードのタイトル／概要。長文 `note_tweet` は投稿本文として扱う。
+- X Articles（`/i/article/` など）：HTML スクレイプではなく Bookmarks / Tweet lookup の `article.plain_text` を使う。取れた本文を `articles` と投稿本文に保存し Reader に表示。取れなければカードのタイトル／概要。長文 `note_tweet` は投稿本文として扱う。
 
 ### 15.4 著作権・規約
 

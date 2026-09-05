@@ -1,3 +1,15 @@
+import { isXArticleUrl } from "@/server/ingest/url";
+
+export type XArticle = {
+  id?: string;
+  title?: string;
+  plain_text?: string;
+  preview_text?: string;
+  entities?: {
+    code?: { content?: string }[];
+  };
+};
+
 export type XTweet = {
   id: string;
   text: string;
@@ -6,6 +18,7 @@ export type XTweet = {
   lang?: string;
   conversation_id?: string;
   note_tweet?: { text?: string };
+  article?: XArticle;
   entities?: {
     urls?: {
       expanded_url?: string;
@@ -60,9 +73,38 @@ export type BookmarksPage = {
   resourcesRead: number;
 };
 
+export function xArticleBody(article: XArticle | undefined): string {
+  if (!article) {
+    return "";
+  }
+  const parts: string[] = [];
+  const text = article.plain_text?.trim() ?? "";
+  if (text) {
+    parts.push(text);
+  }
+  for (const block of article.entities?.code ?? []) {
+    const code = block.content?.trim();
+    if (code && !text.includes(code)) {
+      parts.push(code);
+    }
+  }
+  return parts.join("\n\n");
+}
+
 export function tweetText(tweet: XTweet): string {
   const note = tweet.note_tweet?.text?.trim();
-  return note && note.length > 0 ? note : tweet.text;
+  if (note) {
+    return note;
+  }
+  const articleBody = xArticleBody(tweet.article);
+  if (articleBody) {
+    const title = tweet.article?.title?.trim();
+    if (title && !articleBody.startsWith(title)) {
+      return `${title}\n\n${articleBody}`;
+    }
+    return articleBody;
+  }
+  return tweet.text;
 }
 
 export function isReply(tweet: XTweet): boolean {
@@ -128,6 +170,18 @@ export function tweetUrls(tweet: XTweet): string[] {
   return tweetUrlEntries(tweet.entities).map((item) => item.url);
 }
 
+export function xArticlePermalink(tweet: XTweet): string | null {
+  if (!tweet.article?.id && !xArticleBody(tweet.article)) {
+    return null;
+  }
+  for (const link of tweetUrlEntries(tweet.entities)) {
+    if (isXArticleUrl(link.url)) {
+      return link.url;
+    }
+  }
+  return `https://x.com/i/article/${tweet.article?.id ?? tweet.id}`;
+}
+
 export function collectUntilHead(
   tweets: XTweet[],
   knownHead: string | null,
@@ -166,12 +220,47 @@ function asTweet(value: unknown): XTweet | null {
       typeof row.conversation_id === "string" ? row.conversation_id : undefined,
     note_tweet:
       note && typeof note.text === "string" ? { text: note.text } : undefined,
+    article: asArticle(row.article),
     entities: row.entities as XTweet["entities"],
     attachments: row.attachments as XTweet["attachments"],
     referenced_tweets: Array.isArray(row.referenced_tweets)
       ? (row.referenced_tweets as XTweet["referenced_tweets"])
       : undefined,
   };
+}
+
+function asArticle(value: unknown): XArticle | undefined {
+  const row = asRecord(value);
+  if (!row) {
+    return undefined;
+  }
+  const entities = asRecord(row.entities);
+  const rawCode = entities?.code;
+  const code = Array.isArray(rawCode)
+    ? rawCode.flatMap((item) => {
+        const block = asRecord(item);
+        return block && typeof block.content === "string"
+          ? [{ content: block.content }]
+          : [];
+      })
+    : undefined;
+  const article: XArticle = {
+    id: typeof row.id === "string" ? row.id : undefined,
+    title: typeof row.title === "string" ? row.title : undefined,
+    plain_text: typeof row.plain_text === "string" ? row.plain_text : undefined,
+    preview_text:
+      typeof row.preview_text === "string" ? row.preview_text : undefined,
+    entities: code && code.length > 0 ? { code } : undefined,
+  };
+  if (
+    !article.id &&
+    !article.title &&
+    !article.plain_text &&
+    !article.preview_text
+  ) {
+    return undefined;
+  }
+  return article;
 }
 
 export function parseBookmarksPage(payload: unknown): BookmarksPage {

@@ -7,6 +7,8 @@ import {
   parseBookmarksPage,
   tweetText,
   tweetUrls,
+  xArticleBody,
+  xArticlePermalink,
 } from "./parse";
 
 const fixture = JSON.parse(
@@ -25,6 +27,41 @@ describe("parseBookmarksPage", () => {
       "https://example.com/high.mp4",
     );
     expect(isReply(page.tweets[2])).toBe(true);
+  });
+});
+
+describe("X Article fields", () => {
+  it("reads article.plain_text as the tweet body", () => {
+    const page = parseBookmarksPage({
+      data: [
+        {
+          id: "9",
+          text: "https://t.co/article",
+          entities: {
+            urls: [
+              {
+                url: "https://t.co/article",
+                expanded_url: "https://x.com/i/article/99",
+              },
+            ],
+          },
+          article: {
+            id: "99",
+            title: "How to become a Robotics Engineer",
+            plain_text:
+              "Robotics is the least crowded high-value skill in tech right now",
+            entities: { code: [{ content: "ros2 topic list" }] },
+          },
+        },
+      ],
+    });
+    const tweet = page.tweets[0];
+    expect(tweet.article?.title).toBe("How to become a Robotics Engineer");
+    expect(xArticlePermalink(tweet)).toBe("https://x.com/i/article/99");
+    expect(xArticleBody(tweet.article)).toContain("least crowded");
+    expect(xArticleBody(tweet.article)).toContain("ros2 topic list");
+    expect(tweetText(tweet)).toContain("How to become a Robotics Engineer");
+    expect(tweetText(tweet)).toContain("least crowded");
   });
 });
 

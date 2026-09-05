@@ -15,6 +15,7 @@ import { SourceStatusBar } from "@/components/SourceStatusBar";
 import { INFO_TYPE_LABELS, type InfoType } from "@/server/ai/info-types";
 import { ensureSourceArticles } from "@/server/fetch/attach";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
+import { hydrateXArticleFromApi } from "@/server/fetch/x-article";
 import { runJobs } from "@/server/jobs/runner";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { persistLocalMedia } from "@/server/media/persist";
@@ -40,6 +41,7 @@ export default async function SourcePage({
   const { id } = await params;
   const ctx = await getAccountContext();
   await ensureSourceArticles(id);
+  await hydrateXArticleFromApi(id);
   const [source, flags] = await Promise.all([
     getSourceDetail(id, ctx),
     getContextSettings(),

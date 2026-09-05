@@ -17,7 +17,7 @@ export class XApiError extends Error {
 }
 
 export const TWEET_FIELDS =
-  "id,text,author_id,created_at,lang,entities,attachments,referenced_tweets,conversation_id,note_tweet";
+  "id,text,author_id,created_at,lang,entities,attachments,referenced_tweets,conversation_id,note_tweet,article";
 export const TWEET_EXPANSIONS =
   "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id";
 export const USER_FIELDS = "username,name,profile_image_url";

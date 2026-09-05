@@ -1,7 +1,8 @@
 import { getClient } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { fetchArticlePage } from "@/server/fetch/article";
-import { hostOf, isXStatusUrl } from "@/server/ingest/url";
+import { hydrateArticleRowFromTweet } from "@/server/fetch/x-article";
+import { hostOf, isXArticleUrl, isXStatusUrl } from "@/server/ingest/url";
 import { enqueueEnrichBatch } from "@/server/jobs/enrich";
 import { getExcludedDomains } from "@/server/settings";
 
@@ -17,7 +18,7 @@ export async function articleFetch(payload?: {
   }
 
   const existing = await getClient().execute({
-    sql: `SELECT id, original_url, fetch_scope FROM articles WHERE id = ? LIMIT 1`,
+    sql: `SELECT id, original_url, fetch_scope, content_text FROM articles WHERE id = ? LIMIT 1`,
     args: [payload.article_id],
   });
   const row = existing.rows[0];
@@ -25,6 +26,19 @@ export async function articleFetch(payload?: {
     throw new Error("article not found");
   }
   const url = String(row.original_url);
+  const hasBody =
+    String(row.content_text ?? "").trim().length >= 400 &&
+    (row.fetch_scope === "full" || row.fetch_scope === "partial");
+  if (hasBody) {
+    return;
+  }
+  if (isXArticleUrl(url)) {
+    const hydrated = await hydrateArticleRowFromTweet(payload.article_id);
+    if (hydrated) {
+      logger.info({ articleId: payload.article_id }, "x article from api");
+      return;
+    }
+  }
   if (row.fetch_scope === "full" || row.fetch_scope === "partial") {
     return;
   }

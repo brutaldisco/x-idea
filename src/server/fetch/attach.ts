@@ -1,13 +1,14 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { enqueueArticleFetch } from "@/server/fetch/enqueue-pending";
+import { persistNativeXArticle } from "@/server/fetch/x-article";
 import {
   extractHttpUrls,
   hostOf,
   normalizeUrl,
   shouldFetchArticle,
 } from "@/server/ingest/url";
-import { type TweetLink, tweetUrlEntries } from "@/server/x/parse";
+import { type TweetLink, tweetUrlEntries, type XTweet } from "@/server/x/parse";
 
 export async function attachArticleLinks(
   sourceId: string,
@@ -92,6 +93,14 @@ export async function ensureSourceArticles(sourceId: string): Promise<number> {
         : null,
     }),
   );
+}
+
+export async function attachNativeXArticle(
+  sourceId: string,
+  tweet: XTweet,
+  postId?: string,
+): Promise<boolean> {
+  return persistNativeXArticle(sourceId, tweet, postId);
 }
 
 function safeJson(raw: string): unknown {
