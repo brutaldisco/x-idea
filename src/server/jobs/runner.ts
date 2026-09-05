@@ -1,6 +1,12 @@
 import { logger } from "@/lib/logger";
+import { isLaneBudgetError, laneRetryAt } from "@/server/ai/budget";
 import { runHandler } from "@/server/jobs/handlers";
-import { dequeueJob, markJobDone, markJobFailed } from "@/server/jobs/queue";
+import {
+  deferJob,
+  dequeueJob,
+  markJobDone,
+  markJobFailed,
+} from "@/server/jobs/queue";
 
 const TICK_BUDGET_MS = 240_000;
 const DEFAULT_MAX = 5;
@@ -36,6 +42,12 @@ export async function runJobs(options?: {
       await markJobDone(job.id);
       ran += 1;
     } catch (error) {
+      if (isLaneBudgetError(error)) {
+        const until = laneRetryAt(error);
+        const jitterMs = Math.floor(Math.random() * 30_000);
+        await deferJob(job, new Date(until.getTime() + jitterMs), error);
+        continue;
+      }
       failed += 1;
       await markJobFailed(job, error);
     }

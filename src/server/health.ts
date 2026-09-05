@@ -1,5 +1,6 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
+import { pacificDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { sourceScopeSql } from "@/server/sources/scope";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
@@ -26,15 +27,6 @@ const EMPTY_BUDGET = {
   quality: { used: 0, cap: 16 },
   embed: { used: 0, cap: 800 },
 };
-
-function pacificDay(at = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Los_Angeles",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(at);
-}
 
 export async function getHealth(ctx?: AccountContext): Promise<HealthPayload> {
   const base: HealthPayload = {
@@ -82,7 +74,11 @@ export async function getHealth(ctx?: AccountContext): Promise<HealthPayload> {
       client.execute({ sql: inboxSql, args: inboxArgs }),
       client.execute({ sql: accountSql, args: accountArgs }),
       client.execute({
-        sql: "SELECT lane, requests FROM ai_usage_daily WHERE day_pt = ? LIMIT 16",
+        sql: `SELECT lane, SUM(requests) AS requests
+              FROM ai_usage_daily
+              WHERE day_pt = ?
+              GROUP BY lane
+              LIMIT 16`,
         args: [pacificDay()],
       }),
     ]);

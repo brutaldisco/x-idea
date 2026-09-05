@@ -581,7 +581,7 @@ UI/UX の判断に迷ったら以下に従う。
 | DB クライアント / ORM | **`@libsql/client`** + **Drizzle ORM 1.0**（`drizzle-kit` で SQL マイグレーション） | Turso ダッシュボードが `turso://` URL を配る場合は `@tursodatabase/serverless` を使用可（`libsql://` のままなら `@libsql/client`） |
 | 全文検索 | **SQLite FTS5 `tokenize='trigram'`** | 日本語・英語とも 3-gram。2文字以下のクエリは `LIKE` フォールバック |
 | ベクトル | **libSQL vector**：`F32_BLOB(768)`、`libsql_vector_idx(embedding, 'compress_neighbors=float1bit', 'max_neighbors=32')`、`vector_top_k` | 5万チャンクで約 150MB（本体）＋約 160MB（索引） |
-| AI SDK | **AI SDK 6**（`ai`、`@ai-sdk/google`、`@ai-sdk/react`）＋ **Zod 4** | `Output.object` で構造化出力、`ToolLoopAgent` で Ask、`useChat` 生成UI |
+| AI SDK | **AI SDK 7**（`ai`、`@ai-sdk/google`、`@ai-sdk/react`）＋ **Zod 4** | `Output.object` で構造化出力、`ToolLoopAgent` で Ask、`useChat` 生成UI（着手時の最新。ADR-010） |
 | AI モデル | bulk **`gemini-3.5-flash-lite`**、quality **`gemini-3.6-flash`**、embed **`gemini-embedding-2`**（`outputDimensionality: 768`） | すべて設定で差し替え可（`settings.ai_models_json`）。着手時に AI Studio の Rate limits 画面で実クォータを確認 |
 | ジョブ | Turso `jobs` + `job_schedules` + 外部 Cron + `after()` | 専用キュー基盤なし |
 | MCP | **`mcp-handler` 2.x**（`@modelcontextprotocol/server` v2、MCP 仕様 2026-07-28 対応） | `/api/mcp` に Streamable HTTP |
@@ -1929,7 +1929,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 
 | ID | タスク | 成果物 | 依存 | DoD |
 | --- | --- | --- | --- | --- |
-| T-201 | AI 基盤：AI SDK 6 + `@ai-sdk/google`、レーン設定、`Output.object`、`ai_usage_daily` 予算ガード、429 解析、PT 日付 | `src/server/ai/{client,budget,lanes}.ts` | T-006, T-009 | 単体：キャップ到達・クールダウン・日付境界 |
+| T-201 | AI 基盤：AI SDK 7 + `@ai-sdk/google`、レーン設定、`Output.object`、`ai_usage_daily` 予算ガード、429 解析、PT 日付 | `src/server/ai/{client,budget,lanes}.ts` | T-006, T-009 | 単体：キャップ到達・クールダウン・日付境界 |
 | T-202 | `enrich_batch`（coalesce、プロンプト v3、Zod、後処理、タグ正規化、key_sentences 検証、enrichments 記録） | `src/server/jobs/handlers/enrichBatch.ts`, `src/server/ai/prompts/enrich.ts` | T-201, T-105 | 評価セット 50 件で precision ≥ 0.7 |
 | T-203 | `feedback_examples` 蓄積（confirm/update 時の差分検出） | `src/server/actions/sources.ts` | T-202 | 修正で 1 行追加 |
 | T-204 | Server Actions 一式（confirm/archive/snooze/bulk/update/readStatus/note/reenrich、revalidateTag） | `src/server/actions/*` | T-105 | 単体＋統合 |

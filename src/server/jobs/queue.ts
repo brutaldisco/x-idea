@@ -1,4 +1,5 @@
 import { getClient } from "@/db/client";
+import { toSqliteUtc } from "@/lib/datetime";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import { JOB_PRIORITY, type JobRow } from "@/server/jobs/types";
@@ -127,6 +128,35 @@ export async function markJobFailed(
     ],
   });
   logger.warn({ jobId: job.id, type: job.type, permanent }, "job failed");
+}
+
+export async function deferJob(
+  job: JobRow,
+  runAfter: Date,
+  error: unknown,
+): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  await getClient().execute({
+    sql: `UPDATE jobs
+      SET status = 'pending',
+          last_error = ?,
+          attempts = ?,
+          locked_by = NULL,
+          started_at = NULL,
+          finished_at = NULL,
+          run_after = ?
+      WHERE id = ?`,
+    args: [
+      message.slice(0, 500),
+      Math.max(0, job.attempts - 1),
+      toSqliteUtc(runAfter),
+      job.id,
+    ],
+  });
+  logger.info(
+    { jobId: job.id, type: job.type, runAfter: toSqliteUtc(runAfter) },
+    "job deferred for lane budget",
+  );
 }
 
 export async function countJobsByStatus(): Promise<{

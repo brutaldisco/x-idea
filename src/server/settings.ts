@@ -2,6 +2,7 @@ import { getClient } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { logger } from "@/lib/logger";
 import { clampSyncIntervalMin } from "@/lib/sync-policy";
+import { type Lane, parseLaneCaps, parseLaneModels } from "@/server/ai/lanes";
 
 export async function getSyncSettings(): Promise<{
   xApiEnabled: boolean;
@@ -43,6 +44,26 @@ export async function getExcludedDomains(): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+export async function getAiLaneSettings(): Promise<{
+  paused: boolean;
+  paidEnabled: boolean;
+  models: Record<Lane, string>;
+  caps: Record<Lane, number>;
+}> {
+  await ensureSchema();
+  const result = await getClient().execute(
+    `SELECT ai_paused, ai_paid_enabled, ai_models_json, ai_lane_caps_json
+     FROM settings WHERE id = 1 LIMIT 1`,
+  );
+  const row = result.rows[0];
+  return {
+    paused: Number(row?.ai_paused ?? 0) === 1,
+    paidEnabled: Number(row?.ai_paid_enabled ?? 0) === 1,
+    models: parseLaneModels(row?.ai_models_json),
+    caps: parseLaneCaps(row?.ai_lane_caps_json),
+  };
 }
 
 export async function getContextSettings(): Promise<{

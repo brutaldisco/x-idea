@@ -14,17 +14,19 @@ export class AppError extends Error {
   readonly code: AppErrorCode;
   readonly retryable: boolean;
   readonly status: number;
+  readonly retryAfter?: string;
 
   constructor(
     code: AppErrorCode,
     message: string,
-    options?: { retryable?: boolean; status?: number },
+    options?: { retryable?: boolean; status?: number; retryAfter?: string },
   ) {
     super(message);
     this.name = "AppError";
     this.code = code;
     this.retryable = options?.retryable ?? false;
     this.status = options?.status ?? statusFor(code);
+    this.retryAfter = options?.retryAfter;
   }
 }
 

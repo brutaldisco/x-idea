@@ -15,8 +15,10 @@
     "db:seed": "tsx src/db/cli.ts seed"
   },
   "dependencies": {
+    "@ai-sdk/google": "^4.0.64",
     "@libsql/client": "^0.15.15",
     "@mozilla/readability": "^0.6.0",
+    "ai": "^7.0.93",
     "drizzle-orm": "^0.44.7",
     "linkedom": "^0.18.13",
     "next": "16.3.4",
