@@ -55,7 +55,7 @@ export function SyncLimitsForm({
             className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm"
           />
           <span className="mt-1 block text-ink-2 text-xs">
-            少ないほど一度の負荷が下がります。10〜500。
+            初回や新着が多いときの上限。差分確認は常に 10 件ずつです。10〜500。
           </span>
         </label>
         <label className="block rounded-xl border border-line bg-paper p-3 text-sm">

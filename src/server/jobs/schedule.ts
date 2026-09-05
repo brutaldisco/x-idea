@@ -1,6 +1,7 @@
 import { getClient } from "@/db/client";
 import { nextRunAfter } from "@/lib/cron";
 import { logger } from "@/lib/logger";
+import { clampSyncIntervalMin, isAutoSyncDue } from "@/lib/sync-policy";
 import { enqueueJob } from "@/server/jobs/queue";
 
 type ScheduleRow = {
@@ -18,9 +19,12 @@ const SKIP_WHEN_X_OFF = new Set(["sync_bookmarks", "sync_folders"]);
 export async function evaluateSchedules(now = new Date()): Promise<string[]> {
   const client = getClient();
   const settings = await client.execute(
-    "SELECT x_api_enabled FROM settings WHERE id = 1 LIMIT 1",
+    "SELECT x_api_enabled, sync_interval_min FROM settings WHERE id = 1 LIMIT 1",
   );
   const xApiEnabled = Number(settings.rows[0]?.x_api_enabled ?? 0) === 1;
+  const syncIntervalMin = clampSyncIntervalMin(
+    Number(settings.rows[0]?.sync_interval_min ?? 360),
+  );
 
   const listed = await client.execute(
     "SELECT key, job_type, cron_expr, tz, enabled, last_run_at, next_run_at FROM job_schedules LIMIT 32",
@@ -51,10 +55,19 @@ export async function evaluateSchedules(now = new Date()): Promise<string[]> {
       continue;
     }
     if (row.job_type === "sync_bookmarks") {
-      const enabled = await client.execute(
-        "SELECT COUNT(*) AS n FROM x_account WHERE sync_enabled = 1 LIMIT 1",
+      const due = await client.execute(
+        `SELECT last_synced_at FROM x_account
+         WHERE sync_enabled = 1 AND status = 'active'
+         LIMIT 3`,
       );
-      if (Number(enabled.rows[0]?.n ?? 0) === 0) {
+      const shouldRun = due.rows.some((account) =>
+        isAutoSyncDue(
+          account.last_synced_at ? String(account.last_synced_at) : null,
+          syncIntervalMin,
+          now.getTime(),
+        ),
+      );
+      if (!shouldRun) {
         await client.execute({
           sql: "UPDATE job_schedules SET next_run_at = ? WHERE key = ?",
           args: [nextRunAfter(row.cron_expr, now, tz).toISOString(), row.key],

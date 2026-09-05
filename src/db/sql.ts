@@ -24,6 +24,7 @@ const MIGRATION_FILES = [
   "0003_media_context.sql",
   "0004_sync_controls.sql",
   "0005_video_library.sql",
+  "0006_sync_interval.sql",
 ];
 
 export function loadInitSql(): string {

@@ -255,7 +255,7 @@ MVP（P1）は「**X でブックマークするだけで、要約・分類済�
 含まれるもの：
 
 - X 連携（F-02）、Onboarding（F-27）。アプリログインは無し
-- 同期：定期（既定30分）＋手動、差分取得、重複防止、削除・非公開の状態管理（F-03/F-04）
+- 同期：定期（最短6時間）＋手動、差分は10件ページ、重複防止、削除・非公開の状態管理（F-03/F-04）
 - X 投稿の保存：本文、投稿者、日時、URL、リンク、引用（1階層）、メディア基本情報（F-05/F-22）
 - 外部記事の取得（F-06）
 - AI 処理：要約、カテゴリ、タグ、情報タイプ、重要度。**バッチ enrich**、確信度分岐、**AI 予算管理**（F-07/F-08/F-25）
@@ -393,14 +393,14 @@ UI/UX の判断に迷ったら以下に従う。
   - Gemini：レーン別「残り / 上限」。リセットは太平洋時間 0:00。
   - 追加記録は `x_credit_ledger`（`topup` / `snapshot`）。`X_BEARER_TOKEN` があれば残量を再取得（15 分キャッシュ）。
 - **外部サービス / 課金**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
-  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings にトグルと「今すぐ同期」。1回の同期で取り込む件数は `sync_max_per_run`（既定 100、10〜500）で調整可能。初回もこの上限に従う
+  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings / Today に「今すぐ同期」。自動は最短 6 時間（`sync_interval_min`、下限 360）。差分確認は `max_results=10`。1回の取り込み上限は `sync_max_per_run`（既定 100、10〜500）
   - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
   - 直近 7 日の返信取得：`reply_context_enabled`（追加課金、$0.005/投稿。既定 OFF。上限はスレッド展開と共用）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
   - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
 - **X 連携**：接続中アカウント一覧（最大 3）。各アカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、再連携、個別解除、「アカウントを追加」（ユーザー名/メール入力 → X のログイン画面）、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。3 件に達したら追加ボタンを無効化。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
-- **同期**：間隔（15/30/60/360 分/手動）、返信を保存、除外ドメイン。
+- **同期**：自動は最短 6 時間＋手動。返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
 - **連携**（P2）：MCP エンドポイント URL とトークン（再発行）、Quick Capture トークン、iOS ショートカット導入手順。
@@ -585,7 +585,7 @@ UI/UX の判断に迷ったら以下に従う。
 | AI モデル | bulk **`gemini-3.5-flash-lite`**、quality **`gemini-3.6-flash`**、embed **`gemini-embedding-2`**（`outputDimensionality: 768`） | すべて設定で差し替え可（`settings.ai_models_json`）。着手時に AI Studio の Rate limits 画面で実クォータを確認 |
 | ジョブ | Turso `jobs` + `job_schedules` + 外部 Cron + `after()` | 専用キュー基盤なし |
 | MCP | **`mcp-handler` 2.x**（`@modelcontextprotocol/server` v2、MCP 仕様 2026-07-28 対応） | `/api/mcp` に Streamable HTTP |
-| PWA | **Serwist**（Service Worker）、`web-push`（VAPID）、Web App Manifest（`share_target` 含む） | iOS は「ホーム画面に追加」した PWA のみ Push 可 |
+| PWA | **`/sw.js`**（Chrome インストール条件の `fetch` ハンドラ）、`web-push`（VAPID）、Web App Manifest（`share_target` 含む） | Serwist は Next 16 Turbopack と重いので未採用（ADR-008）。iOS は「ホーム画面に追加」した PWA のみ Push 可 |
 | 記事抽出 | `@mozilla/readability` + `linkedom`、`sanitize-html`、`robots-parser` | |
 | 検証 | **Vitest 4**、**Playwright**（`@next/playwright`）、`msw`（X/Gemini モック） | |
 | Lint/Format | **Biome** | ESLint より高速・設定1ファイル |
@@ -666,7 +666,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
   new_head = null; pagination = null; fetched = []
   max_pages = mode == 'initial' ? ceil(initial_limit / 100) : 10
   loop max_pages:
-    page = GET /2/users/:id/bookmarks?max_results=100
+    page = GET /2/users/:id/bookmarks?max_results=(incremental ? 10 : 100)
              &tweet.fields=id,text,author_id,created_at,lang,entities,attachments,referenced_tweets,conversation_id,note_tweet,public_metrics
              &expansions=author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id
              &user.fields=username,name,profile_image_url
@@ -716,9 +716,10 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 
 | 項目 | 設計 |
 | --- | --- |
-| 定期 | 既定 30 分（15/30/60/360 分/手動） |
+| 定期 | 最短 6 時間（`sync_interval_min` 下限 360、cron `0 */6 * * *`）。前回同期から 6 時間未満なら投入しない |
+| 差分確認 | incremental は `max_results=10`。既知 head に当たるまでページ送り。初回は 100 |
 | アカウント単位 | `x_account.sync_enabled`（Settings トグル、既定 OFF）。OFF のアカウントは `sync_bookmarks` 対象外 |
-| 手動 | Today のピルから。最短 60 秒 |
+| 手動 | Today / Settings の「今すぐ同期」。最短 60 秒。間隔ガードは適用しない |
 | tick | 外部 Cron 1〜5 分＋アプリ起動時 |
 | レート制限 | `x-rate-limit-*` を `sync_runs` に記録。429 は reset＋ジッターで再試行 |
 
@@ -997,7 +998,7 @@ PRAGMA foreign_keys = ON;
 -- 設定（シングルトン）
 CREATE TABLE settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
-  sync_interval_min INTEGER NOT NULL DEFAULT 30,
+  sync_interval_min INTEGER NOT NULL DEFAULT 360,  -- 自動同期の最短間隔（分）。下限 360。0006 で改定
   sync_max_per_run INTEGER NOT NULL DEFAULT 100,   -- 1回の同期で取り込む件数（10〜500）
   media_download_per_tick INTEGER NOT NULL DEFAULT 5, -- 1回の tick で保存するメディア数（1〜50）
   save_replies INTEGER NOT NULL DEFAULT 1,
@@ -1737,8 +1738,9 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 
 ## 26. PWA・オフライン・プッシュ通知
 
-- **マニフェスト**：`display: standalone`、`start_url: /today`、アイコン（maskable）、`share_target: { action: '/capture', method: 'GET', params: { title, text, url } }`（Android Chrome）。
-- **Service Worker（Serwist）**：App Shell と静的資産はプリキャッシュ。`/api/sources*` は `StaleWhileRevalidate`（上限 200 エントリ、7 日）。Reader は直近閲覧 100 件を Runtime Cache。オフライン時は「オフライン」バナー＋読み取り専用。
+- **マニフェスト**：`src/app/manifest.ts` → `/manifest.webmanifest`。`display: standalone`、`start_url: /today`、アイコン（192 / 512 と maskable）、`share_target: { action: '/capture', method: 'GET', params: { title, text, url } }`（Android Chrome）。
+- **Service Worker**：`public/sw.js`（ADR-008）。App Shell と静的資産はプリキャッシュ。`/api/sources*` は Stale-While-Revalidate（上限 200 エントリ）。Reader（`/source/*`）は直近閲覧 100 件。オフライン時はバナー＋`/offline`＋読み取り専用。動画 Range・同期・ジョブは SW を通さない。
+- **インストール案内**：Settings / オンボーディング STEP 5 / `beforeinstallprompt`。iOS は共有シートの手順。
 - **iOS 注意**：Push・Badging は「ホーム画面に追加」した PWA のみ（iOS 16.4+）。Web Share Target 非対応 → **iOS ショートカット**（共有シート→「Marginalia に保存」→ `POST /api/capture` に Bearer）を Settings から導入案内（ショートカットの iCloud リンクを用意 **[仮定]**）。キャッシュは 7 日で消える前提。
 - **Web Push**：`web-push`（VAPID）。イベント：Briefing 完成、Inbox ≥ しきい値（1 日 1 回）、`reauth_required`、同期失敗 6 時間超。`send_push` ジョブが送信、410/404 は購読削除。
 - **Badging**：`navigator.setAppBadge(inboxCount)` を起動時と Inbox 更新時に。
@@ -1916,7 +1918,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-101c | アカウントコンテキスト切替（v3.3、ADR-003）：`x_ctx` Cookie、画面左下に現在アカウント（タブバー外）、タップで切替メニュー、Today/Inbox/Library/Ask のスコープリング | `src/server/x/context.ts`, `src/components/AccountSwitcher.tsx`, 各タブ | T-101b | 左下の `@name` をタップすると「アカウントを切り替える」と候補が出る。切替で Today / Inbox が変わる。既定は先頭アカウント |
 | T-102 | トークンリフレッシュ、`reauth_required` 遷移（E-02） | `src/server/x/token.ts` | T-101 | 失効 5 分前に refresh。失敗で `reauth_required` |
 | T-103 | X API クライアント（fields/expansions、レート制限記録、`withRetry`、ページ解析） | `src/server/x/client.ts`, `fixtures/x/*.json` | T-009 | fixtures で note_tweet / 既知 ID 打ち切り |
-| T-104 | `sync_bookmarks`（差分／初回は `sync_max_per_run` 件まで、errors→availability、`note_tweet`、sync_runs、コスト推定） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | `x_api_enabled` かつ `sync_enabled` のアカウントだけ。既知 ID で打ち切り |
+| T-104 | `sync_bookmarks`（差分は 10 件ページ、初回は 100、上限 `sync_max_per_run`、自動は 6 時間ガード） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | `x_api_enabled` かつ `sync_enabled`。既知 ID で打ち切り。手動は間隔無視 |
 | T-105 | 投稿保存（x_posts/media/引用/URL 抽出/source_articles pending/FTS upsert） | `src/server/ingest/*` | T-104 | DB に全項目、FTS ヒット |
 | T-106 | 手動同期 API（60 秒スロットル、`after()` で 3 ジョブ消化）、クライアント起動時 tick | `src/app/api/sync/route.ts` | T-104 | 連打で 429 |
 | T-107 | `article_fetch`（正規化・robots・Readability・sanitize・scope・除外ドメイン） | `src/server/jobs/handlers/articleFetch.ts` | T-105 | 10 URL の scope が期待どおり |
@@ -1938,7 +1940,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-209 | Today SC-01（同期ピル、新着サマリー、Inbox チップ、最近。Briefing/Echo/Insights はプレースホルダ） | `src/app/(tabs)/today/*` | T-204 | `use cache` + Suspense、空状態 3 種 |
 | T-210 | Settings SC-05（**使用量メーター**、外部サービス/課金トグル、同期、AI レーン/キャップ/しきい値、除外ドメイン、表示、データ削除、エクスポート導線）。有料は既定 OFF | `src/app/(tabs)/settings/*`, `src/server/usage/*` | T-204 | 残量・日次バー・アカウント別が見える。付録H のトグルが UI に並ぶ。OFF の機能はジョブ未投入。worker はトグルを勝手に ON にしない |
 | T-211 | Categories SC-08（階層 CRUD、統合） | `src/app/(tabs)/settings/categories/*` | T-204 | 統合で Source 再割当 |
-| T-212 | PWA（Serwist、manifest、オフライン閲覧、インストール案内） | `src/app/sw.ts`, `manifest` | T-209 | Lighthouse PWA 合格、機内モードで直近閲覧可 |
+| T-212 | PWA（`/sw.js`、manifest、オフライン閲覧、インストール案内） | `public/sw.js`, `src/app/manifest.ts` | T-209 | Chrome でインストール可、機内モードで直近閲覧可（ADR-008） |
 | T-213 | Instant Navigations 適用と `instant()` E2E、`<Activity>` でタブ状態保持 | `tests/e2e/instant.spec.ts` | T-205〜T-210 | 5 タブすべて instant |
 | T-214 | 任意 `APP_PASSCODE`（`proxy.ts`、Cookie セッション） | `src/proxy.ts` | T-001 | 未設定でオープン、設定で要求 |
 | T-215 | 評価セット 50 件と `pnpm eval:enrich`、README（環境変数・運用手順・枠監視） | `eval/`, `README.md` | T-202 | S3 初期値記録 |
@@ -2248,7 +2250,7 @@ x-idea/
     │   ├─ (tabs)/{today,inbox,library,ask,settings}/     ← 下部タブ
     │   ├─ source/[id]/  kc/[id]/  briefing/[date]/  echo/  capture/  onboarding/
     │   ├─ api/{health,sync,jobs/tick,sources,search,inbox,export,ask,capture,mcp,push,x/oauth}/
-    │   ├─ layout.tsx / globals.css / sw.ts / manifest.ts
+    │   ├─ layout.tsx / globals.css / manifest.ts / offline / capture/
     ├─ proxy.ts                                 ← APP_PASSCODE ゲート
     ├─ components/{ui,features}/
     ├─ db/{client.ts,schema.ts,seed.ts}

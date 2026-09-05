@@ -1,6 +1,7 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
+import { bookmarkPageSize, isAutoSyncDue } from "@/lib/sync-policy";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
 import { ingestBookmark, markUnavailable } from "@/server/ingest/bookmark";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
@@ -17,8 +18,6 @@ import { fetchBookmarksPage, XApiError } from "@/server/x/client";
 import { collectUntilHead } from "@/server/x/parse";
 import { ensureValidToken, TokenRefreshError } from "@/server/x/token";
 
-const PAGE_SIZE = 100;
-
 export async function syncBookmarks(payload?: {
   x_account_id?: string;
   trigger?: "schedule" | "manual";
@@ -34,12 +33,23 @@ export async function syncBookmarks(payload?: {
         (row): row is XAccountSecret => Boolean(row?.syncEnabled),
       )
     : await listSyncableAccounts();
+  const trigger = payload?.trigger ?? "schedule";
 
   for (const account of accounts) {
+    if (
+      trigger === "schedule" &&
+      !isAutoSyncDue(account.lastSyncedAt, settings.syncIntervalMin)
+    ) {
+      logger.info(
+        { accountId: account.id },
+        "sync_bookmarks skipped: interval",
+      );
+      continue;
+    }
     await syncOneAccount(
       account,
       settings.saveReplies,
-      payload?.trigger ?? "schedule",
+      trigger,
       settings.syncMaxPerRun,
     );
   }
@@ -52,8 +62,10 @@ async function syncOneAccount(
   syncMaxPerRun: number,
 ): Promise<void> {
   const runId = newId();
-  const mode = account.lastSyncHeadTweetId ? "incremental" : "initial";
-  const maxPages = Math.max(1, Math.ceil(syncMaxPerRun / PAGE_SIZE));
+  const incremental = Boolean(account.lastSyncHeadTweetId);
+  const mode = incremental ? "incremental" : "initial";
+  const pageSize = bookmarkPageSize(incremental);
+  const maxPages = Math.max(1, Math.ceil(syncMaxPerRun / pageSize));
   const started = new Date().toISOString();
   let pages = 0;
   let resources = 0;
@@ -67,7 +79,12 @@ async function syncOneAccount(
     const token = await ensureValidToken(account);
 
     for (let i = 0; i < maxPages; i += 1) {
-      const page = await fetchBookmarksPage(token, account.xUserId, pagination);
+      const page = await fetchBookmarksPage(
+        token,
+        account.xUserId,
+        pagination,
+        pageSize,
+      );
       pages += 1;
       resources += page.resourcesRead;
       remaining = page.rateLimit.remaining;

@@ -3,6 +3,7 @@ import { getDb } from "@/db/client";
 import { categories, jobSchedules, settings } from "@/db/schema";
 import { nextRunAfter } from "@/lib/cron";
 import { logger } from "@/lib/logger";
+import { AUTO_SYNC_CRON } from "@/lib/sync-policy";
 
 export const SEED_CATEGORIES = [
   { id: "cat_sociology", name: "社会学", sortOrder: 10 },
@@ -16,7 +17,7 @@ export const SEED_CATEGORIES = [
 ] as const;
 
 export const SEED_SCHEDULES = [
-  { key: "sync", jobType: "sync_bookmarks", cronExpr: "*/30 * * * *" },
+  { key: "sync", jobType: "sync_bookmarks", cronExpr: AUTO_SYNC_CRON },
   { key: "folders", jobType: "sync_folders", cronExpr: "15 3 * * *" },
   { key: "echo", jobType: "schedule_echo", cronExpr: "0 6 * * *" },
   { key: "briefing", jobType: "build_briefing", cronExpr: "0 7 * * *" },

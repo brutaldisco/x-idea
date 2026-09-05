@@ -1,16 +1,19 @@
 import { getClient } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { logger } from "@/lib/logger";
+import { clampSyncIntervalMin } from "@/lib/sync-policy";
 
 export async function getSyncSettings(): Promise<{
   xApiEnabled: boolean;
   saveReplies: boolean;
   syncMaxPerRun: number;
   mediaDownloadPerTick: number;
+  syncIntervalMin: number;
 }> {
   await ensureSchema();
   const result = await getClient().execute(
-    `SELECT x_api_enabled, save_replies, sync_max_per_run, media_download_per_tick
+    `SELECT x_api_enabled, save_replies, sync_max_per_run, media_download_per_tick,
+            sync_interval_min
      FROM settings WHERE id = 1 LIMIT 1`,
   );
   const row = result.rows[0];
@@ -19,6 +22,9 @@ export async function getSyncSettings(): Promise<{
     saveReplies: Number(row?.save_replies ?? 1) === 1,
     syncMaxPerRun: Number(row?.sync_max_per_run ?? 100),
     mediaDownloadPerTick: Number(row?.media_download_per_tick ?? 5),
+    syncIntervalMin: clampSyncIntervalMin(
+      Number(row?.sync_interval_min ?? 360),
+    ),
   };
 }
 

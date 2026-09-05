@@ -10,7 +10,7 @@ import {
 
 export const settings = sqliteTable("settings", {
   id: integer("id").primaryKey(),
-  syncIntervalMin: integer("sync_interval_min").notNull().default(30),
+  syncIntervalMin: integer("sync_interval_min").notNull().default(360),
   saveReplies: integer("save_replies").notNull().default(1),
   autoFileThreshold: real("auto_file_threshold").notNull().default(0.8),
   excludedDomainsJson: text("excluded_domains_json").notNull().default("[]"),

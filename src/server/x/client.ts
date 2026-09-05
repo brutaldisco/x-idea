@@ -25,12 +25,15 @@ export const MEDIA_FIELDS =
   "media_key,type,url,preview_image_url,alt_text,duration_ms,width,height,variants";
 
 export const BOOKMARK_QUERY = {
-  max_results: "100",
   "tweet.fields": TWEET_FIELDS,
   expansions: TWEET_EXPANSIONS,
   "user.fields": USER_FIELDS,
   "media.fields": MEDIA_FIELDS,
 } as const;
+
+export function bookmarkMaxResults(size: number): string {
+  return String(Math.min(100, Math.max(10, Math.round(size))));
+}
 
 export type RateLimit = {
   remaining: number | null;
@@ -95,6 +98,7 @@ export async function fetchBookmarksPage(
   accessToken: string,
   xUserId: string,
   paginationToken?: string | null,
+  maxResults = 100,
 ): Promise<BookmarksFetch> {
   if (process.env.MOCK_EXTERNAL === "1") {
     return {
@@ -104,6 +108,7 @@ export async function fetchBookmarksPage(
   }
 
   const params = new URLSearchParams(BOOKMARK_QUERY);
+  params.set("max_results", bookmarkMaxResults(maxResults));
   if (paginationToken) {
     params.set("pagination_token", paginationToken);
   }

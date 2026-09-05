@@ -6,6 +6,7 @@ import { DisconnectX } from "@/components/DisconnectX";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { MediaFolderLink } from "@/components/MediaFolderLink";
 import { MediaUsageCard } from "@/components/MediaUsageCard";
+import { InstallAppCard } from "@/components/pwa/InstallAppCard";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { UsageMeters } from "@/components/UsageMeters";
@@ -43,6 +44,7 @@ async function SettingsBody({
   const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
     <div className="space-y-3">
+      <InstallAppCard />
       <article
         className="notranslate rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
         lang="ja"
@@ -148,11 +150,17 @@ async function SettingsBody({
         </div>
         <p className="mt-2 text-ink-2 text-sm">
           全体トグルと、アカウントごとの「同期（課金）」が両方 ON
-          のときだけブックマークを取り込みます。1
-          回の同期で取り込む件数は下のフォームで調整できます。
+          のときだけブックマークを取り込みます。自動は最短 6 時間。差分確認は 10
+          件ずつです。急ぐときは「今すぐ同期」。
         </p>
         <XApiEnabledToggle enabled={health.x_api_enabled} />
-        <ManualSyncButton disabled={!health.x_api_enabled} />
+        <ManualSyncButton
+          disabled={
+            !health.x_api_enabled ||
+            !accounts.some((account) => account.syncEnabled)
+          }
+          hint="アカウントの「同期（課金）」も ON にしてください。"
+        />
         <SyncLimitsForm
           syncMaxPerRun={sync.syncMaxPerRun}
           mediaDownloadPerTick={sync.mediaDownloadPerTick}

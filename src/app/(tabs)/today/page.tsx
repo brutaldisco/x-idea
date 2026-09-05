@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { SourceCard } from "@/components/SourceCard";
 import { listSources } from "@/server/sources/query";
 import { getTodayState } from "@/server/today";
+import { listXAccounts } from "@/server/x/account";
 import { type AccountContext, contextLabel } from "@/server/x/context";
 
 function formatRelative(iso: string | null): string {
@@ -28,8 +30,14 @@ function formatRelative(iso: string | null): string {
 async function TodayBody() {
   await connection();
   const { empty, health, ctx } = await getTodayState();
+  const accounts = await listXAccounts();
   const ctxLabel = ctx.kind === "account" ? `@${ctx.account.username}` : null;
   const scopeName = contextLabel(ctx);
+  const canManual =
+    health.x_api_enabled && accounts.some((account) => account.syncEnabled);
+  const syncHint = health.x_api_enabled
+    ? "Settings でアカウントの「同期（課金）」を ON にしてください。"
+    : undefined;
 
   if (empty === "unlinked") {
     return (
@@ -78,8 +86,13 @@ async function TodayBody() {
           準備しています
         </p>
         <p className="mt-3 text-ink-2 text-sm">
-          同期が始まると、ここに件数が表示されます。
+          自動同期は 6 時間以上あけます。急ぐときは今すぐ同期できます。
         </p>
+        <ManualSyncButton
+          disabled={!canManual}
+          hint={syncHint}
+          align="center"
+        />
       </section>
     );
   }
@@ -90,14 +103,21 @@ async function TodayBody() {
 
   return (
     <section className="space-y-4 px-4 pt-6">
-      <Link
-        href="/settings"
-        className="block rounded-full border border-line bg-paper-2 px-4 py-2 text-center text-sm tabular-nums"
-      >
-        {ctxLabel ? `${ctxLabel} · ` : ""}最終同期{" "}
-        {formatRelative(health.last_synced_at)} · AI 処理待ち{" "}
-        {health.pending_jobs} · 予算 {budgetPct}%
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          href="/settings"
+          className="min-w-0 flex-1 rounded-full border border-line bg-paper-2 px-4 py-2 text-center text-sm tabular-nums"
+        >
+          {ctxLabel ? `${ctxLabel} · ` : ""}最終同期{" "}
+          {formatRelative(health.last_synced_at)} · AI 処理待ち{" "}
+          {health.pending_jobs} · 予算 {budgetPct}%
+        </Link>
+        <ManualSyncButton
+          disabled={!canManual}
+          hint={syncHint}
+          className="shrink-0"
+        />
+      </div>
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-5 shadow-[var(--shadow-card)]">
         <p className="text-ink-2 text-xs">Briefing</p>
         <h2 className="mt-1 font-semibold text-lg">

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { InstallAppCard } from "@/components/pwa/InstallAppCard";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
 async function OnboardingBody({
@@ -117,9 +118,10 @@ async function OnboardingBody({
     <section>
       <p className="text-sm tracking-[0.2em] text-ink-2">STEP 5</p>
       <h1 className="mt-3 font-semibold text-3xl">ホーム画面へ</h1>
-      <p className="mt-4 text-ink-2">
-        iOS は共有シートから「ホーム画面に追加」。通知は P2 です。
+      <p className="mt-4 mb-6 text-ink-2">
+        Chrome ならアプリとしてインストールできます。通知は P2 です。
       </p>
+      <InstallAppCard />
       <Link
         href="/today"
         className="mt-10 inline-block rounded-full bg-ink px-5 py-3 font-medium text-paper"

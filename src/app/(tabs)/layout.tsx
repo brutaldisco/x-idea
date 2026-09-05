@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
+import { InstallHint } from "@/components/pwa/InstallHint";
 import { TabBar } from "@/components/TabBar";
 import { TickOnMount } from "@/components/TickOnMount";
 import { ensureSchema } from "@/db/ensure";
@@ -27,6 +28,7 @@ export default function TabsLayout({ children }: { children: ReactNode }) {
       <Suspense fallback={null}>
         <AccountChrome />
       </Suspense>
+      <InstallHint />
       <TabBar />
     </div>
   );

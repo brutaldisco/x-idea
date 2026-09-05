@@ -3,10 +3,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { gateCookieName, passcodeOk, signGate } from "@/lib/gate";
+import { safeInternalPath } from "@/lib/pwa";
 
 export async function unlockAction(formData: FormData) {
   const code = String(formData.get("passcode") ?? "");
-  const next = String(formData.get("next") ?? "/today");
+  const next = safeInternalPath(String(formData.get("next") ?? "/today"));
   if (!passcodeOk(code)) {
     redirect(`/unlock?next=${encodeURIComponent(next)}&error=1`);
   }
@@ -18,5 +19,5 @@ export async function unlockAction(formData: FormData) {
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });
-  redirect(next.startsWith("/") ? next : "/today");
+  redirect(next);
 }

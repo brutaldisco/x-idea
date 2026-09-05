@@ -1,4 +1,5 @@
 import { unlockAction } from "@/app/unlock/actions";
+import { safeInternalPath } from "@/lib/pwa";
 
 export async function UnlockForm({
   searchParams,
@@ -14,7 +15,11 @@ export async function UnlockForm({
         このライブラリはパスコードで保護されています。
       </p>
       <form action={unlockAction} className="mt-8 space-y-4">
-        <input type="hidden" name="next" value={params.next ?? "/today"} />
+        <input
+          type="hidden"
+          name="next"
+          value={safeInternalPath(params.next)}
+        />
         <label className="block text-sm">
           パスコード
           <input

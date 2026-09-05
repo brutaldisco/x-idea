@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { cronDue } from "./cron";
 
 describe("cronDue", () => {
+  it("matches every 6 hours on the hour", () => {
+    expect(
+      cronDue("0 */6 * * *", new Date(Date.UTC(2026, 8, 6, 0, 0, 0))),
+    ).toBe(true);
+    expect(
+      cronDue("0 */6 * * *", new Date(Date.UTC(2026, 8, 6, 6, 0, 0))),
+    ).toBe(true);
+    expect(
+      cronDue("0 */6 * * *", new Date(Date.UTC(2026, 8, 6, 6, 30, 0))),
+    ).toBe(false);
+  });
+
   it("matches every 30 minutes", () => {
     const at = new Date(Date.UTC(2026, 8, 4, 7, 30, 0));
     expect(cronDue("*/30 * * * *", at)).toBe(true);

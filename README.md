@@ -10,7 +10,7 @@ X でブックマークするだけで、AI が要約・分類・画像解読・
 
 ## スタック（2026-09）
 
-Next.js 16.3 / React 19.2 / Tailwind v4 / shadcn/ui / AI SDK 6 / Drizzle ORM 1.0 / Turso libSQL（vector + FTS5 trigram）/ Vercel Hobby（hnd1）/ Gemini（3.5 Flash-Lite・3.6 Flash・Embedding 2）/ mcp-handler 2.x / Serwist
+Next.js 16.3 / React 19.2 / Tailwind v4 / shadcn/ui / AI SDK 6 / Drizzle ORM 1.0 / Turso libSQL（vector + FTS5 trigram）/ Vercel Hobby（hnd1）/ Gemini（3.5 Flash-Lite・3.6 Flash・Embedding 2）/ mcp-handler 2.x / PWA（`/sw.js`）
 
 ## セットアップ
 
@@ -39,3 +39,4 @@ pnpm dev
 - MCP エンドポイント: `https://x-idea.vercel.app/api/mcp`（Settings でトークン発行、`Authorization: Bearer`）。
 - 有料プラン（X クレジット、Gemini 課金、スレッド展開、返信取得、Anthropic/OpenAI）はすべて Settings トグル既定 OFF。契約後に人間が ON にする。
 - 画像・動画の実ファイルはローカルの `MEDIA_ROOT`（既定 `./data/media`）に **アカウントごと** 保存する。Settings にパスとフォルダを開くリンクがある。引っ越しは `{MEDIA_ROOT}/{x_account_id}/` を同じ相対パスへコピーする。Vercel では保存せずプロキシ表示する。
+- **PWA**：Chrome（デスクトップ / Android）でアドレスバーまたは Settings の「ホーム画面に追加」からインストールできる。Service Worker は `/sw.js`。一度開いたページはオフラインでも読める。iOS は Safari の共有 →「ホーム画面に追加」。

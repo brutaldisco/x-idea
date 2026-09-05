@@ -4,7 +4,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  loadRepeatMode,
+  saveRepeatMode,
+  VideoPlayer,
+} from "@/components/videos/VideoPlayer";
 import { formatBytes } from "@/lib/bytes";
+import {
+  folderPlaylist,
+  playlistIndex,
+  type RepeatMode,
+  stepPlaylist,
+} from "@/lib/video-playlist";
 import {
   deleteVideoFile,
   downloadVideoFile,
@@ -55,12 +66,17 @@ export function VideosWorkspace({
     item: VideoItem;
     url: string;
   } | null>(null);
+  const [repeat, setRepeat] = useState<RepeatMode>("folder");
   const abortRef = useRef<AbortController | null>(null);
   const [offlineHint, setOfflineHint] = useState(false);
 
   useEffect(() => {
     setData(initial);
   }, [initial]);
+
+  useEffect(() => {
+    setRepeat(loadRepeatMode());
+  }, []);
 
   useEffect(() => {
     void loadVideoRoot().then((handle) => {
@@ -312,14 +328,47 @@ export function VideosWorkspace({
     }
     try {
       const url = await openVideoObjectUrl(root, item.relPath);
-      if (playing) {
-        URL.revokeObjectURL(playing.url);
-      }
-      setPlaying({ item, url });
+      setPlaying((current) => {
+        if (current) {
+          URL.revokeObjectURL(current.url);
+        }
+        return { item, url };
+      });
     } catch {
       setMessage("ファイルが見つかりません。再ダウンロードできます。");
     }
   }
+
+  function changeRepeat(mode: RepeatMode) {
+    setRepeat(mode);
+    saveRepeatMode(mode);
+  }
+
+  function closePlayer() {
+    setPlaying((current) => {
+      if (current) {
+        URL.revokeObjectURL(current.url);
+      }
+      return null;
+    });
+  }
+
+  function stepPlaying(delta: number) {
+    if (!playing) {
+      return;
+    }
+    const next = stepPlaylist(playlist, playing.item.id, delta);
+    if (next) {
+      void playItem(next);
+    }
+  }
+
+  const playlist = useMemo(() => {
+    if (!playing) {
+      return [];
+    }
+    return folderPlaylist(data.library, playing.item);
+  }, [data.library, playing]);
 
   const visible = useMemo(() => {
     if (filter === "all") {
@@ -569,31 +618,27 @@ export function VideosWorkspace({
       {message ? <p className="text-ink-2 text-xs">{message}</p> : null}
 
       {playing ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4 min-[48rem]:p-10">
-          <div className="w-full max-w-4xl rounded-2xl bg-paper p-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <p className="truncate text-sm">{playing.item.excerpt}</p>
-              <button
-                type="button"
-                className="rounded-full px-3 py-1 text-sm hover:bg-paper-2"
-                onClick={() => {
-                  URL.revokeObjectURL(playing.url);
-                  setPlaying(null);
-                }}
-              >
-                閉じる
-              </button>
-            </div>
-            <video
-              controls
-              playsInline
-              src={playing.url}
-              className="max-h-[70vh] w-full bg-ink"
-            >
-              <track kind="captions" />
-            </video>
-          </div>
-        </div>
+        <VideoPlayer
+          url={playing.url}
+          title={
+            playing.item.authorUsername
+              ? `@${playing.item.authorUsername} ${playing.item.excerpt}`
+              : playing.item.excerpt
+          }
+          folderLabel={playing.item.folderName ?? "未分類"}
+          index={Math.max(0, playlistIndex(playlist, playing.item.id))}
+          total={playlist.length}
+          repeat={repeat}
+          onRepeatChange={changeRepeat}
+          onClose={closePlayer}
+          onPrev={() => stepPlaying(-1)}
+          onNext={() => stepPlaying(1)}
+          onEnded={() => {
+            if (repeat === "folder") {
+              stepPlaying(1);
+            }
+          }}
+        />
       ) : null}
     </div>
   );

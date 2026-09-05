@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { gateCookieName, isPublicPath, verifyGate } from "@/lib/gate";
+import { safeInternalPath } from "@/lib/pwa";
 
 export async function proxy(request: NextRequest) {
   if (!process.env.APP_PASSCODE) {
@@ -11,7 +12,7 @@ export async function proxy(request: NextRequest) {
     isPublicPath(pathname) ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
-    pathname === "/manifest.webmanifest"
+    pathname === "/sw.js"
   ) {
     return NextResponse.next();
   }
@@ -23,7 +24,7 @@ export async function proxy(request: NextRequest) {
 
   const unlock = request.nextUrl.clone();
   unlock.pathname = "/unlock";
-  unlock.search = `?next=${encodeURIComponent(pathname)}`;
+  unlock.search = `?next=${encodeURIComponent(safeInternalPath(`${pathname}${request.nextUrl.search}`))}`;
   return NextResponse.redirect(unlock);
 }
 

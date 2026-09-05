@@ -1,3 +1,5 @@
+import { isPwaPublicPath } from "@/lib/pwa";
+
 const COOKIE = "marginalia_gate";
 
 function encoder() {
@@ -78,6 +80,7 @@ export function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/api/mcp") ||
     pathname.startsWith("/api/capture") ||
     pathname.startsWith("/api/x/oauth") ||
-    pathname === "/api/media/companion"
+    pathname === "/api/media/companion" ||
+    isPwaPublicPath(pathname)
   );
 }

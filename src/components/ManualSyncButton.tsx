@@ -3,13 +3,27 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function ManualSyncButton({ disabled }: { disabled: boolean }) {
+export function ManualSyncButton({
+  disabled,
+  hint,
+  align = "start",
+  className,
+}: {
+  disabled: boolean;
+  hint?: string;
+  align?: "start" | "center";
+  className?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   return (
-    <div className="mt-3">
+    <div
+      className={
+        className ?? (align === "center" ? "mt-3 text-center" : "mt-3")
+      }
+    >
       <button
         type="button"
         disabled={disabled || busy}
@@ -35,6 +49,9 @@ export function ManualSyncButton({ disabled }: { disabled: boolean }) {
       >
         {busy ? "同期中…" : "今すぐ同期"}
       </button>
+      {hint && disabled ? (
+        <p className="mt-2 text-ink-2 text-xs">{hint}</p>
+      ) : null}
       {message ? <p className="mt-2 text-ink-2 text-xs">{message}</p> : null}
     </div>
   );
