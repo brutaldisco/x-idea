@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { InboxWorkspace } from "@/components/InboxWorkspace";
@@ -29,9 +30,17 @@ async function InboxBody({
 
   if (count === 0) {
     return (
-      <p className="mt-16 text-center text-ink-2">
-        {label}の Inbox は空です。ライブラリへどうぞ。
-      </p>
+      <div className="mt-16 text-center">
+        <p className="text-ink-2">
+          {label}の Inbox は空です。ライブラリへどうぞ。
+        </p>
+        <Link
+          href="/library"
+          className="mt-4 inline-flex min-h-11 items-center rounded-full bg-ink px-4 text-paper text-sm"
+        >
+          ライブラリを開く
+        </Link>
+      </div>
     );
   }
 
