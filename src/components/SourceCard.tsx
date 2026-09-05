@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { OpenInX } from "@/components/OpenInX";
+import { translatableProps } from "@/lib/chrome-translate";
 
 function thumbSrc(mediaId: string, mediaType: string | null): string {
   return mediaType === "photo"
@@ -15,6 +16,8 @@ export function SourceCard({
   url,
   mediaId,
   mediaType,
+  lang,
+  summaryFromAi = false,
 }: {
   id: string;
   authorUsername: string | null;
@@ -22,7 +25,10 @@ export function SourceCard({
   url: string | null;
   mediaId?: string | null;
   mediaType?: string | null;
+  lang?: string | null;
+  summaryFromAi?: boolean;
 }) {
+  const textAttrs = translatableProps(lang, summaryFromAi);
   return (
     <li className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
       <div className="flex gap-3">
@@ -53,11 +59,16 @@ export function SourceCard({
             ) : (
               <span />
             )}
-            {url ? <OpenInX url={url} compact /> : null}
+            {url ? (
+              <span className="notranslate" lang="ja" translate="no">
+                <OpenInX url={url} compact />
+              </span>
+            ) : null}
           </div>
           <Link
             href={`/source/${id}`}
             className="mt-1 block text-sm hover:underline"
+            {...textAttrs}
           >
             {summary}
           </Link>

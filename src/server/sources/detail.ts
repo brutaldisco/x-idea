@@ -26,6 +26,7 @@ export type PostCard = {
   conversationId: string;
   url: string;
   text: string;
+  lang: string | null;
   authorUsername: string | null;
   authorName: string | null;
   authorAvatarUrl: string | null;
@@ -94,6 +95,7 @@ function asPost(row: Record<string, unknown>, media: MediaItem[]): PostCard {
       : String(row.tweet_id),
     url: String(row.url),
     text: String(row.text ?? ""),
+    lang: row.lang ? String(row.lang) : null,
     authorUsername: row.author_username ? String(row.author_username) : null,
     authorName: row.author_name ? String(row.author_name) : null,
     authorAvatarUrl: row.author_avatar_url
@@ -126,9 +128,9 @@ async function loadMedia(postId: string): Promise<MediaItem[]> {
 
 async function loadPostByTweetId(tweetId: string): Promise<PostCard | null> {
   const result = await getClient().execute({
-    sql: `SELECT id, tweet_id, conversation_id, url, text, author_username, author_name,
-                 author_avatar_url, posted_at, is_reply, reply_to_tweet_id,
-                 quoted_tweet_id, quoted_snapshot_json
+    sql: `SELECT id, tweet_id, conversation_id, url, text, lang, author_username,
+                 author_name, author_avatar_url, posted_at, is_reply,
+                 reply_to_tweet_id, quoted_tweet_id, quoted_snapshot_json
           FROM x_posts WHERE tweet_id = ? LIMIT 1`,
     args: [tweetId],
   });
@@ -154,10 +156,10 @@ export async function getSourceDetail(
   const result = await getClient().execute({
     sql: `SELECT s.id, s.x_account_id, s.availability, s.triage_status,
                  s.user_note, s.ai_summary,
-                 p.id AS post_id, p.tweet_id, p.url, p.text, p.author_username,
-                 p.author_name, p.author_avatar_url, p.posted_at, p.is_reply,
-                 p.reply_to_tweet_id, p.quoted_tweet_id, p.quoted_snapshot_json,
-                 p.conversation_id
+                 p.id AS post_id, p.tweet_id, p.url, p.text, p.lang,
+                 p.author_username, p.author_name, p.author_avatar_url,
+                 p.posted_at, p.is_reply, p.reply_to_tweet_id, p.quoted_tweet_id,
+                 p.quoted_snapshot_json, p.conversation_id
           FROM sources s
           JOIN x_posts p ON p.id = s.x_post_id
           WHERE s.id = ? AND ${scope.clause}
@@ -176,6 +178,7 @@ export async function getSourceDetail(
       conversation_id: row.conversation_id,
       url: row.url,
       text: row.text,
+      lang: row.lang,
       author_username: row.author_username,
       author_name: row.author_name,
       author_avatar_url: row.author_avatar_url,
@@ -196,9 +199,10 @@ export async function getSourceDetail(
     : null;
 
   const extras = await getClient().execute({
-    sql: `SELECT id, tweet_id, conversation_id, url, text, author_username, author_name,
-                 author_avatar_url, posted_at, is_reply, reply_to_tweet_id,
-                 quoted_tweet_id, quoted_snapshot_json, author_id
+    sql: `SELECT id, tweet_id, conversation_id, url, text, lang, author_username,
+                 author_name, author_avatar_url, posted_at, is_reply,
+                 reply_to_tweet_id, quoted_tweet_id, quoted_snapshot_json,
+                 author_id
           FROM x_posts
           WHERE conversation_id = ? AND tweet_id != ?
           ORDER BY posted_at ASC, tweet_id ASC

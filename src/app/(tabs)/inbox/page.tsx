@@ -34,6 +34,8 @@ async function InboxBody() {
           url={item.url}
           mediaId={item.mediaId}
           mediaType={item.mediaType}
+          lang={item.lang}
+          summaryFromAi={item.summaryFromAi}
         />
       ))}
     </ul>

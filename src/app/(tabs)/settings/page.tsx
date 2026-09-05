@@ -37,6 +37,21 @@ async function SettingsBody({
   const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
     <div className="space-y-3">
+      <article
+        className="notranslate rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
+        lang="ja"
+        translate="no"
+      >
+        <h2 className="font-semibold">Chrome で原文を読む</h2>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink-2 text-sm">
+          <li>Library か Inbox から投稿を開く</li>
+          <li>
+            原文の下の「日本語に翻訳」を押す（Chrome
+            内蔵。サーバーには送らない）
+          </li>
+          <li>出ないときは「原文を選択」→ 右クリック →「日本語に翻訳」</li>
+        </ol>
+      </article>
       <UsageMeters data={usage} />
       {params.x === "missing" ? (
         <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">

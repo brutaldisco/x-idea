@@ -3,6 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { OpenInX } from "@/components/OpenInX";
+import { translatableProps } from "@/lib/chrome-translate";
 import { listSources } from "@/server/sources/query";
 import { getTodayState } from "@/server/today";
 import { type AccountContext, contextLabel } from "@/server/x/context";
@@ -173,6 +174,7 @@ async function RecentSources({
             <Link
               href={`/source/${item.id}`}
               className="mt-1 line-clamp-4 block text-sm hover:underline"
+              {...translatableProps(item.lang, item.summaryFromAi)}
             >
               {item.summary}
             </Link>
