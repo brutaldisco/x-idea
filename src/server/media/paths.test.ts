@@ -38,6 +38,18 @@ describe("isLocalMediaEnabled", () => {
     delete process.env.MEDIA_ROOT;
     expect(isLocalMediaEnabled()).toBe(true);
   });
+
+  it("treats empty MEDIA_ROOT as the default local folder", () => {
+    delete process.env.VERCEL;
+    process.env.MEDIA_ROOT = "";
+    expect(isLocalMediaEnabled()).toBe(true);
+  });
+
+  it("can be turned off with MEDIA_ROOT=off", () => {
+    delete process.env.VERCEL;
+    process.env.MEDIA_ROOT = "off";
+    expect(isLocalMediaEnabled()).toBe(false);
+  });
 });
 
 describe("relativeMediaPath / resolveMediaPath", () => {

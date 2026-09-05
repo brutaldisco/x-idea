@@ -1,7 +1,7 @@
 import { getClient } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { fetchArticlePage } from "@/server/fetch/article";
-import { hostOf, isXHost } from "@/server/ingest/url";
+import { hostOf, isXStatusUrl } from "@/server/ingest/url";
 import { getExcludedDomains } from "@/server/settings";
 
 export async function articleFetch(payload?: {
@@ -27,10 +27,10 @@ export async function articleFetch(payload?: {
   if (row.fetch_scope === "full" || row.fetch_scope === "partial") {
     return;
   }
-  if (isXHost(url)) {
+  if (isXStatusUrl(url)) {
     await saveResult(payload.article_id, {
       scope: "metadata_only",
-      error: "x_host",
+      error: "x_status",
       httpStatus: null,
       title: null,
       author: null,

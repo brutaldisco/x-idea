@@ -1,8 +1,7 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
-import { enqueueArticleFetch } from "@/server/fetch/enqueue-pending";
-import { hostOf, normalizeUrl, shouldFetchArticle } from "@/server/ingest/url";
+import { attachArticleLinks } from "@/server/fetch/attach";
 import {
   attachMedia,
   enqueueMediaDownloads,
@@ -17,7 +16,7 @@ import {
   isReply,
   replyToTweetId,
   tweetText,
-  tweetUrls,
+  tweetUrlEntries,
   type XTweet,
 } from "@/server/x/parse";
 
@@ -46,35 +45,6 @@ async function upsertFts(sourceId: string, text: string): Promise<void> {
     });
   } catch (error) {
     logger.warn({ err: error }, "sources_fts upsert skipped");
-  }
-}
-
-async function attachUrls(sourceId: string, urls: string[]): Promise<void> {
-  const client = getClient();
-  for (const raw of urls) {
-    if (!shouldFetchArticle(raw)) {
-      continue;
-    }
-    const normalized = normalizeUrl(raw);
-    const existing = await client.execute({
-      sql: "SELECT id FROM articles WHERE normalized_url = ? LIMIT 1",
-      args: [normalized],
-    });
-    let articleId = existing.rows[0]?.id ? String(existing.rows[0].id) : null;
-    if (!articleId) {
-      articleId = newId();
-      await client.execute({
-        sql: `INSERT INTO articles (id, normalized_url, original_url, domain, fetch_scope, created_at)
-              VALUES (?, ?, ?, ?, 'pending', datetime('now'))`,
-        args: [articleId, normalized, raw, hostOf(raw)],
-      });
-    }
-    await client.execute({
-      sql: `INSERT OR IGNORE INTO source_articles (source_id, article_id, link_url)
-            VALUES (?, ?, ?)`,
-      args: [sourceId, articleId, raw],
-    });
-    await enqueueArticleFetch(articleId);
   }
 }
 
@@ -188,7 +158,7 @@ export async function ingestBookmark(input: {
     ],
   });
 
-  await attachUrls(sourceId, tweetUrls(input.tweet));
+  await attachArticleLinks(sourceId, tweetUrlEntries(input.tweet.entities));
   await upsertFts(sourceId, tweetText(input.tweet));
   await enqueueContextJobs({
     accountId: input.accountId,

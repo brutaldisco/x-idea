@@ -17,7 +17,7 @@
 - **`duration_ms` が 4 時間（14,400,000ms）を超える動画は `awaiting_confirm` で保留** し、Reader の確認 UI で承認されたときだけダウンロードする。
 - 配信は `GET /api/media/[id]`（Range 対応）。未保存時は **302 せず自前プロキシ**する（X のホットリンク拒否と `next/image` の 302 弱さを避ける）。`?preview=1` は動画のポスター／一覧サムネ用。
 - 既存ブックマークで動画 `variants` が無い場合は `GET /2/tweets/:id` で **1 回だけ** URL を補完する（投稿 read $0.005。スレッド月次上限には入れない）。
-- **Vercel では `MEDIA_ROOT` を設定しない**（＝ダウンロード無効、プロキシ表示）。ローカル実行（`pnpm dev` / `next start`）時のみ保存する。
+- **Vercel 上にはファイルを置かない**（プロキシ表示）。同じ PC で `pnpm dev`（保存役）を起動したまま本番サイトを開くと、ブラウザ経由で `{MEDIA_ROOT}` に保存する。ローカル実行時は `MEDIA_ROOT` 未設定でも `./data/media` に保存する。無効化は `MEDIA_ROOT=off`。
 - メディアファイルの CDN 取得は X API の課金対象外（課金は投稿 read 単位）。
 
 ## 影響

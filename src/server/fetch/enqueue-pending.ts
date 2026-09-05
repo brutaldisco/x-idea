@@ -18,7 +18,7 @@ export async function enqueuePendingArticleFetches(
     ? await getClient().execute({
         sql: `SELECT a.id FROM articles a
               JOIN source_articles sa ON sa.article_id = a.id
-              WHERE sa.source_id = ? AND a.fetch_scope = 'pending'
+              WHERE sa.source_id = ? AND a.fetch_scope IN ('pending', 'failed')
               ORDER BY a.created_at DESC LIMIT ?`,
         args: [sourceId, limit],
       })

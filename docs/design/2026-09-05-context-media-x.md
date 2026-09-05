@@ -88,6 +88,7 @@
 ### 4.3 ダウンロードジョブ `media_download`
 
 - 取り込み（`ingestBookmark`）後、各 `media_assets` に対して enqueue（4 時間超を除く）。
+- **本番サイト利用時**：同じ PC で `pnpm dev` を起動しておく。本番ページが `127.0.0.1` の保存役へバイトを送り、`MEDIA_ROOT` に書く。
 - 画像：`media.url` に `?name=orig` を付けて原寸を取得し、**WebP に変換してから** `{media_key}.webp` として保存。
 - 動画/GIF：`variants` から `content_type === "video/mp4"` かつ **最大 `bit_rate`** を選択。
 - 取得前に **ディスク空き容量をチェック**（残り 1GB 未満なら `failed` で保留し Reader に表示）。

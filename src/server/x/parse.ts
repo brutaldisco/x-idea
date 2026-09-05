@@ -6,7 +6,15 @@ export type XTweet = {
   lang?: string;
   conversation_id?: string;
   note_tweet?: { text?: string };
-  entities?: { urls?: { expanded_url?: string; url?: string }[] };
+  entities?: {
+    urls?: {
+      expanded_url?: string;
+      unwound_url?: string;
+      url?: string;
+      title?: string;
+      description?: string;
+    }[];
+  };
   attachments?: { media_keys?: string[] };
   referenced_tweets?: { type: string; id: string }[];
 };
@@ -80,16 +88,44 @@ export function isConversationRoot(tweet: XTweet): boolean {
   return !tweet.conversation_id || tweet.conversation_id === tweet.id;
 }
 
-export function tweetUrls(tweet: XTweet): string[] {
-  const urls = tweet.entities?.urls ?? [];
-  const out: string[] = [];
+export type TweetLink = {
+  url: string;
+  title?: string;
+  description?: string;
+};
+
+export function tweetUrlEntries(
+  entities: XTweet["entities"] | unknown,
+): TweetLink[] {
+  const row =
+    entities && typeof entities === "object"
+      ? (entities as XTweet["entities"])
+      : undefined;
+  const urls = row?.urls ?? [];
+  const out: TweetLink[] = [];
   for (const item of urls) {
-    const url = item.expanded_url || item.url;
-    if (url && !url.startsWith("https://t.co/") && !out.includes(url)) {
-      out.push(url);
+    const url = item.unwound_url || item.expanded_url || item.url;
+    if (
+      !url ||
+      url.startsWith("https://t.co/") ||
+      url.startsWith("http://t.co/")
+    ) {
+      continue;
     }
+    if (out.some((entry) => entry.url === url)) {
+      continue;
+    }
+    out.push({
+      url,
+      title: item.title,
+      description: item.description,
+    });
   }
   return out.slice(0, 8);
+}
+
+export function tweetUrls(tweet: XTweet): string[] {
+  return tweetUrlEntries(tweet.entities).map((item) => item.url);
 }
 
 export function collectUntilHead(

@@ -2,17 +2,21 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after, connection } from "next/server";
 import { ArticleBlock } from "@/components/ArticleBlock";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
 import { PostBlock } from "@/components/PostBlock";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
+import { ensureSourceArticles } from "@/server/fetch/attach";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
 import { runJobs } from "@/server/jobs/runner";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
+import { persistLocalMedia } from "@/server/media/persist";
 import { getContextSettings } from "@/server/settings";
 import { getSourceDetail } from "@/server/sources/detail";
 import { getAccountContext } from "@/server/x/context";
 
 export const instant = false;
+export const maxDuration = 60;
 
 export default async function SourcePage({
   params,
@@ -22,6 +26,7 @@ export default async function SourcePage({
   await connection();
   const { id } = await params;
   const ctx = await getAccountContext();
+  await ensureSourceArticles(id);
   const [source, flags] = await Promise.all([
     getSourceDetail(id, ctx),
     getContextSettings(),
@@ -34,7 +39,19 @@ export default async function SourcePage({
     await enqueuePendingMediaDownloads(source.xAccountId, 16);
   }
   after(() => {
-    void runJobs({ max: 4 });
+    void (async () => {
+      if (source.xAccountId) {
+        await persistLocalMedia({
+          accountId: source.xAccountId,
+          items: [
+            ...source.post.media,
+            ...(source.parent?.media ?? []),
+            ...source.thread.flatMap((post) => post.media),
+          ],
+        });
+      }
+      await runJobs({ max: 6 });
+    })();
   });
 
   return (
@@ -78,14 +95,11 @@ export default async function SourcePage({
       </div>
 
       {source.thread.length > 0 ? (
-        <section className="mt-8">
-          <h2 className="font-semibold text-lg">セルフスレッド</h2>
-          <div className="mt-3 space-y-3">
-            {source.thread.map((post) => (
-              <PostBlock key={post.id} post={post} />
-            ))}
-          </div>
-        </section>
+        <CollapsibleSection title="セルフスレッド" count={source.thread.length}>
+          {source.thread.map((post) => (
+            <PostBlock key={post.id} post={post} />
+          ))}
+        </CollapsibleSection>
       ) : flags.threadExpandEnabled ? (
         <div className="mt-6">
           <ContextFetchButton
@@ -97,14 +111,11 @@ export default async function SourcePage({
       ) : null}
 
       {source.replies.length > 0 ? (
-        <section className="mt-8">
-          <h2 className="font-semibold text-lg">直近の返信</h2>
-          <div className="mt-3 space-y-3">
-            {source.replies.map((post) => (
-              <PostBlock key={post.id} post={post} eyebrow="返信" />
-            ))}
-          </div>
-        </section>
+        <CollapsibleSection title="直近の返信" count={source.replies.length}>
+          {source.replies.map((post) => (
+            <PostBlock key={post.id} post={post} eyebrow="返信" />
+          ))}
+        </CollapsibleSection>
       ) : flags.replyContextEnabled ? (
         <div className="mt-6">
           <ContextFetchButton
@@ -133,6 +144,7 @@ export default async function SourcePage({
                 scope={article.scope}
                 description={article.description}
                 contentText={article.contentText}
+                contentHtml={article.contentHtml}
               />
             ))}
           </div>

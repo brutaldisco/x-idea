@@ -5,6 +5,7 @@ import { AccountSyncToggle } from "@/components/AccountSyncToggle";
 import { DisconnectX } from "@/components/DisconnectX";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { MediaFolderLink } from "@/components/MediaFolderLink";
+import { MediaSaveGuide } from "@/components/MediaSaveGuide";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { UsageMeters } from "@/components/UsageMeters";
@@ -131,6 +132,10 @@ async function SettingsBody({
           </p>
         )}
       </article>
+      <MediaSaveGuide
+        localEnabled={isLocalMediaEnabled()}
+        localRoot={mediaRoot()}
+      />
       <MediaFoldersCard accounts={accounts} />
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
         <div className="flex items-center justify-between">
@@ -200,7 +205,12 @@ function MediaFoldersCard({
       {enabled ? (
         <>
           <p className="mt-2 text-ink-2 text-sm">
-            画像・動画はアカウントごとのフォルダに保存します。PC
+            保存先は{" "}
+            <code className="text-xs">
+              {root}/{"{アカウントID}/{tweet_id}/"}
+            </code>
+            です。画像は WebP、動画は mp4。Reader
+            を開くと未保存分を保存します。PC
             を移すときは、そのアカウントのフォルダだけを新しい PC
             の同じ相対パスへコピーしてください。
           </p>
@@ -231,8 +241,9 @@ function MediaFoldersCard({
         </>
       ) : (
         <p className="mt-2 text-ink-2 text-sm">
-          この環境（Vercel など）ではファイルを保存しません。ローカル実行時に
-          Settings でパスを確認できます。
+          本番サーバー上にはファイルを置きません。上の手順でこの PC の保存役（
+          <code>pnpm dev</code>
+          ）を起動したまま本番を開くと、同じフォルダへ保存されます。
         </p>
       )}
     </article>

@@ -7,7 +7,8 @@ export function isLocalMediaEnabled(): boolean {
   if (process.env.VERCEL === "1") {
     return false;
   }
-  if (process.env.MEDIA_ROOT === "") {
+  const raw = process.env.MEDIA_ROOT?.trim().toLowerCase();
+  if (raw === "0" || raw === "off" || raw === "none") {
     return false;
   }
   return true;

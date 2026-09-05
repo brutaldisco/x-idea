@@ -56,6 +56,7 @@ export type SourceDetail = {
     scope: string;
     description: string | null;
     contentText: string | null;
+    contentHtml: string | null;
   }[];
 };
 
@@ -244,7 +245,7 @@ export async function getSourceDetail(
 
   const articles = await getClient().execute({
     sql: `SELECT a.id, a.title, a.original_url, a.fetch_scope, a.description,
-                 a.content_text
+                 a.content_text, a.content_html
           FROM source_articles sa
           JOIN articles a ON a.id = sa.article_id
           WHERE sa.source_id = ?
@@ -270,6 +271,7 @@ export async function getSourceDetail(
       scope: String(item.fetch_scope),
       description: item.description ? String(item.description) : null,
       contentText: item.content_text ? String(item.content_text) : null,
+      contentHtml: item.content_html ? String(item.content_html) : null,
     })),
   };
 }

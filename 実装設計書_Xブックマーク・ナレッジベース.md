@@ -365,8 +365,8 @@ UI/UX の判断に迷ったら以下に従う。
 
 - **ヒーロー**：投稿者アバター・名前・日時・X で開く。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。
-- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、スレッド展開があれば連結表示（P2）。4 時間超の動画は確認 UI（14.6）。**動画はページ離脱・タブ非表示・画面外で停止**。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。Reader に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。X の自動翻訳文は API に無い。原文カラムは書き換えない。
-- **記事**：リーダー表示。`fetch_scope` を先頭にバッジ（全文／一部／概要のみ／失敗）。
+- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは折りたたみ**（件数つき、既定は展開）。4 時間超の動画は確認 UI（14.6）。**動画はページ離脱・タブ非表示・画面外で停止**。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。Reader に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。X の自動翻訳文は API に無い。原文カラムは書き換えない。
+- **記事**：外部リンクだけにせず、取得できた本文を **アプリ内リーダー**で表示する。タイトル＋本文（sanitize 済み HTML 優先）＋補助の「元の記事を開く」。`fetch_scope` バッジ（全文／一部／概要のみ／失敗）。既存 Source は Reader 表示時に URL を拾ってバックフィルする。
 - **要約**：「✦ AI」バッジ、3行要約、情報タイプ、重要度、タグ、カテゴリ（確信度）。「AI で再処理」。
 - **Marginalia（P2）**：記事・原文の重要文を AI がハイライト（薄いマーカー色）、余白（PC は右カラム、モバイルはハイライトタップで下部シート）に注釈。ユーザーは選択→「ハイライト」「メモ」「これについて聞く」。
 - **関連（P2）**：関連・重複・矛盾 Source。矛盾は警告色バナー。
@@ -692,10 +692,11 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 ### 14.6 メディアのローカル保存（PC 前提、ADR-005）
 
 - 画像・動画の実ファイルは **ローカルディスク** に保存し、DB には `MEDIA_ROOT` 相対パスのみ保持（Turso 容量を使わない）。詳細は `docs/design/2026-09-05-context-media-x.md`。
-- `MEDIA_ROOT`（環境変数、既定 `./data/media`）配下に `{x_account_id}/{tweet_id}/{media_key}.{ext}`。**アカウントごとにフォルダが分かれる**。引っ越しは `{MEDIA_ROOT}/{x_account_id}/` を同じ相対パスへコピーする（1 アカウント単位でも可）。Settings にパスとフォルダを開くリンクを出す。
+- `MEDIA_ROOT`（環境変数、未設定または空なら `./data/media`。`off`/`none`/`0` で無効）配下に `{x_account_id}/{tweet_id}/{media_key}.{ext}`。**アカウントごとにフォルダが分かれる**。引っ越しは `{MEDIA_ROOT}/{x_account_id}/` を同じ相対パスへコピーする（1 アカウント単位でも可）。Settings にパス・保存手順・フォルダを開くリンクを出す。
+- **Vercel 上には置かない**。同じ PC で `pnpm dev`（`127.0.0.1:3000` の保存役）を動かしたまま本番を開くと、未保存メディアを手元の `MEDIA_ROOT` に書く。Reader / タブ表示でも保存を試みる。
 - 画像は `?name=orig` の原寸を取得したあと **WebP に変換してから保存**（`.webp`）。動画/GIF は `variants` の最大 `bit_rate` の mp4（最高解像度）。`media.fields` に `variants` を追加（課金は投稿 read 単位で変わらず）。メディアファイルの CDN 取得は課金対象外。
 - 4 時間超（`duration_ms > 14,400,000`）の動画は `awaiting_confirm` で保留し、Reader の確認でダウンロード。
-- 配信は `GET /api/media/[id]`（Range 対応、未保存時は **自前プロキシ**。X CDN へ 302 しない）。動画 URL が無い既存行は tweet lookup で 1 回補完。`?preview=1` はポスター／一覧サムネ。**Vercel（揮発 FS）では `MEDIA_ROOT` 未設定＝ダウンロードせずプロキシ表示**。
+- 配信は `GET /api/media/[id]`（Range 対応、未保存時は **自前プロキシ**。X CDN へ 302 しない）。動画 URL が無い既存行は tweet lookup で 1 回補完。`?preview=1` はポスター／一覧サムネ。**Vercel 上には置かない**。同じ PC の `pnpm dev` 保存役へ送って手元に書く。
 
 ### 14.7 同期頻度・手動同期
 
@@ -733,7 +734,7 @@ X データダウンロードからの手動補完、Quick Capture による手�
 ```
 article_fetch(url):
   1. URL 正規化（t.co 展開、UTM 除去、短縮 URL 解決 上限5、末尾スラッシュ・フラグメント除去）
-  2. articles.normalized_url で重複確認。x.com / twitter.com は記事化しない（15.3）
+  2. articles.normalized_url で重複確認。`/status/` は記事化しない。X Articles と外部 URL は取得を試みる（15.3）
   3. 除外ドメインなら metadata_only
   4. robots.txt 確認（robots-parser）→ 拒否なら metadata_only
   5. HTML 取得（UA: "MarginaliaBot/1.0 (+https://x-idea.vercel.app)", 15秒, 3MB, text/html のみ, リダイレクト5）
@@ -754,8 +755,8 @@ article_fetch(url):
 
 ### 15.3 X 内リンク・X Articles
 
-- 別 X 投稿：`x_posts` に保存し `x_post_links` で関係記録。ブックマーク由来でなければ Source 化しない **[仮定]**。
-- X Articles / 長文 `note_tweet`：本文として扱う。
+- 別 X 投稿（`/status/`）：`x_posts` に保存し関係記録。記事化しない。
+- X Articles（`/i/article/` など）：取得を試み、取れた本文を Reader に表示。取れなければカードのタイトル／概要。長文 `note_tweet` は投稿本文として扱う。
 
 ### 15.4 著作権・規約
 

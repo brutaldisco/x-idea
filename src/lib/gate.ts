@@ -77,6 +77,7 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/api/jobs/tick" ||
     pathname.startsWith("/api/mcp") ||
     pathname.startsWith("/api/capture") ||
-    pathname.startsWith("/api/x/oauth")
+    pathname.startsWith("/api/x/oauth") ||
+    pathname === "/api/media/companion"
   );
 }
