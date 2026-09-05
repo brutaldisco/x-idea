@@ -66,6 +66,13 @@ export default function LibraryPage({
     <main className="px-4 pt-8">
       <p className="text-ink-2 text-sm">Library</p>
       <h1 className="font-semibold text-2xl">ライブラリ</h1>
+      <form action="/ask" className="mt-4">
+        <input
+          name="q"
+          className="w-full rounded-full border border-line bg-paper-2 px-4 py-2 text-sm"
+          placeholder="ライブラリを検索（Ask）"
+        />
+      </form>
       <Suspense
         fallback={<p className="mt-16 text-ink-2 text-sm">読み込み中…</p>}
       >
