@@ -40,8 +40,8 @@ export function MediaSaveGuide({
       </div>
       <p className="mt-2 text-ink-2 text-sm">
         本番サイト（https://x-idea.vercel.app）ではファイルを置けません。同じ PC
-        で保存役を起動したまま本番を開くと、画像は WebP、動画は mp4
-        でこのフォルダに保存されます。
+        で保存役を起動したまま本番を開くと、画像は WebP
+        でこのフォルダに保存されます。動画は保存せず、X で見ます。
       </p>
       <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
         <li>

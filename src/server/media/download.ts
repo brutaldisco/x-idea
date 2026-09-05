@@ -1,7 +1,4 @@
-import { createWriteStream } from "node:fs";
-import { mkdir, stat, statfs, unlink, writeFile } from "node:fs/promises";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import { mkdir, statfs, unlink, writeFile } from "node:fs/promises";
 import { getClient } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { withRetry } from "@/lib/retry";
@@ -16,9 +13,9 @@ import {
 import { refreshMediaFromTweet } from "@/server/media/refresh";
 import {
   downloadUrlFor,
-  extensionFor,
   MIN_FREE_BYTES,
   parseVariantsJson,
+  previewUrlFor,
 } from "@/server/media/select";
 import { encodePhotoWebp } from "@/server/media/webp";
 
@@ -96,29 +93,6 @@ async function assertFreeSpace(): Promise<void> {
   }
 }
 
-async function fetchToFile(url: string, dest: string): Promise<number> {
-  const res = await withRetry(
-    async () => {
-      const response = await fetchRemoteMedia(url);
-      if (response.status === 429 || response.status >= 500) {
-        const error = new Error(`media fetch ${response.status}`);
-        (error as { status?: number }).status = response.status;
-        throw error;
-      }
-      if (!response.ok || !response.body) {
-        throw new Error(`media fetch failed (${response.status})`);
-      }
-      return response;
-    },
-    { attempts: 3 },
-  );
-  const nodeStream = Readable.fromWeb(
-    res.body as import("node:stream/web").ReadableStream,
-  );
-  await pipeline(nodeStream, createWriteStream(dest));
-  return (await stat(dest)).size;
-}
-
 async function fetchToWebpFile(url: string, dest: string): Promise<number> {
   const res = await withRetry(
     async () => {
@@ -180,17 +154,24 @@ export async function downloadMediaAsset(input: {
     throw new Error("media not found");
   }
 
-  const url = downloadUrlFor({
-    type: fresh.type,
-    media_url: fresh.media_url,
-    variants: parseVariantsJson(fresh.variants_json),
-  });
+  const isVideo = fresh.type !== "photo";
+  const url = isVideo
+    ? previewUrlFor({
+        type: fresh.type,
+        media_url: fresh.media_url,
+        preview_url: fresh.preview_url,
+      })
+    : downloadUrlFor({
+        type: fresh.type,
+        media_url: fresh.media_url,
+        variants: parseVariantsJson(fresh.variants_json),
+      });
   if (!url) {
     await setStatus(fresh.id, "failed", {
       error:
         fresh.type === "photo"
           ? "no downloadable url (photo url missing)"
-          : "no downloadable url (mp4 variant missing)",
+          : "no preview image for video",
     });
     return;
   }
@@ -199,7 +180,7 @@ export async function downloadMediaAsset(input: {
     accountId: input.accountId,
     tweetId: fresh.tweet_id,
     mediaKey: fresh.media_key,
-    ext: extensionFor({ type: fresh.type, url }),
+    ext: ".webp",
   });
 
   try {
@@ -207,10 +188,7 @@ export async function downloadMediaAsset(input: {
     await assertFreeSpace();
     await setStatus(fresh.id, "downloading");
     const abs = await ensureMediaDir(relative);
-    const bytes =
-      fresh.type === "photo"
-        ? await fetchToWebpFile(url, abs)
-        : await fetchToFile(url, abs);
+    const bytes = await fetchToWebpFile(url, abs);
     await setStatus(fresh.id, "ready", { path: relative, bytes });
     logger.info({ mediaId: fresh.id, bytes }, "media_download ready");
   } catch (error) {

@@ -111,14 +111,11 @@ export function needsTweetRefresh(media: {
   );
 }
 
-export function extensionFor(media: {
+export function extensionFor(_media: {
   type: string;
   url: string | null;
 }): string {
-  if (media.type === "photo") {
-    return ".webp";
-  }
-  return ".mp4";
+  return ".webp";
 }
 
 export function isLongVideo(
@@ -162,8 +159,6 @@ export function contentTypeForExt(ext: string): string {
   }
 }
 
-export function initialDownloadStatus(media: XMedia): string {
-  return isLongVideo(media.type, media.duration_ms)
-    ? "awaiting_confirm"
-    : "pending";
+export function initialDownloadStatus(_media: XMedia): string {
+  return "pending";
 }

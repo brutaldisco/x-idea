@@ -117,10 +117,18 @@ export async function GET(
     const status = String(row.download_status ?? "");
     const localPath = row.local_path ? String(row.local_path) : null;
     const type = String(row.type ?? "photo");
-    const canServeLocal =
-      status === "ready" && localPath && (!previewOnly || type === "photo");
+    const canServeLocal = status === "ready" && localPath;
     if (canServeLocal && localPath) {
       return serveLocal(localPath, rangeHeader);
+    }
+
+    if (!previewOnly && type !== "photo") {
+      return Response.json(
+        toErrorBody(
+          new AppError("NOT_FOUND", "動画はこのアプリでは再生しません"),
+        ),
+        { status: 404 },
+      );
     }
 
     const mediaUrl = row.media_url ? String(row.media_url) : null;
@@ -138,6 +146,7 @@ export async function GET(
 
     if (
       !previewOnly &&
+      type === "photo" &&
       !downloadUrlFor({ type, media_url: mediaUrl, variants })
     ) {
       const accountId = await accountIdForMedia(id);
@@ -179,9 +188,7 @@ export async function GET(
     }
 
     schedulePersist(id);
-    const fallbackType =
-      type === "photo" || previewOnly ? "image/jpeg" : "video/mp4";
-    return proxyRemoteMedia(url, rangeHeader, fallbackType);
+    return proxyRemoteMedia(url, rangeHeader, "image/jpeg");
   } catch (error) {
     return Response.json(toErrorBody(error), { status: 500 });
   }

@@ -69,7 +69,7 @@ export function PostBlock({
         lang={post.lang}
         targetId={textId}
       />
-      <MediaGallery items={post.media} />
+      <MediaGallery items={post.media} postUrl={post.url} />
     </article>
   );
 }

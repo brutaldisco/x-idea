@@ -3,6 +3,7 @@ const COMPANION_PORTS = [3000, 3001, 3010, 3011];
 export type PendingMedia = {
   id: string;
   type: string;
+  kind: string;
   persistPath: string;
 };
 
@@ -69,9 +70,12 @@ export async function syncPendingMediaToLocal(): Promise<number> {
   let saved = 0;
   for (const item of items.slice(0, 8)) {
     try {
-      const remote = await fetch(`/api/media/${item.id}`, {
-        cache: "no-store",
-      });
+      const remote = await fetch(
+        item.kind === "photo"
+          ? `/api/media/${item.id}`
+          : `/api/media/${item.id}?preview=1`,
+        { cache: "no-store" },
+      );
       if (!remote.ok) {
         continue;
       }

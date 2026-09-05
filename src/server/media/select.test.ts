@@ -3,6 +3,7 @@ import {
   downloadUrlFor,
   extensionFor,
   formatDuration,
+  initialDownloadStatus,
   isLongVideo,
   LONG_VIDEO_MS,
   needsTweetRefresh,
@@ -74,12 +75,12 @@ describe("downloadUrlFor", () => {
 });
 
 describe("extensionFor", () => {
-  it("saves photos as webp and videos as mp4", () => {
+  it("saves photos and video previews as webp", () => {
     expect(
       extensionFor({ type: "photo", url: "https://x/a.PNG?name=orig" }),
     ).toBe(".webp");
     expect(extensionFor({ type: "video", url: "https://x/a.mp4" })).toBe(
-      ".mp4",
+      ".webp",
     );
   });
 });
@@ -156,6 +157,21 @@ describe("isLongVideo / formatDuration", () => {
     expect(isLongVideo("photo", LONG_VIDEO_MS + 1)).toBe(false);
     expect(formatDuration(5 * 3_600_000 + 12 * 60_000).label).toBe(
       "5時間 12分",
+    );
+  });
+});
+
+describe("initialDownloadStatus", () => {
+  it("never auto-downloads video; preview image is pending", () => {
+    expect(
+      initialDownloadStatus({
+        media_key: "k",
+        type: "video",
+        duration_ms: LONG_VIDEO_MS + 1,
+      }),
+    ).toBe("pending");
+    expect(initialDownloadStatus({ media_key: "k", type: "photo" })).toBe(
+      "pending",
     );
   });
 });

@@ -31,6 +31,7 @@ export async function GET(request: Request) {
           JOIN x_posts p ON p.id = m.x_post_id
           LEFT JOIN sources s ON s.x_post_id = p.id
           WHERE m.download_status IN ('pending', 'failed')
+            AND (m.type = 'photo' OR m.preview_url IS NOT NULL)
             AND (s.x_account_id = ? OR s.x_account_id IS NULL)
           ORDER BY m.created_at DESC
           LIMIT 20`,
@@ -47,12 +48,13 @@ export async function GET(request: Request) {
     return [
       {
         id: String(row.id),
-        type,
+        type: "photo",
+        kind: type,
         persistPath: relativeMediaPath({
           accountId: acc,
           tweetId,
           mediaKey,
-          ext: type === "photo" ? ".webp" : ".mp4",
+          ext: ".webp",
         }),
       },
     ];

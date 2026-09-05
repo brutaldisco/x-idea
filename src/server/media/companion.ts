@@ -81,8 +81,7 @@ export async function writeCompanionFile(input: {
     throw new Error("body too large");
   }
   const dest = await ensureMediaDir(input.relativePath);
-  const payload =
-    input.type === "photo" ? await encodePhotoWebp(input.bytes) : input.bytes;
+  const payload = await encodePhotoWebp(input.bytes);
   await writeFile(dest, payload);
   return { path: input.relativePath, bytes: payload.length };
 }

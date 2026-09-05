@@ -209,8 +209,8 @@ function MediaFoldersCard({
             <code className="text-xs">
               {root}/{"{アカウントID}/{tweet_id}/"}
             </code>
-            です。画像は WebP、動画は mp4。Reader
-            を開くと未保存分を保存します。PC
+            です。画像と動画のサムネイルは WebP で保存します。動画本体は保存せず
+            X で見ます。Reader を開くと未保存分を保存します。PC
             を移すときは、そのアカウントのフォルダだけを新しい PC
             の同じ相対パスへコピーしてください。
           </p>

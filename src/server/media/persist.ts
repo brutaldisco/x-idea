@@ -12,9 +12,7 @@ export async function persistLocalMedia(input: {
     (item) =>
       item.downloadStatus === "pending" || item.downloadStatus === "failed",
   );
-  const photos = pending.filter((item) => item.type === "photo").slice(0, 4);
-  const videos = pending.filter((item) => item.type !== "photo").slice(0, 2);
-  for (const item of [...photos, ...videos]) {
+  for (const item of pending.slice(0, 6)) {
     try {
       await downloadMediaAsset({
         mediaId: item.id,

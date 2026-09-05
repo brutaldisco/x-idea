@@ -1,0 +1,11 @@
+---
+description: 明示がなければ push 先は main
+alwaysApply: true
+---
+
+# Git push の既定先
+
+- ブランチや PR の指定がなければ、`git push` の行き先は **`main`**。
+- feature ブランチ（`feat/T-xxx-…`）や PR 作成は、ユーザーが明示したときだけ。
+- push 自体は、コミット依頼や「プッシュして」など push を含む指示があったときだけ行う（勝手に push しない）。
+- `main` への force push はしない。
