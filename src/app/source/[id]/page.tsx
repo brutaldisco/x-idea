@@ -4,6 +4,7 @@ import { after, connection } from "next/server";
 import { ArticleBlock } from "@/components/ArticleBlock";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
 import { PostBlock } from "@/components/PostBlock";
+import { SourceCardMenu } from "@/components/SourceCardMenu";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
 import { runJobs } from "@/server/jobs/runner";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
@@ -42,7 +43,10 @@ export default async function SourcePage({
         <Link href="/library" className="text-ink-2 text-sm hover:underline">
           ← ライブラリ
         </Link>
-        <p className="text-ink-2 text-xs">{source.availability}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-ink-2 text-xs">{source.availability}</p>
+          <SourceCardMenu sourceId={source.id} url={source.post.url} />
+        </div>
       </div>
       <h1 className="mt-4 font-semibold text-2xl" lang="ja" translate="no">
         原文

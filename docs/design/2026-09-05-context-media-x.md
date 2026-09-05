@@ -71,7 +71,7 @@
 ```
 
 - `MEDIA_ROOT` は環境変数。既定 `./data/media`（リポジトリ直下、`.gitignore` 登録）。
-- `ext`：photo は URL の拡張子（なければ `.jpg`）、video / animated_gif は `.mp4`。
+- `ext`：photo は **`.webp`**（原寸取得後に変換）、video / animated_gif は `.mp4`。
 - DB には **MEDIA_ROOT からの相対パス**（`{x_account_id}/{tweet_id}/{media_key}.{ext}`）だけを保存する。絶対パスは保存しない。
 - **アカウントごとにフォルダが分かれる**。Settings にルートと `@username` ごとの絶対パスを出し、リンクで Finder 等を開く（`GET /api/media/folder`）。
 
@@ -88,7 +88,7 @@
 ### 4.3 ダウンロードジョブ `media_download`
 
 - 取り込み（`ingestBookmark`）後、各 `media_assets` に対して enqueue（4 時間超を除く）。
-- 画像：`media.url` に `?name=orig` を付けて原寸を取得。
+- 画像：`media.url` に `?name=orig` を付けて原寸を取得し、**WebP に変換してから** `{media_key}.webp` として保存。
 - 動画/GIF：`variants` から `content_type === "video/mp4"` かつ **最大 `bit_rate`** を選択。
 - 取得前に **ディスク空き容量をチェック**（残り 1GB 未満なら `failed` で保留し Reader に表示）。
 - `withRetry`（429/5xx は指数バックオフ）。最終失敗は `failed`＋`download_error`。Reader は CDN にフォールバック表示。

@@ -32,7 +32,7 @@
 > 2. **Settings 使用量メーター**（ADR-004）。X クレジットと Gemini 枠は「残量」を主表示し、なくなったら追加する。アカウント別の推定使用も出す。`x_api_enabled` は人間が ON にする。
 
 > **v3.4 の要点（v3.3 からの変更）**
-> 1. **メディアのローカル保存**（ADR-005）。PC 利用を主前提とし、画像・動画の実ファイルはローカルディスク（`MEDIA_ROOT`、既定 `./data/media`）に **最高解像度** で保存する。DB には相対パスのみ持ち、引っ越しは同じパスへのコピーで引き継げる。**4 時間超の動画は確認してから保存**。未保存時は自前プロキシで表示（X CDN へ 302 しない）。Vercel では保存せずプロキシ表示。詳細は `docs/design/2026-09-05-context-media-x.md`。
+> 1. **メディアのローカル保存**（ADR-005）。PC 利用を主前提とし、画像・動画の実ファイルはローカルディスク（`MEDIA_ROOT`、既定 `./data/media`）に **最高解像度** で保存する。**画像は原寸取得後に WebP 化してから保存**。DB には相対パスのみ持ち、引っ越しは同じパスへのコピーで引き継げる。**4 時間超の動画は確認してから保存**。未保存時は自前プロキシで表示（X CDN へ 302 しない）。Vercel では保存せずプロキシ表示。詳細は `docs/design/2026-09-05-context-media-x.md`。
 > 2. **返信コンテキスト**：返信の親 1 件取得（Phase A）、直近 7 日の返信取得（Phase B、`reply_context_enabled` 既定 OFF）。「X で開く」を全 Source に常設。
 
 ---
@@ -325,7 +325,7 @@ UI/UX の判断に迷ったら以下に従う。
   3. **Inbox チップ**：「要確認 2件 →」。0 件なら非表示。
   4. **Echo カード**（P2）：問い1つ＋3ボタン（同意／変わった／不要）。
   5. **Insights**（P2）：今週のテーマ1〜3個。
-  6. **最近の Source**：横スクロールカード（8件）。
+  6. **最近の Source**：横スクロールカード（8件、投稿日・3点メニュー）。
 - **空状態**：X 未連携→「X と連携して始める」CTA 1つのみ。連携済み・0件→「初回取り込み中… 120/5,000」進捗。複数アカウント時はアカウントごとの進捗を並べる。
 - **アカウントコンテキスト**（v3.3）：画面左下に現在の `@name` を出す（タブバーの外）。タップで「アカウントを切り替える」と候補一覧。Today の同期ピル・Inbox 件数・最近の Source は選択中アカウントだけに絞る。
 - **キャッシュ**：Briefing/Insights は `use cache`（`cacheTag('today')`）。同期ピルは Suspense で後ストリーム。コンテキスト切替は Cookie なのでキャッシュキーに含める。
@@ -344,7 +344,8 @@ UI/UX の判断に迷ったら以下に従う。
 
 - **フィルタバー**：カテゴリ（階層ピッカー）、情報タイプ、状態（未読/読了/実践予定/実践済/KC化）、タグ、期間、`kind`（投稿/記事/手動）。Lens はフィルタバーにピン留め。
 - **表示**：リスト（密）／グリッド（サムネ重視）／**Atlas**。
-- **並び**：既定は投稿日時の新しい順（`posted_at`。取り込み順の `saved_at` ではない）。重要度・関連度（Lens 時）は後続。
+- **並び**：既定は投稿日時の新しい順（`posted_at`。取り込み順の `saved_at` ではない）。Library / Inbox は `?sort=` で **新しい順 / 古い順 / 保存が新しい順 / 保存が古い順** を切り替えられる。重要度・関連度（Lens 時）は後続。
+- **カード**：投稿者、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。**3 点メニュー**から「X で開く」と **削除**（DB 行＋ローカル画像/動画ファイル）。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
 - **カーソルページネーション**：30件、Intersection Observer で追加読み込み。
 - **Atlas（P2）**：`<canvas>`（`d3-force` + `d3-zoom`、または `pixi.js`）。ノード＝Source（最大 3,000 表示、超過は代表点に集約）。座標はサーバーで週次計算（PCA→UMAP 相当の近似、`source_layout` テーブル）。クラスタ命名は Flash-Lite。タップ→クラスタ内リスト、ロングタップ→そのクラスタを Lens 化。タイムスライダーで `saved_at` によるフェード。PC 優先、モバイルは簡易（ピンチズームのみ）。
@@ -692,7 +693,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 
 - 画像・動画の実ファイルは **ローカルディスク** に保存し、DB には `MEDIA_ROOT` 相対パスのみ保持（Turso 容量を使わない）。詳細は `docs/design/2026-09-05-context-media-x.md`。
 - `MEDIA_ROOT`（環境変数、既定 `./data/media`）配下に `{x_account_id}/{tweet_id}/{media_key}.{ext}`。**アカウントごとにフォルダが分かれる**。引っ越しは `{MEDIA_ROOT}/{x_account_id}/` を同じ相対パスへコピーする（1 アカウント単位でも可）。Settings にパスとフォルダを開くリンクを出す。
-- 画像は `?name=orig` の原寸、動画/GIF は `variants` の最大 `bit_rate` の mp4（最高解像度）。`media.fields` に `variants` を追加（課金は投稿 read 単位で変わらず）。メディアファイルの CDN 取得は課金対象外。
+- 画像は `?name=orig` の原寸を取得したあと **WebP に変換してから保存**（`.webp`）。動画/GIF は `variants` の最大 `bit_rate` の mp4（最高解像度）。`media.fields` に `variants` を追加（課金は投稿 read 単位で変わらず）。メディアファイルの CDN 取得は課金対象外。
 - 4 時間超（`duration_ms > 14,400,000`）の動画は `awaiting_confirm` で保留し、Reader の確認でダウンロード。
 - 配信は `GET /api/media/[id]`（Range 対応、未保存時は **自前プロキシ**。X CDN へ 302 しない）。動画 URL が無い既存行は tweet lookup で 1 回補完。`?preview=1` はポスター／一覧サムネ。**Vercel（揮発 FS）では `MEDIA_ROOT` 未設定＝ダウンロードせずプロキシ表示**。
 
@@ -1550,6 +1551,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
 | GET | `/api/sources` | 一覧（フィルタ・カーソル `?cursor=saved_at,id&limit=30`） | 同一オリジン | P1 |
 | GET | `/api/sources/:id` | 詳細（原文・記事・要約・タグ・関連） | 同一オリジン | P1 |
+| DELETE | `/api/sources/:id` | Source 削除（紐づく投稿・孤立記事・ローカルメディア） | 同一オリジン | P1 |
 | GET | `/api/search` | `?q=&mode=keyword|hybrid&filters=` | 同一オリジン | P1（hybrid は P2） |
 | GET | `/api/search/suggest` | 入力中サジェスト（FTS、上位 8） | 同一オリジン | P1 |
 | GET | `/api/inbox/count` | 要確認件数（Badging 用） | 同一オリジン | P1 |
@@ -1931,7 +1933,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-508 | コマンドパレット ⌘K（検索・移動・状態変更） | `components/CommandK.tsx` | T-208 | PC で主要操作到達 |
 | T-509 | スレッド展開（`expand_thread`、コスト上限、Reader 連結表示、enrich 入力） | `expandThread.ts` | T-104 | 上限で停止、表示 |
 | T-601 | `media_assets` 拡張（migration `0003`）＋ `media.fields` に `variants` 追加 | `drizzle/0003_*`, `src/server/x/client.ts`, `parse.ts` | — | variants が DB に入る |
-| T-602 | `media_download` ジョブ（画像 `name=orig`／動画 max bit_rate、4h 保留、空き容量チェック） | `src/server/media/download.ts`, jobs | T-601 | ローカルに保存される |
+| T-602 | `media_download` ジョブ（画像 `name=orig`→WebP 保存／動画 max bit_rate、4h 保留、空き容量チェック） | `src/server/media/download.ts`, jobs | T-601 | ローカルに WebP / mp4 が保存される |
 | T-603 | `GET /api/media/[id]` 配信（Range、未保存時プロキシ、パス検証、variants 補完） | `src/app/api/media/[id]/route.ts` | T-602 | 動画がシークできる |
 | T-604 | Reader ギャラリー＋「X で開く」＋長時間動画の確認 UI | Reader コンポーネント | T-603 | 目視で確認 |
 | T-605 | 返信の親取得（`replied_to` → 1 件 lookup、Reader「返信先」カード） | `src/server/x/parent.ts` 等 | T-104 | 親が表示される |

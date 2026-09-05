@@ -74,10 +74,10 @@ describe("downloadUrlFor", () => {
 });
 
 describe("extensionFor", () => {
-  it("reads photo extension and defaults video to mp4", () => {
+  it("saves photos as webp and videos as mp4", () => {
     expect(
       extensionFor({ type: "photo", url: "https://x/a.PNG?name=orig" }),
-    ).toBe(".png");
+    ).toBe(".webp");
     expect(extensionFor({ type: "video", url: "https://x/a.mp4" })).toBe(
       ".mp4",
     );

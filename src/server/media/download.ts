@@ -1,5 +1,5 @@
 import { createWriteStream } from "node:fs";
-import { mkdir, stat, statfs, unlink } from "node:fs/promises";
+import { mkdir, stat, statfs, unlink, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { getClient } from "@/db/client";
@@ -20,6 +20,7 @@ import {
   MIN_FREE_BYTES,
   parseVariantsJson,
 } from "@/server/media/select";
+import { encodePhotoWebp } from "@/server/media/webp";
 
 export type MediaRow = {
   id: string;
@@ -118,6 +119,28 @@ async function fetchToFile(url: string, dest: string): Promise<number> {
   return (await stat(dest)).size;
 }
 
+async function fetchToWebpFile(url: string, dest: string): Promise<number> {
+  const res = await withRetry(
+    async () => {
+      const response = await fetchRemoteMedia(url);
+      if (response.status === 429 || response.status >= 500) {
+        const error = new Error(`media fetch ${response.status}`);
+        (error as { status?: number }).status = response.status;
+        throw error;
+      }
+      if (!response.ok) {
+        throw new Error(`media fetch failed (${response.status})`);
+      }
+      return response;
+    },
+    { attempts: 3 },
+  );
+  const buf = Buffer.from(await res.arrayBuffer());
+  const webp = await encodePhotoWebp(buf);
+  await writeFile(dest, webp);
+  return webp.length;
+}
+
 export async function downloadMediaAsset(input: {
   mediaId: string;
   accountId: string;
@@ -184,7 +207,10 @@ export async function downloadMediaAsset(input: {
     await assertFreeSpace();
     await setStatus(fresh.id, "downloading");
     const abs = await ensureMediaDir(relative);
-    const bytes = await fetchToFile(url, abs);
+    const bytes =
+      fresh.type === "photo"
+        ? await fetchToWebpFile(url, abs)
+        : await fetchToFile(url, abs);
     await setStatus(fresh.id, "ready", { path: relative, bytes });
     logger.info({ mediaId: fresh.id, bytes }, "media_download ready");
   } catch (error) {

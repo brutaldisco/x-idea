@@ -116,8 +116,7 @@ export function extensionFor(media: {
   url: string | null;
 }): string {
   if (media.type === "photo") {
-    const match = media.url?.match(/\.(jpe?g|png|webp|gif)(?:$|\?)/i);
-    return match ? `.${match[1].toLowerCase().replace("jpeg", "jpg")}` : ".jpg";
+    return ".webp";
   }
   return ".mp4";
 }

@@ -1,5 +1,10 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
+import {
+  parseSourceSort,
+  type SourceSort,
+  sourceSortSql,
+} from "@/lib/source-sort";
 import { sourceScopeSql } from "@/server/sources/scope";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
@@ -8,6 +13,7 @@ export type SourceListItem = {
   kind: string;
   summary: string;
   savedAt: string;
+  postedAt: string | null;
   triageStatus: string;
   authorUsername: string | null;
   url: string | null;
@@ -21,11 +27,13 @@ export async function listSources(input: {
   ctx: AccountContext;
   triage?: string;
   limit: number;
+  sort?: SourceSort | string;
 }): Promise<SourceListItem[]> {
   if (!isDbConfigured()) {
     return [];
   }
   await ensureSchema();
+  const sort = parseSourceSort(input.sort);
   const scope = sourceScopeSql(contextAccountId(input.ctx), "s");
   const where = [scope.clause];
   const args: Array<string | number> = [...scope.args];
@@ -35,8 +43,9 @@ export async function listSources(input: {
   }
   args.push(input.limit);
   const result = await getClient().execute({
-    sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.triage_status,
-                 p.author_username, p.text, p.lang, p.url,
+    sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
+                 s.triage_status, p.posted_at, p.author_username, p.text, p.lang,
+                 p.url,
                  (SELECT m.id FROM media_assets m
                   WHERE m.x_post_id = p.id
                   ORDER BY m.created_at ASC LIMIT 1) AS media_id,
@@ -46,8 +55,7 @@ export async function listSources(input: {
           FROM sources s
           LEFT JOIN x_posts p ON p.id = s.x_post_id
           WHERE ${where.join(" AND ")}
-          ORDER BY COALESCE(p.posted_at, s.bookmarked_at, s.saved_at) DESC,
-                   s.id DESC
+          ORDER BY ${sourceSortSql(sort)}
           LIMIT ?`,
     args,
   });
@@ -57,11 +65,19 @@ export async function listSources(input: {
       (row.ai_summary ? String(row.ai_summary) : "") ||
       (row.text ? String(row.text) : "") ||
       "(本文なし)";
+    const postedAt = row.posted_at
+      ? String(row.posted_at)
+      : row.bookmarked_at
+        ? String(row.bookmarked_at)
+        : row.saved_at
+          ? String(row.saved_at)
+          : null;
     return {
       id: String(row.id),
       kind: String(row.kind),
       summary: summary.slice(0, 180),
       savedAt: String(row.saved_at),
+      postedAt,
       triageStatus: String(row.triage_status),
       authorUsername: row.author_username ? String(row.author_username) : null,
       url: row.url ? String(row.url) : null,
