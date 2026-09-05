@@ -41,10 +41,12 @@ export function ChromeTranslate({
   text,
   lang,
   targetId,
+  className,
 }: {
   text: string;
   lang: string | null;
   targetId: string;
+  className?: string;
 }) {
   const offer = shouldOfferTranslate(text, lang);
   const [busy, setBusy] = useState(false);
@@ -131,7 +133,11 @@ export function ChromeTranslate({
   }
 
   return (
-    <div className="notranslate mt-3" lang="ja" translate="no">
+    <div
+      className={`notranslate ${className ?? "mt-3"}`}
+      lang="ja"
+      translate="no"
+    >
       <div className="flex flex-wrap items-center gap-2">
         {offer ? (
           <button

@@ -71,10 +71,13 @@ export function shouldOfferTranslate(
   if (trimmed.length < 2) {
     return false;
   }
-  if (isJapaneseLang(lang)) {
+  if (looksMostlyJapanese(trimmed)) {
     return false;
   }
-  return !looksMostlyJapanese(trimmed);
+  if (isJapaneseLang(lang) && trimmed.length < 40) {
+    return false;
+  }
+  return true;
 }
 
 export function translatableProps(

@@ -25,6 +25,12 @@ describe("shouldOfferTranslate", () => {
       true,
     );
     expect(shouldOfferTranslate("Hi", "ja")).toBe(false);
+    expect(
+      shouldOfferTranslate(
+        "Robotics is the least crowded high-value skill in tech right now.",
+        "ja",
+      ),
+    ).toBe(true);
   });
 });
 

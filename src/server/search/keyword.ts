@@ -10,12 +10,14 @@ import {
   SEARCH_LIMIT,
   type SearchFilters,
 } from "@/lib/search-query";
+import { ARTICLE_EXCERPT_SQL, cardSummary } from "@/lib/source-summary";
 import type { SourceListItem } from "@/server/sources/query";
 import { sourceScopeSql } from "@/server/sources/scope";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 const SELECT_COLS = `s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
   s.triage_status, p.posted_at, p.author_username, p.text, p.lang, p.url,
+  ${ARTICLE_EXCERPT_SQL},
   (SELECT m.id FROM media_assets m
    WHERE m.x_post_id = p.id
    ORDER BY m.created_at ASC LIMIT 1) AS media_id,
@@ -39,11 +41,11 @@ async function hasSourcesFts(): Promise<boolean> {
 }
 
 function mapRow(row: Record<string, unknown>): SourceListItem {
-  const fromAi = Boolean(row.ai_summary);
-  const summary =
-    (row.ai_summary ? String(row.ai_summary) : "") ||
-    (row.text ? String(row.text) : "") ||
-    "(本文なし)";
+  const { summary, fromAi } = cardSummary({
+    aiSummary: row.ai_summary ? String(row.ai_summary) : null,
+    postText: row.text ? String(row.text) : null,
+    articleExcerpt: row.article_excerpt ? String(row.article_excerpt) : null,
+  });
   const postedAt = row.posted_at
     ? String(row.posted_at)
     : row.bookmarked_at
@@ -54,7 +56,7 @@ function mapRow(row: Record<string, unknown>): SourceListItem {
   return {
     id: String(row.id),
     kind: String(row.kind),
-    summary: summary.slice(0, 180),
+    summary,
     savedAt: String(row.saved_at),
     postedAt,
     triageStatus: String(row.triage_status),

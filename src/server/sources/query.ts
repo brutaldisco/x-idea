@@ -12,6 +12,7 @@ import {
   type SourceSort,
   sourceSortSql,
 } from "@/lib/source-sort";
+import { ARTICLE_EXCERPT_SQL, cardSummary } from "@/lib/source-summary";
 import { sourceScopeSql } from "@/server/sources/scope";
 import {
   canBulkConfirm,
@@ -54,11 +55,11 @@ export type InboxListItem = SourceListItem & {
 };
 
 function mapSourceRow(row: Record<string, unknown>): SourceListItem {
-  const fromAi = Boolean(row.ai_summary);
-  const summary =
-    (row.ai_summary ? String(row.ai_summary) : "") ||
-    (row.text ? String(row.text) : "") ||
-    "(本文なし)";
+  const { summary, fromAi } = cardSummary({
+    aiSummary: row.ai_summary ? String(row.ai_summary) : null,
+    postText: row.text ? String(row.text) : null,
+    articleExcerpt: row.article_excerpt ? String(row.article_excerpt) : null,
+  });
   const postedAt = row.posted_at
     ? String(row.posted_at)
     : row.bookmarked_at
@@ -69,7 +70,7 @@ function mapSourceRow(row: Record<string, unknown>): SourceListItem {
   return {
     id: String(row.id),
     kind: String(row.kind),
-    summary: summary.slice(0, 180),
+    summary,
     savedAt: String(row.saved_at),
     postedAt,
     triageStatus: String(row.triage_status),
@@ -128,7 +129,7 @@ export async function listSourcesPage(input: {
   const result = await getClient().execute({
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
                  s.triage_status, p.posted_at, p.author_username, p.text, p.lang,
-                 p.url,
+                 p.url, ${ARTICLE_EXCERPT_SQL},
                  (SELECT m.id FROM media_assets m
                   WHERE m.x_post_id = p.id
                   ORDER BY m.created_at ASC LIMIT 1) AS media_id,
@@ -185,6 +186,7 @@ export async function listInbox(input: {
                  s.triage_status, s.ai_uncertainty_reason, s.category_id,
                  s.category_confidence, s.category_candidates_json,
                  p.posted_at, p.author_username, p.text, p.lang, p.url,
+                 ${ARTICLE_EXCERPT_SQL},
                  (SELECT m.id FROM media_assets m
                   WHERE m.x_post_id = p.id
                   ORDER BY m.created_at ASC LIMIT 1) AS media_id,
@@ -204,11 +206,11 @@ export async function listInbox(input: {
     result.rows.map((row) => String(row.id)),
   );
   return result.rows.map((row) => {
-    const fromAi = Boolean(row.ai_summary);
-    const summary =
-      (row.ai_summary ? String(row.ai_summary) : "") ||
-      (row.text ? String(row.text) : "") ||
-      "(本文なし)";
+    const { summary, fromAi } = cardSummary({
+      aiSummary: row.ai_summary ? String(row.ai_summary) : null,
+      postText: row.text ? String(row.text) : null,
+      articleExcerpt: row.article_excerpt ? String(row.article_excerpt) : null,
+    });
     const postedAt = row.posted_at
       ? String(row.posted_at)
       : row.bookmarked_at
@@ -227,7 +229,7 @@ export async function listInbox(input: {
     return {
       id: String(row.id),
       kind: String(row.kind),
-      summary: summary.slice(0, 180),
+      summary,
       savedAt: String(row.saved_at),
       postedAt,
       triageStatus: String(row.triage_status),

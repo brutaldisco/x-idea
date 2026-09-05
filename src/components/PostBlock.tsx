@@ -20,6 +20,15 @@ export function PostBlock({
   const attrs = translatableProps(post.lang, false);
   const quote = post.quotedSnapshot?.text?.trim() ?? "";
   const translateSource = quote ? `${post.text}\n\n${quote}` : post.text;
+  const long = translateSource.length >= 400;
+  const translate = (
+    <ChromeTranslate
+      text={translateSource}
+      lang={post.lang}
+      targetId={textId}
+      className={long ? "mb-3 mt-3" : "mt-3"}
+    />
+  );
   return (
     <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-5">
       {eyebrow ? (
@@ -49,6 +58,7 @@ export function PostBlock({
           <OpenInX url={post.url} />
         </span>
       </div>
+      {long ? translate : null}
       <p
         id={textId}
         className="mt-3 whitespace-pre-wrap text-[1.05rem] leading-7"
@@ -64,11 +74,7 @@ export function PostBlock({
           {quote}
         </blockquote>
       ) : null}
-      <ChromeTranslate
-        text={translateSource}
-        lang={post.lang}
-        targetId={textId}
-      />
+      {long ? null : translate}
       <MediaGallery items={post.media} postUrl={post.url} />
     </article>
   );
