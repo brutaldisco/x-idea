@@ -1,8 +1,8 @@
 # ADR-005: メディアはローカルディスクに最高解像度で保存する
 
 - 日付: 2026-09-05
-- 状態: 採用
-- 関連: ADR-004、設計書 14.6 / 19 章 `media_assets`、`docs/design/2026-09-05-context-media-x.md`
+- 状態: 一部改定（**動画の取り扱いと保存先は ADR-007（2026-09-05）が優先**。画像・サムネイルは DB の `media_blobs` 保存、動画本体は手動キュー＋File System Access API へ変更）
+- 関連: ADR-004、**ADR-007**、設計書 14.6 / 19 章 `media_assets`、`docs/design/2026-09-05-context-media-x.md`
 
 ## 文脈
 

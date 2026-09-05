@@ -4,7 +4,7 @@
 | --- | --- |
 | ドキュメント種別 | 実装設計書（Implementation Design Document） |
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
-| 版 | **v3.4** |
+| 版 | **v3.5** |
 | 作成日 | 2026-07-12 |
 | 改訂日 | **2026-09-05** |
 | ステータス | 実装着手可能 |
@@ -34,6 +34,10 @@
 > **v3.4 の要点（v3.3 からの変更）**
 > 1. **メディアのローカル保存**（ADR-005）。PC 利用を主前提とし、画像・動画の実ファイルはローカルディスク（`MEDIA_ROOT`、既定 `./data/media`）に **最高解像度** で保存する。**画像は原寸取得後に WebP 化してから保存**。DB には相対パスのみ持ち、引っ越しは同じパスへのコピーで引き継げる。**4 時間超の動画は確認してから保存**。未保存時は自前プロキシで表示（X CDN へ 302 しない）。Vercel では保存せずプロキシ表示。詳細は `docs/design/2026-09-05-context-media-x.md`。
 > 2. **返信コンテキスト**：返信の親 1 件取得（Phase A）、直近 7 日の返信取得（Phase B、`reply_context_enabled` 既定 OFF）。「X で開く」を全 Source に常設。
+
+> **v3.5 の要点（v3.4 からの変更）**
+> 1. **動画は手動ダウンロードのみ、画像は DB 保存**（ADR-007、ADR-005 を一部改定）。容量破綻の主因である動画の全量保存をやめ、画像・動画サムネイルは WebP 化して **Turso の `media_blobs`** に保存（本番・ローカル同一挙動）。動画本体は Reader の「あとで保存」→ **キュー（最大 15 件）** → Videos タブから手動実行し、**File System Access API** でユーザー指定フォルダへ保存（ローカルサーバー不要）。`pnpm dev` 保存役は開発用途に限定。
+> 2. **Videos タブ（SC-15）追加** で下部タブは 6 項目に。ダウンロードキュー・動画ライブラリ（1 階層フォルダ分類）・ブラウザ標準プレーヤー。低速回線対策は 8MB チャンク＋レジューム。詳細は `docs/design/2026-09-05-video-library.md`。
 
 ---
 
@@ -298,15 +302,16 @@ UI/UX の判断に迷ったら以下に従う。
 
 ## 8. 画面構成と画面別仕様
 
-下部タブは5項目固定：**Today / Inbox / Library / Ask / Settings**。Atlas は Library の表示切替、Briefing・Echo は Today からの遷移。
+下部タブは6項目固定：**Today / Inbox / Library / Videos / Ask / Settings**（v3.5 で Videos を追加）。Atlas は Library の表示切替、Briefing・Echo は Today からの遷移。
 
 | 画面ID | 画面名 | 役割 | 位置 |
 | --- | --- | --- | --- |
 | SC-01 | Today | Briefing・Inbox 件数・Echo・Insights・最近・同期ピル | タブ1 |
 | SC-02 | Inbox | 要確認アイテムのトリアージ | タブ2（バッジ） |
 | SC-03 | Library | 全 Source 閲覧。リスト／グリッド／**Atlas**。Lens | タブ3 |
-| SC-04 | Ask | キーワード即時検索＋ハイブリッド検索＋RAG チャット | タブ4 |
-| SC-05 | Settings | 同期、X 連携、AI レーン、通知、データ管理、MCP トークン | タブ5 |
+| SC-15 | Videos | ダウンロード済み動画のライブラリ・プレーヤー・ダウンロードキュー（ADR-007） | タブ4 |
+| SC-04 | Ask | キーワード即時検索＋ハイブリッド検索＋RAG チャット | タブ5 |
+| SC-05 | Settings | 同期、X 連携、AI レーン、通知、データ管理、MCP トークン | タブ6 |
 | SC-06 | Reader（Source 詳細） | 原文・記事・要約の統合表示、AI 余白ノート、編集 | SC-01〜04 から |
 | SC-07 | Knowledge Card | KC 閲覧・編集・ドラフト生成 | SC-03/04/06 から |
 | SC-08 | Categories & Lens | 階層カテゴリ、Lens の管理 | SC-05 から |
@@ -365,7 +370,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 - **ヒーロー**：投稿者アバター・名前・日時・X で開く。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。
-- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは折りたたみ**（件数つき、既定は展開）。4 時間超の動画は確認 UI（14.6）。**動画はページ離脱・タブ非表示・画面外で停止**。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。Reader に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。X の自動翻訳文は API に無い。原文カラムは書き換えない。
+- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは折りたたみ**（件数つき、既定は展開）。動画はアプリ内再生せず **サムネイル＋「X で見る」＋「あとで保存」**（ダウンロードキューへ投入、14.6 / SC-15）。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。Reader に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。X の自動翻訳文は API に無い。原文カラムは書き換えない。
 - **記事**：外部リンクだけにせず、取得できた本文を **アプリ内リーダー**で表示する。タイトル＋本文（sanitize 済み HTML 優先）＋補助の「元の記事を開く」。`fetch_scope` バッジ（全文／一部／概要のみ／失敗）。既存 Source は Reader 表示時に URL を拾ってバックフィルする。
 - **要約**：「✦ AI」バッジ、3行要約、情報タイプ、重要度、タグ、カテゴリ（確信度）。「AI で再処理」。
 - **Marginalia（P2）**：記事・原文の重要文を AI がハイライト（薄いマーカー色）、余白（PC は右カラム、モバイルはハイライトタップで下部シート）に注釈。ユーザーは選択→「ハイライト」「メモ」「これについて聞く」。
@@ -399,7 +404,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
 - **連携**（P2）：MCP エンドポイント URL とトークン（再発行）、Quick Capture トークン、iOS ショートカット導入手順。
-- **メディアの保存先**：ローカル実行時、`MEDIA_ROOT` の絶対パスとアカウントごとのフォルダ（`{MEDIA_ROOT}/{x_account_id}`）を表示し、リンクで開く。PC 引っ越しはアカウントフォルダ単位。Vercel では保存しない旨を表示。
+- **メディア**：DB（Turso）内の画像・サムネイルの件数と合計サイズの目安メーター、動画ライブラリの件数・合計サイズ、Videos タブへの導線。動画の保存先は Videos タブで選ぶローカルフォルダ（File System Access API）で、引っ越しはアカウントフォルダ単位のコピー＋再リンク。旧 `MEDIA_ROOT` ローカル保存／`pnpm dev` 保存役は開発用途の注記のみ（ADR-007）。
 - **データ**：エクスポート（Markdown/JSON）、全削除（危険ゾーン）。
 - **表示**：テーマ（システム/ライト/ダーク）、文字サイズ、モーション低減。
 
@@ -417,6 +422,14 @@ UI/UX の判断に迷ったら以下に従う。
 - **Capture**：共有された URL/テキストを表示、カテゴリ任意選択、「取り込む」。成功後 Reader へ。
 - **Onboarding**（5ステップ）：①ようこそ（3枚のカード）→ ②X と連携 → ③（P2）フォルダ選択 → ④初回取り込み規模（最新 500 / 2,000 / 全部）と概算コスト・所要日数表示 → ⑤ホーム画面に追加の案内（iOS は共有シート手順のイラスト）＋通知許可（P2）。
 
+### 8.10 SC-15 Videos（v3.5、ADR-007）
+
+- **保存フォルダカード**：File System Access API で選んだルートのリンク状態バッジ＋「保存フォルダを選ぶ / 再リンク」。未リンク時はこのカードだけ有効。Safari/Firefox は非対応案内＋通常ダウンロードにフォールバック。
+- **ダウンロードキュー**：`N / 15` 件表示＋「ダウンロード開始」。各アイテムはサムネイル・投稿抜粋・`@username`・状態・進捗バー・取消。`failed` は理由と「再試行」。実行は逐次 1 件、8MB チャンク＋レジューム（14.6）。
+- **ライブラリ**：フォルダチップ（すべて／未分類／ユーザー作成フォルダ／＋新規フォルダ）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日。操作は「フォルダ移動」「削除」「X で開く」「Source を開く」。
+- **プレーヤー**：カードタップでモーダル（モバイルは全画面）。`<video controls playsInline>` に object URL を渡すブラウザ標準 UI。
+- 詳細は `docs/design/2026-09-05-video-library.md`。
+
 ---
 
 ## 9. 画面遷移
@@ -429,6 +442,7 @@ UI/UX の判断に迷ったら以下に従う。
                  ├─▶ SC-02 Inbox ─▶ SC-06
                  ├─▶ SC-03 Library ─▶ SC-06 / SC-07
                  │      └─▶ SC-14 Atlas ─▶ SC-03(フィルタ済) / Lens 作成
+                 ├─▶ SC-15 Videos ─▶ SC-06（Source を開く）/ X で開く
                  ├─▶ SC-04 Ask ─▶ SC-06 / SC-07(保存)
                  ├─▶ SC-09 Sync & Jobs
                  └─▶ SC-05 Settings ─▶ SC-08 / SC-09 / X OAuth
@@ -689,14 +703,14 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 - `GET /2/tweets/search/recent?query=conversation_id:{id} from:{author} to:{author}&max_results=100` → 同一著者の連投を `x_posts` に保存し `thread_root_id` で連結。Source は起点のみ（連投は Reader で連結表示、enrich 入力にも連結）。
 - 上限：1 スレッド 25 投稿、月次コスト上限（既定 $2）。超過時はスキップし Reader に「スレッド未取得」を表示。
 
-### 14.6 メディアのローカル保存（PC 前提、ADR-005）
+### 14.6 メディア保存（画像は DB、動画は手動ダウンロード。ADR-005 → ADR-007）
 
-- 画像・動画の実ファイルは **ローカルディスク** に保存し、DB には `MEDIA_ROOT` 相対パスのみ保持（Turso 容量を使わない）。詳細は `docs/design/2026-09-05-context-media-x.md`。
-- `MEDIA_ROOT`（環境変数、未設定または空なら `./data/media`。`off`/`none`/`0` で無効）配下に `{x_account_id}/{tweet_id}/{media_key}.{ext}`。**アカウントごとにフォルダが分かれる**。引っ越しは `{MEDIA_ROOT}/{x_account_id}/` を同じ相対パスへコピーする（1 アカウント単位でも可）。Settings にパス・保存手順・フォルダを開くリンクを出す。
-- **Vercel 上には置かない**。同じ PC で `pnpm dev`（`127.0.0.1:3000` の保存役）を動かしたまま本番を開くと、未保存メディアを手元の `MEDIA_ROOT` に書く。Reader / タブ表示でも保存を試みる。
-- 画像は `?name=orig` の原寸を取得したあと **WebP に変換してから保存**（`.webp`）。動画/GIF は `variants` の最大 `bit_rate` の mp4（最高解像度）。`media.fields` に `variants` を追加（課金は投稿 read 単位で変わらず）。メディアファイルの CDN 取得は課金対象外。
-- 4 時間超（`duration_ms > 14,400,000`）の動画は `awaiting_confirm` で保留し、Reader の確認でダウンロード。
-- 配信は `GET /api/media/[id]`（Range 対応、未保存時は **自前プロキシ**。X CDN へ 302 しない）。動画 URL が無い既存行は tweet lookup で 1 回補完。`?preview=1` はポスター／一覧サムネ。**Vercel 上には置かない**。同じ PC の `pnpm dev` 保存役へ送って手元に書く。
+- **画像と動画サムネイルは WebP（quality 82）に変換して DB（Turso）の `media_blobs` に保存**する（19 章）。本番・ローカルで同一の挙動。配信は `GET /api/media/[id]`（blob 優先、未保存時は X CDN を自前プロキシ＋`after()` で blob 保存。302 しない）。`?preview=1` は動画サムネイル。
+- **動画本体は自動保存しない**。Reader の動画はサムネイル＋「X で見る」。残したい動画だけ「あとで保存」でキュー（`video_downloads`、**queued は最大 15 件**）に入れ、**Videos タブ（SC-15）から手動実行**する。
+- ダウンロードは **File System Access API**（Chrome/Edge）で、ユーザーが選んだルート配下に `{x_account_id}/{フォルダ}/{tweet_id}_{media_key}.mp4` として書く（ローカルサーバー不要）。分類フォルダは 1 階層のみ（作成・移動・削除可）。引っ越しはアカウントフォルダ単位のコピー＋ルート再リンク。
+- 画質は `variants` の **最大 `bit_rate` の mp4**（最高解像度。字幕の可読性対策）。低速回線対策は **8MB チャンクの Range 取得＋IndexedDB レジューム**（`GET /api/media/[id]/file`、`maxDuration = 300`：Vercel Hobby の 300 秒上限を考慮）。
+- 旧方式（`MEDIA_ROOT` ローカル保存と `pnpm dev` 保存役コンパニオン）は **開発用途に限定** し、Settings の案内と自動同期は出さない。既存のローカルファイルは `local_path` があれば従来どおり配信する（後方互換）。
+- 詳細は `docs/design/2026-09-05-video-library.md`。
 
 ### 14.7 同期頻度・手動同期
 
@@ -1165,6 +1179,36 @@ CREATE TABLE media_assets (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_media_post ON media_assets (x_post_id);
+
+CREATE TABLE media_blobs (                           -- ADR-007: 画像・動画サムネイルの WebP 実体
+  media_id TEXT PRIMARY KEY REFERENCES media_assets(id) ON DELETE CASCADE,
+  content_type TEXT NOT NULL DEFAULT 'image/webp',
+  data BLOB NOT NULL,
+  bytes INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE video_folders (                         -- ADR-007: 動画の分類フォルダ（1 階層のみ）
+  id TEXT PRIMARY KEY,
+  x_account_id TEXT NOT NULL REFERENCES x_account(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (x_account_id, name)
+);
+
+CREATE TABLE video_downloads (                       -- ADR-007: 動画ダウンロードキュー兼ライブラリ台帳
+  id TEXT PRIMARY KEY,
+  media_id TEXT NOT NULL UNIQUE REFERENCES media_assets(id) ON DELETE CASCADE,
+  x_account_id TEXT NOT NULL,
+  folder_id TEXT REFERENCES video_folders(id) ON DELETE SET NULL, -- NULL = 未分類
+  status TEXT NOT NULL DEFAULT 'queued',             -- queued | downloading | ready | failed | canceled
+  rel_path TEXT,                                     -- ルート相対: {x_account_id}/{folder}/{file}.mp4
+  bytes INTEGER,
+  error TEXT,
+  queued_at TEXT NOT NULL DEFAULT (datetime('now')),
+  downloaded_at TEXT
+);
+CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 CREATE TABLE tags (
   id TEXT PRIMARY KEY,
@@ -1939,6 +1983,12 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-604 | Reader ギャラリー＋「X で開く」＋長時間動画の確認 UI | Reader コンポーネント | T-603 | 目視で確認 |
 | T-605 | 返信の親取得（`replied_to` → 1 件 lookup、Reader「返信先」カード） | `src/server/x/parent.ts` 等 | T-104 | 親が表示される |
 | T-606 | 直近返信コンテキスト（`reply_context_enabled`、既定 OFF、上限つき） | `replyContext.ts` | T-605 | 7 日内の返信が連結表示される |
+| T-607 | `media_blobs` 追加＋画像/サムネイルの DB 保存と配信（migration `0004`） | `drizzle/0004_*`, `src/server/media/download.ts`, `src/app/api/media/[id]/route.ts` | T-603 | 本番で画像が DB から配信される |
+| T-608 | `video_folders` / `video_downloads`＋キュー API（15 件上限、enqueue/cancel/retry/complete/move/folders） | `drizzle/0004_*`, `src/app/api/videos/*`, `src/server/videos/*` | T-607 | 16 件目が 409 になる |
+| T-609 | `GET /api/media/[id]/file`（max bit_rate mp4、Range プロキシ、`maxDuration = 300`） | `src/app/api/media/[id]/file/route.ts` | T-603 | Range で部分取得できる |
+| T-610 | FS Access クライアント（フォルダ選択・権限・IndexedDB 永続化、8MB チャンク DL＋レジューム） | `src/lib/video-store.ts` | T-609 | 中断→再開で最後まで落ちる |
+| T-611 | Videos タブ SC-15（キュー UI、ライブラリ grid、プレーヤー、フォルダ作成/移動/削除） | `src/app/(tabs)/videos/*`, `src/components/videos/*` | T-608, T-610 | キュー→DL→再生→移動が一気通貫 |
+| T-612 | Reader「あとで保存」＋Settings 整理（保存役案内の撤去、DB 使用量メーター） | Reader, Settings | T-608 | 本番 Settings に `pnpm dev` 案内が出ない |
 
 ---
 
