@@ -6,6 +6,7 @@ import { DisconnectX } from "@/components/DisconnectX";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { MediaFolderLink } from "@/components/MediaFolderLink";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
+import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { UsageMeters } from "@/components/UsageMeters";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
 import { getHealth } from "@/server/health";
@@ -15,7 +16,7 @@ import {
   mediaFolderHref,
   mediaRoot,
 } from "@/server/media/paths";
-import { getContextSettings } from "@/server/settings";
+import { getContextSettings, getSyncSettings } from "@/server/settings";
 import { getUsageDashboard } from "@/server/usage/dashboard";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
@@ -25,12 +26,13 @@ async function SettingsBody({
   searchParams: Promise<{ x?: string }>;
 }) {
   await connection();
-  const [health, accounts, usage, params, flags] = await Promise.all([
+  const [health, accounts, usage, params, flags, sync] = await Promise.all([
     getHealth(),
     listXAccounts(),
     getUsageDashboard(),
     searchParams,
     getContextSettings(),
+    getSyncSettings(),
   ]);
   const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
@@ -124,10 +126,15 @@ async function SettingsBody({
         </div>
         <p className="mt-2 text-ink-2 text-sm">
           全体トグルと、アカウントごとの「同期（課金）」が両方 ON
-          のときだけブックマークを取り込みます。初回は最大 500 件です。
+          のときだけブックマークを取り込みます。1
+          回の同期で取り込む件数は下のフォームで調整できます。
         </p>
         <XApiEnabledToggle enabled={health.x_api_enabled} />
         <ManualSyncButton disabled={!health.x_api_enabled} />
+        <SyncLimitsForm
+          syncMaxPerRun={sync.syncMaxPerRun}
+          mediaDownloadPerTick={sync.mediaDownloadPerTick}
+        />
         <SettingsFlagToggle
           field="thread_expand_enabled"
           enabled={flags.threadExpandEnabled}

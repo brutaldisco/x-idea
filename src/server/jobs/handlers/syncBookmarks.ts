@@ -16,7 +16,6 @@ import { fetchBookmarksPage, XApiError } from "@/server/x/client";
 import { collectUntilHead } from "@/server/x/parse";
 import { ensureValidToken, TokenRefreshError } from "@/server/x/token";
 
-const INITIAL_LIMIT = 500;
 const PAGE_SIZE = 100;
 
 export async function syncBookmarks(payload?: {
@@ -40,6 +39,7 @@ export async function syncBookmarks(payload?: {
       account,
       settings.saveReplies,
       payload?.trigger ?? "schedule",
+      settings.syncMaxPerRun,
     );
   }
 }
@@ -48,11 +48,11 @@ async function syncOneAccount(
   account: XAccountSecret,
   saveReplies: boolean,
   trigger: "schedule" | "manual",
+  syncMaxPerRun: number,
 ): Promise<void> {
   const runId = newId();
   const mode = account.lastSyncHeadTweetId ? "incremental" : "initial";
-  const maxPages =
-    mode === "initial" ? Math.ceil(INITIAL_LIMIT / PAGE_SIZE) : 10;
+  const maxPages = Math.max(1, Math.ceil(syncMaxPerRun / PAGE_SIZE));
   const started = new Date().toISOString();
   let pages = 0;
   let resources = 0;
@@ -98,7 +98,11 @@ async function syncOneAccount(
       pagination = page.nextToken;
     }
 
-    await enqueuePendingMediaDownloads(account.id);
+    const settings = await getSyncSettings();
+    await enqueuePendingMediaDownloads(
+      account.id,
+      settings.mediaDownloadPerTick,
+    );
     await markXAccountSynced(account.id, newHead);
     await writeRun({
       runId,

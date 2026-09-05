@@ -387,7 +387,7 @@ UI/UX の判断に迷ったら以下に従う。
   - Gemini：レーン別「残り / 上限」。リセットは太平洋時間 0:00。
   - 追加記録は `x_credit_ledger`（`topup` / `snapshot`）。`X_BEARER_TOKEN` があれば残量を再取得（15 分キャッシュ）。
 - **外部サービス / 課金**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
-  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings にトグルと「今すぐ同期」。初回は最大 500 件
+  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings にトグルと「今すぐ同期」。1回の同期で取り込む件数は `sync_max_per_run`（既定 100、10〜500）で調整可能。初回もこの上限に従う
   - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
   - 直近 7 日の返信取得：`reply_context_enabled`（追加課金、$0.005/投稿。既定 OFF。上限はスレッド展開と共用）
@@ -982,6 +982,8 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   sync_interval_min INTEGER NOT NULL DEFAULT 30,
+  sync_max_per_run INTEGER NOT NULL DEFAULT 100,   -- 1回の同期で取り込む件数（10〜500）
+  media_download_per_tick INTEGER NOT NULL DEFAULT 5, -- 1回の tick で保存するメディア数（1〜50）
   save_replies INTEGER NOT NULL DEFAULT 1,
   auto_file_threshold REAL NOT NULL DEFAULT 0.8,
   excluded_domains_json TEXT NOT NULL DEFAULT '[]',
@@ -1867,7 +1869,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-101c | アカウントコンテキスト切替（v3.3、ADR-003）：`x_ctx` Cookie、画面左下に現在アカウント（タブバー外）、タップで切替メニュー、Today/Inbox/Library/Ask のスコープリング | `src/server/x/context.ts`, `src/components/AccountSwitcher.tsx`, 各タブ | T-101b | 左下の `@name` をタップすると「アカウントを切り替える」と候補が出る。切替で Today / Inbox が変わる。既定は先頭アカウント |
 | T-102 | トークンリフレッシュ、`reauth_required` 遷移（E-02） | `src/server/x/token.ts` | T-101 | 失効 5 分前に refresh。失敗で `reauth_required` |
 | T-103 | X API クライアント（fields/expansions、レート制限記録、`withRetry`、ページ解析） | `src/server/x/client.ts`, `fixtures/x/*.json` | T-009 | fixtures で note_tweet / 既知 ID 打ち切り |
-| T-104 | `sync_bookmarks`（差分／初回 500 件、errors→availability、`note_tweet`、sync_runs、コスト推定） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | `x_api_enabled` かつ `sync_enabled` のアカウントだけ。既知 ID で打ち切り |
+| T-104 | `sync_bookmarks`（差分／初回は `sync_max_per_run` 件まで、errors→availability、`note_tweet`、sync_runs、コスト推定） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | `x_api_enabled` かつ `sync_enabled` のアカウントだけ。既知 ID で打ち切り |
 | T-105 | 投稿保存（x_posts/media/引用/URL 抽出/source_articles pending/FTS upsert） | `src/server/ingest/*` | T-104 | DB に全項目、FTS ヒット |
 | T-106 | 手動同期 API（60 秒スロットル、`after()` で 3 ジョブ消化）、クライアント起動時 tick | `src/app/api/sync/route.ts` | T-104 | 連打で 429 |
 | T-107 | `article_fetch`（正規化・robots・Readability・sanitize・scope・除外ドメイン） | `src/server/jobs/handlers/articleFetch.ts` | T-105 | 10 URL の scope が期待どおり |
