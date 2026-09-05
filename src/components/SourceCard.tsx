@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
+import { sourceTransitionStyle } from "@/lib/view-transition";
 
 function thumbSrc(mediaId: string, mediaType: string | null): string {
   return mediaType === "photo"
@@ -48,7 +49,12 @@ export function SourceCard({
       }
     >
       {mediaId && stacked ? (
-        <Link href={`/source/${id}`} className="relative mb-2 block">
+        <Link
+          href={`/source/${id}`}
+          transitionTypes={["nav-forward"]}
+          className="relative mb-2 block"
+          style={sourceTransitionStyle(id)}
+        >
           <Image
             src={thumbSrc(mediaId, mediaType ?? null)}
             alt=""
@@ -68,7 +74,9 @@ export function SourceCard({
         {mediaId && !stacked ? (
           <Link
             href={`/source/${id}`}
+            transitionTypes={["nav-forward"]}
             className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper"
+            style={sourceTransitionStyle(id)}
           >
             <Image
               src={thumbSrc(mediaId, mediaType ?? null)}
@@ -105,6 +113,7 @@ export function SourceCard({
           </div>
           <Link
             href={`/source/${id}`}
+            transitionTypes={["nav-forward"]}
             className={`mt-1 block text-sm hover:underline ${stacked ? "line-clamp-4" : ""}`}
             {...textAttrs}
           >

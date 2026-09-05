@@ -21,7 +21,7 @@ async function AccountChrome() {
 
 export default function SourceLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto min-h-dvh max-w-4xl pb-32 min-[48rem]:pb-24">
+    <div className="mx-auto min-h-dvh max-w-4xl pb-44 min-[48rem]:pb-32">
       <TickOnMount />
       {children}
       <Suspense fallback={null}>

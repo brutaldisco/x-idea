@@ -16,6 +16,7 @@ import { SwipeCard } from "@/components/SwipeCard";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
 import type { SourceSort } from "@/lib/source-sort";
+import { sourceTransitionStyle } from "@/lib/view-transition";
 import {
   archiveSource,
   bulkConfirm,
@@ -167,7 +168,9 @@ export function InboxWorkspace({
       }
       if (event.key === "Enter") {
         event.preventDefault();
-        router.push(`/source/${current.id}`);
+        router.push(`/source/${current.id}`, {
+          transitionTypes: ["nav-forward"],
+        });
         return;
       }
       if (event.key === "e" || event.key === "E") {
@@ -304,11 +307,18 @@ export function InboxWorkspace({
               current,
             )
           }
-          onOpen={() => router.push(`/source/${current.id}`)}
+          onOpen={() =>
+            router.push(`/source/${current.id}`, {
+              transitionTypes: ["nav-forward"],
+            })
+          }
         >
           <div className="flex gap-3">
             {current.mediaId ? (
-              <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper">
+              <div
+                className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper"
+                style={sourceTransitionStyle(current.id)}
+              >
                 <Image
                   src={thumbSrc(current.mediaId, current.mediaType)}
                   alt=""

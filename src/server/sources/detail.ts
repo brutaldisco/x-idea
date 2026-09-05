@@ -46,7 +46,11 @@ export type SourceDetail = {
   triageStatus: string;
   readStatus: string;
   categoryId: string | null;
+  categoryName: string | null;
+  categoryConfidence: number | null;
   infoType: string | null;
+  aiImportance: number | null;
+  tags: string[];
   userNote: string | null;
   aiSummary: string | null;
   post: PostCard;
@@ -172,14 +176,16 @@ export async function getSourceDetail(
   const scope = sourceScopeSql(contextAccountId(ctx), "s");
   const result = await getClient().execute({
     sql: `SELECT s.id, s.x_account_id, s.availability, s.triage_status,
-                 s.read_status, s.category_id, s.info_type,
-                 s.user_note, s.ai_summary,
+                 s.read_status, s.category_id, s.info_type, s.ai_importance,
+                 s.category_confidence, s.user_note, s.ai_summary,
+                 c.name AS category_name,
                  p.id AS post_id, p.tweet_id, p.url, p.text, p.lang,
                  p.author_username, p.author_name, p.author_avatar_url,
                  p.posted_at, p.is_reply, p.reply_to_tweet_id, p.quoted_tweet_id,
                  p.quoted_snapshot_json, p.conversation_id
           FROM sources s
           JOIN x_posts p ON p.id = s.x_post_id
+          LEFT JOIN categories c ON c.id = s.category_id
           WHERE s.id = ? AND ${scope.clause}
           LIMIT 1`,
     args: [id, ...scope.args],
@@ -253,6 +259,15 @@ export async function getSourceDetail(
     }
   }
 
+  const tagRows = await getClient().execute({
+    sql: `SELECT t.name FROM source_tags st
+          JOIN tags t ON t.id = st.tag_id
+          WHERE st.source_id = ?
+          ORDER BY t.name
+          LIMIT 8`,
+    args: [id],
+  });
+
   const articles = await getClient().execute({
     sql: `SELECT a.id, a.title, a.original_url, a.fetch_scope, a.description,
                  a.content_text, a.content_html
@@ -270,7 +285,12 @@ export async function getSourceDetail(
     triageStatus: String(row.triage_status),
     readStatus: String(row.read_status ?? "unread"),
     categoryId: row.category_id ? String(row.category_id) : null,
+    categoryName: row.category_name ? String(row.category_name) : null,
+    categoryConfidence:
+      row.category_confidence == null ? null : Number(row.category_confidence),
     infoType: row.info_type ? String(row.info_type) : null,
+    aiImportance: row.ai_importance == null ? null : Number(row.ai_importance),
+    tags: tagRows.rows.map((item) => String(item.name)),
     userNote: row.user_note ? String(row.user_note) : null,
     aiSummary: row.ai_summary ? String(row.ai_summary) : null,
     post,
