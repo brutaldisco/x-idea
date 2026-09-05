@@ -31,21 +31,23 @@ export function SourceCard({
   lang?: string | null;
   summaryFromAi?: boolean;
   postedAt?: string | null;
-  variant?: "list" | "rail";
+  variant?: "list" | "rail" | "grid";
 }) {
   const textAttrs = translatableProps(lang, summaryFromAi);
   const dateLabel = formatCardDate(postedAt);
-  const rail = variant === "rail";
+  const stacked = variant === "rail" || variant === "grid";
 
   return (
     <li
       className={
-        rail
+        variant === "rail"
           ? "w-56 shrink-0 rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
-          : "rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
+          : variant === "grid"
+            ? "w-full rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
+            : "rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
       }
     >
-      {mediaId && rail ? (
+      {mediaId && stacked ? (
         <Link href={`/source/${id}`} className="relative mb-2 block">
           <Image
             src={thumbSrc(mediaId, mediaType ?? null)}
@@ -62,8 +64,8 @@ export function SourceCard({
           ) : null}
         </Link>
       ) : null}
-      <div className={rail ? "" : "flex gap-3"}>
-        {mediaId && !rail ? (
+      <div className={stacked ? "" : "flex gap-3"}>
+        {mediaId && !stacked ? (
           <Link
             href={`/source/${id}`}
             className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper"
@@ -103,7 +105,7 @@ export function SourceCard({
           </div>
           <Link
             href={`/source/${id}`}
-            className={`mt-1 block text-sm hover:underline ${rail ? "line-clamp-4" : ""}`}
+            className={`mt-1 block text-sm hover:underline ${stacked ? "line-clamp-4" : ""}`}
             {...textAttrs}
           >
             {summary}

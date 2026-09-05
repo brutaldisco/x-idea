@@ -1,6 +1,13 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import {
+  decodeSourceCursor,
+  encodeSourceCursor,
+  sourceCursorKey,
+  sourceCursorSql,
+} from "@/lib/source-cursor";
+import { type LibraryFilters, libraryFilterSql } from "@/lib/source-filters";
+import {
   parseSourceSort,
   type SourceSort,
   sourceSortSql,
@@ -46,18 +53,40 @@ export type InboxListItem = SourceListItem & {
   tags: string[];
 };
 
-export async function listSources(input: {
-  ctx: AccountContext;
-  triage?: string;
-  limit: number;
-  sort?: SourceSort | string;
-}): Promise<SourceListItem[]> {
-  if (!isDbConfigured()) {
-    return [];
-  }
-  await ensureSchema();
-  const sort = parseSourceSort(input.sort);
-  const scope = sourceScopeSql(contextAccountId(input.ctx), "s");
+function mapSourceRow(row: Record<string, unknown>): SourceListItem {
+  const fromAi = Boolean(row.ai_summary);
+  const summary =
+    (row.ai_summary ? String(row.ai_summary) : "") ||
+    (row.text ? String(row.text) : "") ||
+    "(本文なし)";
+  const postedAt = row.posted_at
+    ? String(row.posted_at)
+    : row.bookmarked_at
+      ? String(row.bookmarked_at)
+      : row.saved_at
+        ? String(row.saved_at)
+        : null;
+  return {
+    id: String(row.id),
+    kind: String(row.kind),
+    summary: summary.slice(0, 180),
+    savedAt: String(row.saved_at),
+    postedAt,
+    triageStatus: String(row.triage_status),
+    authorUsername: row.author_username ? String(row.author_username) : null,
+    url: row.url ? String(row.url) : null,
+    lang: row.lang ? String(row.lang) : null,
+    summaryFromAi: fromAi,
+    mediaId: row.media_id ? String(row.media_id) : null,
+    mediaType: row.media_type ? String(row.media_type) : null,
+  };
+}
+
+function listWhere(
+  ctx: AccountContext,
+  input: { triage?: string; filters?: LibraryFilters },
+): { clause: string; args: Array<string | number> } {
+  const scope = sourceScopeSql(contextAccountId(ctx), "s");
   const where = [scope.clause];
   const args: Array<string | number> = [...scope.args];
   if (input.triage) {
@@ -67,7 +96,35 @@ export async function listSources(input: {
       where.push(NOT_SNOOZED);
     }
   }
-  args.push(input.limit);
+  const filters = libraryFilterSql(input.filters ?? {});
+  where.push(...filters.clause);
+  args.push(...filters.args);
+  return { clause: where.join(" AND "), args };
+}
+
+export async function listSourcesPage(input: {
+  ctx: AccountContext;
+  triage?: string;
+  limit: number;
+  sort?: SourceSort | string;
+  cursor?: string | null;
+  filters?: LibraryFilters;
+}): Promise<{ items: SourceListItem[]; nextCursor: string | null }> {
+  if (!isDbConfigured()) {
+    return { items: [], nextCursor: null };
+  }
+  await ensureSchema();
+  const sort = parseSourceSort(input.sort);
+  const { clause, args } = listWhere(input.ctx, input);
+  const where = [clause];
+  const pageArgs = [...args];
+  const cursor = decodeSourceCursor(input.cursor);
+  if (cursor) {
+    where.push(sourceCursorSql(sort));
+    pageArgs.push(cursor.key, cursor.key, cursor.id);
+  }
+  const take = Math.min(100, Math.max(1, input.limit));
+  pageArgs.push(take + 1);
   const result = await getClient().execute({
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
                  s.triage_status, p.posted_at, p.author_username, p.text, p.lang,
@@ -83,36 +140,32 @@ export async function listSources(input: {
           WHERE ${where.join(" AND ")}
           ORDER BY ${sourceSortSql(sort)}
           LIMIT ?`,
-    args,
+    args: pageArgs,
   });
-  return result.rows.map((row) => {
-    const fromAi = Boolean(row.ai_summary);
-    const summary =
-      (row.ai_summary ? String(row.ai_summary) : "") ||
-      (row.text ? String(row.text) : "") ||
-      "(本文なし)";
-    const postedAt = row.posted_at
-      ? String(row.posted_at)
-      : row.bookmarked_at
-        ? String(row.bookmarked_at)
-        : row.saved_at
-          ? String(row.saved_at)
-          : null;
-    return {
-      id: String(row.id),
-      kind: String(row.kind),
-      summary: summary.slice(0, 180),
-      savedAt: String(row.saved_at),
-      postedAt,
-      triageStatus: String(row.triage_status),
-      authorUsername: row.author_username ? String(row.author_username) : null,
-      url: row.url ? String(row.url) : null,
-      lang: row.lang ? String(row.lang) : null,
-      summaryFromAi: fromAi,
-      mediaId: row.media_id ? String(row.media_id) : null,
-      mediaType: row.media_type ? String(row.media_type) : null,
-    };
-  });
+  const rows = result.rows.map((row) =>
+    mapSourceRow(row as Record<string, unknown>),
+  );
+  const extra = rows.length > take;
+  const items = extra ? rows.slice(0, take) : rows;
+  const last = items[items.length - 1];
+  return {
+    items,
+    nextCursor:
+      extra && last
+        ? encodeSourceCursor(sourceCursorKey(last, sort), last.id)
+        : null,
+  };
+}
+
+export async function listSources(input: {
+  ctx: AccountContext;
+  triage?: string;
+  limit: number;
+  sort?: SourceSort | string;
+  filters?: LibraryFilters;
+}): Promise<SourceListItem[]> {
+  const page = await listSourcesPage(input);
+  return page.items;
 }
 
 export async function listInbox(input: {
@@ -282,24 +335,27 @@ export async function countInboxBulk(
 export async function countSources(input: {
   ctx: AccountContext;
   triage?: string;
+  filters?: LibraryFilters;
 }): Promise<number> {
   if (!isDbConfigured()) {
     return 0;
   }
   await ensureSchema();
-  const scope = sourceScopeSql(contextAccountId(input.ctx));
-  const where = [scope.clause];
-  const args: string[] = [...scope.args];
-  if (input.triage) {
-    where.push("triage_status = ?");
-    args.push(input.triage);
-    if (input.triage === "needs_review") {
-      where.push("(snoozed_until IS NULL OR snoozed_until <= datetime('now'))");
-    }
-  }
+  const { clause, args } = listWhere(input.ctx, input);
   const result = await getClient().execute({
-    sql: `SELECT COUNT(*) AS n FROM sources WHERE ${where.join(" AND ")} LIMIT 1`,
+    sql: `SELECT COUNT(*) AS n FROM sources s WHERE ${clause} LIMIT 1`,
     args,
   });
   return Number(result.rows[0]?.n ?? 0);
+}
+
+export async function listCategories(): Promise<
+  { id: string; name: string }[]
+> {
+  if (!isDbConfigured()) {
+    return [];
+  }
+  await ensureSchema();
+  const names = await loadCategoryNames();
+  return [...names.entries()].map(([id, name]) => ({ id, name }));
 }

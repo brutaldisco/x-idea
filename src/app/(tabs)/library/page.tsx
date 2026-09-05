@@ -1,9 +1,19 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { SourceCard } from "@/components/SourceCard";
-import { SourceSortSelect } from "@/components/SourceSortSelect";
+import { LibraryQueryProvider } from "@/components/LibraryQueryProvider";
+import { LibraryWorkspace } from "@/components/LibraryWorkspace";
+import { SOURCE_PAGE_SIZE } from "@/lib/source-cursor";
+import {
+  hasLibraryFilters,
+  parseLibraryFilters,
+  parseLibraryView,
+} from "@/lib/source-filters";
 import { parseSourceSort } from "@/lib/source-sort";
-import { countSources, listSources } from "@/server/sources/query";
+import {
+  countSources,
+  listCategories,
+  listSourcesPage,
+} from "@/server/sources/query";
 import { contextLabel, getAccountContext } from "@/server/x/context";
 
 export const instant = false;
@@ -11,19 +21,27 @@ export const instant = false;
 async function LibraryBody({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   await connection();
   const params = await searchParams;
+  const query = new URLSearchParams(
+    Object.entries(params).filter((entry): entry is [string, string] =>
+      Boolean(entry[1]),
+    ),
+  );
   const sort = parseSourceSort(params.sort);
+  const view = parseLibraryView(params.view);
+  const filters = parseLibraryFilters(query);
   const ctx = await getAccountContext();
-  const [count, items] = await Promise.all([
-    countSources({ ctx }),
-    listSources({ ctx, limit: 30, sort }),
+  const [count, page, categories] = await Promise.all([
+    countSources({ ctx, filters }),
+    listSourcesPage({ ctx, limit: SOURCE_PAGE_SIZE, sort, filters }),
+    listCategories(),
   ]);
   const label = contextLabel(ctx);
 
-  if (count === 0) {
+  if (count === 0 && !hasLibraryFilters(filters)) {
     return (
       <p className="mt-16 text-center text-ink-2">
         {label}に保存した Source はまだありません。
@@ -32,35 +50,25 @@ async function LibraryBody({
   }
 
   return (
-    <ul className="mt-4 space-y-3">
-      <li className="flex items-center justify-between gap-3 text-ink-2 text-xs">
-        <span>
-          {label} · {count}件
-        </span>
-        <SourceSortSelect value={sort} />
-      </li>
-      {items.map((item) => (
-        <SourceCard
-          key={item.id}
-          id={item.id}
-          authorUsername={item.authorUsername}
-          summary={item.summary}
-          url={item.url}
-          mediaId={item.mediaId}
-          mediaType={item.mediaType}
-          lang={item.lang}
-          summaryFromAi={item.summaryFromAi}
-          postedAt={item.postedAt}
-        />
-      ))}
-    </ul>
+    <LibraryQueryProvider>
+      <LibraryWorkspace
+        items={page.items}
+        nextCursor={page.nextCursor}
+        count={count}
+        label={label}
+        sort={sort}
+        view={view}
+        filters={filters}
+        categories={categories}
+      />
+    </LibraryQueryProvider>
   );
 }
 
 export default function LibraryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   return (
     <main className="px-4 pt-8">
