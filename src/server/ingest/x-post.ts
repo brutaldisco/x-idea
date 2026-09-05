@@ -91,7 +91,41 @@ export async function attachMedia(input: {
       args: [input.postId, media.media_key],
     });
     if (exists.rows[0]) {
-      mediaIds.push(String(exists.rows[0].id));
+      const existingId = String(exists.rows[0].id);
+      const bestUrl = downloadUrlFor({
+        type: media.type,
+        media_url: media.url,
+        variants: media.variants,
+      });
+      if (bestUrl || media.variants || media.url || media.preview_image_url) {
+        await getClient().execute({
+          sql: `UPDATE media_assets SET
+            media_url = COALESCE(?, media_url),
+            preview_url = COALESCE(?, preview_url),
+            variants_json = COALESCE(?, variants_json),
+            duration_ms = COALESCE(?, duration_ms),
+            width = COALESCE(?, width),
+            height = COALESCE(?, height),
+            alt_text = COALESCE(?, alt_text),
+            download_status = CASE
+              WHEN download_status = 'failed' AND ? IS NOT NULL THEN 'pending'
+              ELSE download_status
+            END
+            WHERE id = ?`,
+          args: [
+            bestUrl ?? media.url ?? null,
+            media.preview_image_url ?? null,
+            media.variants ? JSON.stringify(media.variants) : null,
+            media.duration_ms ?? null,
+            media.width ?? null,
+            media.height ?? null,
+            media.alt_text ?? null,
+            bestUrl ?? media.url ?? null,
+            existingId,
+          ],
+        });
+      }
+      mediaIds.push(existingId);
       continue;
     }
     const id = newId();
@@ -138,7 +172,8 @@ export async function enqueueMediaDownloads(
       sql: "SELECT download_status FROM media_assets WHERE id = ? LIMIT 1",
       args: [mediaId],
     });
-    if (String(row.rows[0]?.download_status ?? "") !== "pending") {
+    const status = String(row.rows[0]?.download_status ?? "");
+    if (status !== "pending" && status !== "failed") {
       continue;
     }
     await enqueueJob({

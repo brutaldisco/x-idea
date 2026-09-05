@@ -54,34 +54,60 @@ export function MediaGallery({ items }: { items: MediaItem[] }) {
 }
 
 function MediaTile({ item, onOpen }: { item: MediaItem; onOpen: () => void }) {
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const pending =
     item.downloadStatus === "pending" || item.downloadStatus === "downloading";
   const confirm = item.downloadStatus === "awaiting_confirm";
   const failed = item.downloadStatus === "failed";
+  const showVideo = item.type !== "photo" && !videoFailed;
+  const showImage = item.type === "photo" && !imageFailed;
 
   return (
     <figure className="overflow-hidden rounded-xl border border-line bg-paper">
       {item.type === "photo" ? (
-        <button type="button" onClick={onOpen} className="block w-full">
-          <Image
-            src={item.src}
-            alt={item.altText ?? "画像"}
-            width={item.width ?? 1200}
-            height={item.height ?? 800}
-            unoptimized
-            className="max-h-[32rem] w-full object-contain"
-          />
-        </button>
-      ) : (
+        showImage ? (
+          <button type="button" onClick={onOpen} className="block w-full">
+            <Image
+              src={item.src}
+              alt={item.altText ?? "画像"}
+              width={item.width ?? 1200}
+              height={item.height ?? 800}
+              unoptimized
+              className="max-h-[32rem] w-full object-contain"
+              onError={() => {
+                setImageFailed(true);
+              }}
+            />
+          </button>
+        ) : (
+          <div className="flex min-h-40 items-center justify-center bg-paper-2 px-3 py-6 text-center text-ink-2 text-sm">
+            画像を読み込めませんでした。X で開いて確認してください。
+          </div>
+        )
+      ) : showVideo ? (
         <video
           controls
+          playsInline
           preload="metadata"
-          poster={item.previewUrl ?? undefined}
+          poster={item.previewSrc}
           src={item.src}
           className="max-h-[32rem] w-full bg-ink"
+          onError={() => {
+            setVideoFailed(true);
+          }}
         >
           <track kind="captions" />
         </video>
+      ) : (
+        <Image
+          src={item.previewSrc}
+          alt={item.altText ?? "動画プレビュー"}
+          width={item.width ?? 1200}
+          height={item.height ?? 800}
+          unoptimized
+          className="max-h-[32rem] w-full object-contain"
+        />
       )}
       {item.altText ? (
         <figcaption className="px-3 py-2 text-ink-2 text-xs">
@@ -120,12 +146,19 @@ function MediaTile({ item, onOpen }: { item: MediaItem; onOpen: () => void }) {
         </div>
       ) : null}
       {pending ? (
-        <p className="px-3 py-2 text-ink-2 text-xs">ローカル保存中…</p>
+        <p className="px-3 py-2 text-ink-2 text-xs">
+          ローカル保存中…（表示はこのままできます）
+        </p>
       ) : null}
       {failed ? (
         <p className="px-3 py-2 text-danger text-xs">
-          保存に失敗しました。X の画像で表示しています。
+          保存に失敗しました。取得した画像・動画で表示しています。
           {item.downloadError ? `（${item.downloadError}）` : ""}
+        </p>
+      ) : null}
+      {videoFailed ? (
+        <p className="px-3 py-2 text-ink-2 text-xs">
+          動画を再生できません。プレビューを表示しています。
         </p>
       ) : null}
     </figure>

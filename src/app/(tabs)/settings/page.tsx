@@ -4,11 +4,19 @@ import { Suspense } from "react";
 import { AccountSyncToggle } from "@/components/AccountSyncToggle";
 import { DisconnectX } from "@/components/DisconnectX";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
+import { MediaFolderLink } from "@/components/MediaFolderLink";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
+import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { UsageMeters } from "@/components/UsageMeters";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
 import { getHealth } from "@/server/health";
-import { getContextSettings } from "@/server/settings";
+import {
+  accountMediaDir,
+  isLocalMediaEnabled,
+  mediaFolderHref,
+  mediaRoot,
+} from "@/server/media/paths";
+import { getContextSettings, getSyncSettings } from "@/server/settings";
 import { getUsageDashboard } from "@/server/usage/dashboard";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
 
@@ -18,16 +26,32 @@ async function SettingsBody({
   searchParams: Promise<{ x?: string }>;
 }) {
   await connection();
-  const [health, accounts, usage, params, flags] = await Promise.all([
+  const [health, accounts, usage, params, flags, sync] = await Promise.all([
     getHealth(),
     listXAccounts(),
     getUsageDashboard(),
     searchParams,
     getContextSettings(),
+    getSyncSettings(),
   ]);
   const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
     <div className="space-y-3">
+      <article
+        className="notranslate rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
+        lang="ja"
+        translate="no"
+      >
+        <h2 className="font-semibold">Chrome で原文を読む</h2>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink-2 text-sm">
+          <li>Library か Inbox から投稿を開く</li>
+          <li>
+            原文の下の「日本語に翻訳」を押す（Chrome
+            内蔵。サーバーには送らない）
+          </li>
+          <li>出ないときは「原文を選択」→ 右クリック →「日本語に翻訳」</li>
+        </ol>
+      </article>
       <UsageMeters data={usage} />
       {params.x === "missing" ? (
         <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">
@@ -107,6 +131,7 @@ async function SettingsBody({
           </p>
         )}
       </article>
+      <MediaFoldersCard accounts={accounts} />
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">X API</h2>
@@ -116,10 +141,15 @@ async function SettingsBody({
         </div>
         <p className="mt-2 text-ink-2 text-sm">
           全体トグルと、アカウントごとの「同期（課金）」が両方 ON
-          のときだけブックマークを取り込みます。初回は最大 500 件です。
+          のときだけブックマークを取り込みます。1
+          回の同期で取り込む件数は下のフォームで調整できます。
         </p>
         <XApiEnabledToggle enabled={health.x_api_enabled} />
         <ManualSyncButton disabled={!health.x_api_enabled} />
+        <SyncLimitsForm
+          syncMaxPerRun={sync.syncMaxPerRun}
+          mediaDownloadPerTick={sync.mediaDownloadPerTick}
+        />
         <SettingsFlagToggle
           field="thread_expand_enabled"
           enabled={flags.threadExpandEnabled}
@@ -149,6 +179,63 @@ async function SettingsBody({
         note="https://x-idea.vercel.app · hnd1"
       />
     </div>
+  );
+}
+
+function MediaFoldersCard({
+  accounts,
+}: {
+  accounts: { id: string; username: string }[];
+}) {
+  const enabled = isLocalMediaEnabled();
+  const root = mediaRoot();
+  return (
+    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold">メディアの保存先</h2>
+        <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
+          {enabled ? "ローカル" : "保存なし"}
+        </span>
+      </div>
+      {enabled ? (
+        <>
+          <p className="mt-2 text-ink-2 text-sm">
+            画像・動画はアカウントごとのフォルダに保存します。PC
+            を移すときは、そのアカウントのフォルダだけを新しい PC
+            の同じ相対パスへコピーしてください。
+          </p>
+          <div className="mt-3 rounded-xl border border-line bg-paper p-3">
+            <p className="text-ink-2 text-xs">ルート</p>
+            <MediaFolderLink href={mediaFolderHref()} path={root} />
+          </div>
+          {accounts.length > 0 ? (
+            <ul className="mt-3 space-y-2">
+              {accounts.map((account) => (
+                <li
+                  key={account.id}
+                  className="rounded-xl border border-line bg-paper p-3"
+                >
+                  <p className="text-sm">@{account.username}</p>
+                  <MediaFolderLink
+                    href={mediaFolderHref(account.id)}
+                    path={accountMediaDir(account.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-ink-2 text-xs">
+              アカウントを連携すると、ここに個別フォルダが出ます。
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="mt-2 text-ink-2 text-sm">
+          この環境（Vercel など）ではファイルを保存しません。ローカル実行時に
+          Settings でパスを確認できます。
+        </p>
+      )}
+    </article>
   );
 }
 

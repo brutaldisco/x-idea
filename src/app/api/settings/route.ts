@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
-import { setPaidFlag, setXApiEnabled } from "@/server/settings";
+import { setPaidFlag, setSyncLimits, setXApiEnabled } from "@/server/settings";
 
 export const instant = false;
 
@@ -18,6 +18,8 @@ export async function PATCH(request: Request) {
       x_api_enabled?: boolean;
       thread_expand_enabled?: boolean;
       reply_context_enabled?: boolean;
+      sync_max_per_run?: number;
+      media_download_per_tick?: number;
     };
     if (typeof body.x_api_enabled === "boolean") {
       await setXApiEnabled(body.x_api_enabled);
@@ -29,6 +31,16 @@ export async function PATCH(request: Request) {
     }
     if (typeof body.reply_context_enabled === "boolean") {
       await setPaidFlag("reply_context_enabled", body.reply_context_enabled);
+      return Response.json({ ok: true });
+    }
+    if (
+      typeof body.sync_max_per_run === "number" ||
+      typeof body.media_download_per_tick === "number"
+    ) {
+      await setSyncLimits({
+        syncMaxPerRun: body.sync_max_per_run,
+        mediaDownloadPerTick: body.media_download_per_tick,
+      });
       return Response.json({ ok: true });
     }
     return Response.json(

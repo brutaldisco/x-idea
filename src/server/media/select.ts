@@ -70,6 +70,47 @@ export function downloadUrlFor(media: {
   return pickBestMp4Url(media.variants ?? []) ?? media.media_url ?? null;
 }
 
+export function previewUrlFor(media: {
+  type: string;
+  media_url?: string | null;
+  preview_url?: string | null;
+}): string | null {
+  if (media.preview_url) {
+    return media.preview_url;
+  }
+  if (media.type === "photo" && media.media_url) {
+    return media.media_url;
+  }
+  return null;
+}
+
+export function remoteUrlFor(media: {
+  type: string;
+  media_url?: string | null;
+  preview_url?: string | null;
+  variants?: XMediaVariant[];
+  previewOnly?: boolean;
+}): string | null {
+  if (media.previewOnly) {
+    return previewUrlFor(media);
+  }
+  return downloadUrlFor(media) ?? previewUrlFor(media);
+}
+
+export function needsTweetRefresh(media: {
+  type: string;
+  media_url?: string | null;
+  variants?: XMediaVariant[];
+  variants_json?: string | null;
+}): boolean {
+  if (media.type === "photo") {
+    return !media.media_url;
+  }
+  return (
+    media.variants_json == null && pickBestMp4Url(media.variants ?? []) == null
+  );
+}
+
 export function extensionFor(media: {
   type: string;
   url: string | null;

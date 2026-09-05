@@ -1,7 +1,9 @@
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  accountMediaDir,
   isLocalMediaEnabled,
+  mediaFolderHref,
   mediaRoot,
   relativeMediaPath,
   resolveMediaPath,
@@ -58,6 +60,14 @@ describe("relativeMediaPath / resolveMediaPath", () => {
     expect(resolveMediaPath("acc/2001/3_111.jpg")).toBe(
       join("/tmp/media-root", "acc/2001/3_111.jpg"),
     );
+  });
+
+  it("keeps each account in its own folder", () => {
+    process.env.MEDIA_ROOT = "/tmp/media-root";
+    expect(accountMediaDir("acc_a")).toBe(join("/tmp/media-root", "acc_a"));
+    expect(accountMediaDir("acc_b")).toBe(join("/tmp/media-root", "acc_b"));
+    expect(mediaFolderHref("acc_a")).toBe("/api/media/folder?account=acc_a");
+    expect(mediaFolderHref()).toBe("/api/media/folder");
   });
 });
 

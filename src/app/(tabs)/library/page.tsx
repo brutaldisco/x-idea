@@ -35,6 +35,10 @@ async function LibraryBody() {
           authorUsername={item.authorUsername}
           summary={item.summary}
           url={item.url}
+          mediaId={item.mediaId}
+          mediaType={item.mediaType}
+          lang={item.lang}
+          summaryFromAi={item.summaryFromAi}
         />
       ))}
     </ul>

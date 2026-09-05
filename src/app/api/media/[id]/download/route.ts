@@ -1,9 +1,9 @@
 import { connection } from "next/server";
-import { getClient } from "@/db/client";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
 import { enqueueJob } from "@/server/jobs/queue";
 import { runJobs } from "@/server/jobs/runner";
+import { accountIdForMedia } from "@/server/media/account";
 import {
   confirmMediaDownload,
   markMediaSkipped,
@@ -11,24 +11,6 @@ import {
 
 export const instant = false;
 export const maxDuration = 60;
-
-async function accountIdForMedia(mediaId: string): Promise<string | null> {
-  const result = await getClient().execute({
-    sql: `SELECT COALESCE(s.x_account_id, (
-            SELECT x_account_id FROM sources
-            WHERE x_post_id IN (
-              SELECT x_post_id FROM media_assets WHERE id = ? LIMIT 1
-            ) LIMIT 1
-          )) AS account_id
-          FROM media_assets m
-          JOIN x_posts p ON p.id = m.x_post_id
-          LEFT JOIN sources s ON s.x_post_id = p.id
-          WHERE m.id = ?
-          LIMIT 1`,
-    args: [mediaId, mediaId],
-  });
-  return result.rows[0]?.account_id ? String(result.rows[0].account_id) : null;
-}
 
 export async function POST(
   request: Request,

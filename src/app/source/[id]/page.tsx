@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
+import { after, connection } from "next/server";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
 import { PostBlock } from "@/components/PostBlock";
+import { runJobs } from "@/server/jobs/runner";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { getContextSettings } from "@/server/settings";
 import { getSourceDetail } from "@/server/sources/detail";
@@ -27,6 +28,9 @@ export default async function SourcePage({
   }
   if (source.xAccountId) {
     await enqueuePendingMediaDownloads(source.xAccountId, 16);
+    after(() => {
+      void runJobs({ max: 3 });
+    });
   }
 
   return (
@@ -37,7 +41,13 @@ export default async function SourcePage({
         </Link>
         <p className="text-ink-2 text-xs">{source.availability}</p>
       </div>
-      <h1 className="mt-4 font-semibold text-2xl">原文</h1>
+      <h1 className="mt-4 font-semibold text-2xl" lang="ja" translate="no">
+        原文
+      </h1>
+      <p className="mt-1 text-ink-2 text-sm" lang="ja" translate="no">
+        英語などの原文は、投稿下の「日本語に翻訳」か、「原文を選択」→ 右クリック
+        → 日本語に翻訳で読めます。
+      </p>
 
       {source.post.isReply ? (
         source.parent ? (
@@ -124,14 +134,18 @@ export default async function SourcePage({
       ) : null}
 
       {source.aiSummary ? (
-        <section className="mt-8 rounded-[var(--radius-card)] border border-line bg-ai-soft p-5">
+        <section
+          className="notranslate mt-8 rounded-[var(--radius-card)] border border-line bg-ai-soft p-5"
+          lang="ja"
+          translate="no"
+        >
           <p className="text-ai text-xs">✦ AI</p>
           <p className="mt-2 text-sm">{source.aiSummary}</p>
         </section>
       ) : null}
 
       {source.userNote ? (
-        <section className="mt-6 border-ink border-l-2 pl-4">
+        <section className="mt-6 border-ink border-l-2 pl-4" translate="no">
           <p className="text-ink-2 text-xs">自分のメモ</p>
           <p className="mt-1 whitespace-pre-wrap text-sm">{source.userNote}</p>
         </section>

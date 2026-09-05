@@ -1,7 +1,9 @@
+import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { OpenInX } from "@/components/OpenInX";
+import { translatableProps } from "@/lib/chrome-translate";
 import { listSources } from "@/server/sources/query";
 import { getTodayState } from "@/server/today";
 import { type AccountContext, contextLabel } from "@/server/x/context";
@@ -145,6 +147,22 @@ async function RecentSources({
             key={item.id}
             className="w-56 shrink-0 rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
           >
+            {item.mediaId ? (
+              <Link href={`/source/${item.id}`} className="mb-2 block">
+                <Image
+                  src={
+                    item.mediaType === "photo"
+                      ? `/api/media/${item.mediaId}`
+                      : `/api/media/${item.mediaId}?preview=1`
+                  }
+                  alt=""
+                  width={448}
+                  height={224}
+                  unoptimized
+                  className="h-28 w-full rounded-lg object-cover"
+                />
+              </Link>
+            ) : null}
             <div className="flex items-start justify-between gap-2">
               {item.authorUsername ? (
                 <p className="text-ink-2 text-xs">@{item.authorUsername}</p>
@@ -156,6 +174,7 @@ async function RecentSources({
             <Link
               href={`/source/${item.id}`}
               className="mt-1 line-clamp-4 block text-sm hover:underline"
+              {...translatableProps(item.lang, item.summaryFromAi)}
             >
               {item.summary}
             </Link>

@@ -38,4 +38,4 @@ pnpm dev
 - Gemini の日次クォータは太平洋時間 0:00（JST 16:00/17:00）にリセット。
 - MCP エンドポイント: `https://x-idea.vercel.app/api/mcp`（Settings でトークン発行、`Authorization: Bearer`）。
 - 有料プラン（X クレジット、Gemini 課金、スレッド展開、返信取得、Anthropic/OpenAI）はすべて Settings トグル既定 OFF。契約後に人間が ON にする。
-- 画像・動画の実ファイルはローカルの `MEDIA_ROOT`（既定 `./data/media`）に保存する。Vercel では保存せず X CDN を表示する。引っ越しは同じ相対パスごとコピーする。
+- 画像・動画の実ファイルはローカルの `MEDIA_ROOT`（既定 `./data/media`）に **アカウントごと** 保存する。Settings にパスとフォルダを開くリンクがある。引っ越しは `{MEDIA_ROOT}/{x_account_id}/` を同じ相対パスへコピーする。Vercel では保存せずプロキシ表示する。
