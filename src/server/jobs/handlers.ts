@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { articleFetch } from "@/server/jobs/handlers/articleFetch";
 import { expandThread } from "@/server/jobs/handlers/expandThread";
 import { fetchParent } from "@/server/jobs/handlers/fetchParent";
 import { mediaDownload } from "@/server/jobs/handlers/mediaDownload";
@@ -24,6 +25,9 @@ export async function runHandler(job: JobRow): Promise<void> {
     case "reply_context":
       await replyContext(payload);
       return;
+    case "article_fetch":
+      await articleFetch(payload);
+      return;
     default:
       logger.info({ jobId: job.id, type: job.type }, "job stub");
   }
@@ -35,6 +39,7 @@ function parsePayload(raw: string): {
   media_id?: string;
   account_id?: string;
   tweet_id?: string;
+  article_id?: string;
   conversation_id?: string;
   source_id?: string;
   author_username?: string | null;
@@ -56,6 +61,8 @@ function parsePayload(raw: string): {
       account_id:
         typeof value.account_id === "string" ? value.account_id : undefined,
       tweet_id: typeof value.tweet_id === "string" ? value.tweet_id : undefined,
+      article_id:
+        typeof value.article_id === "string" ? value.article_id : undefined,
       conversation_id:
         typeof value.conversation_id === "string"
           ? value.conversation_id

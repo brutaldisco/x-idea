@@ -22,6 +22,23 @@ export async function getSyncSettings(): Promise<{
   };
 }
 
+export async function getExcludedDomains(): Promise<string[]> {
+  await ensureSchema();
+  const result = await getClient().execute(
+    "SELECT excluded_domains_json FROM settings WHERE id = 1 LIMIT 1",
+  );
+  try {
+    const parsed = JSON.parse(
+      String(result.rows[0]?.excluded_domains_json ?? "[]"),
+    );
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getContextSettings(): Promise<{
   xApiEnabled: boolean;
   threadExpandEnabled: boolean;

@@ -1,6 +1,7 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
+import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
 import { ingestBookmark, markUnavailable } from "@/server/ingest/bookmark";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { getSyncSettings } from "@/server/settings";
@@ -103,6 +104,7 @@ async function syncOneAccount(
       account.id,
       settings.mediaDownloadPerTick,
     );
+    await enqueuePendingArticleFetches(8);
     await markXAccountSynced(account.id, newHead);
     await writeRun({
       runId,

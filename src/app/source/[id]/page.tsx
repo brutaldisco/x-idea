@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after, connection } from "next/server";
+import { ArticleBlock } from "@/components/ArticleBlock";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
 import { PostBlock } from "@/components/PostBlock";
+import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
 import { runJobs } from "@/server/jobs/runner";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { getContextSettings } from "@/server/settings";
@@ -26,12 +28,13 @@ export default async function SourcePage({
   if (!source) {
     notFound();
   }
+  await enqueuePendingArticleFetches(8, source.id);
   if (source.xAccountId) {
     await enqueuePendingMediaDownloads(source.xAccountId, 16);
-    after(() => {
-      void runJobs({ max: 3 });
-    });
   }
+  after(() => {
+    void runJobs({ max: 4 });
+  });
 
   return (
     <main className="px-6 pt-8 pb-10">
@@ -114,22 +117,21 @@ export default async function SourcePage({
 
       {source.articles.length > 0 ? (
         <section className="mt-8">
-          <h2 className="font-semibold text-lg">リンク</h2>
-          <ul className="mt-2 space-y-2">
+          <h2 className="font-semibold text-lg" lang="ja" translate="no">
+            記事
+          </h2>
+          <div className="mt-3 space-y-3">
             {source.articles.map((article) => (
-              <li key={article.id}>
-                <a
-                  href={article.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-accent text-sm hover:underline"
-                >
-                  {article.title || article.url}
-                </a>
-                <span className="ml-2 text-ink-2 text-xs">{article.scope}</span>
-              </li>
+              <ArticleBlock
+                key={article.id}
+                title={article.title}
+                url={article.url}
+                scope={article.scope}
+                description={article.description}
+                contentText={article.contentText}
+              />
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 

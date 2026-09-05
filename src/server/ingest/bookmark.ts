@@ -1,7 +1,8 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
-import { hostOf, normalizeUrl } from "@/server/ingest/url";
+import { enqueueArticleFetch } from "@/server/fetch/enqueue-pending";
+import { hostOf, normalizeUrl, shouldFetchArticle } from "@/server/ingest/url";
 import {
   attachMedia,
   enqueueMediaDownloads,
@@ -51,6 +52,9 @@ async function upsertFts(sourceId: string, text: string): Promise<void> {
 async function attachUrls(sourceId: string, urls: string[]): Promise<void> {
   const client = getClient();
   for (const raw of urls) {
+    if (!shouldFetchArticle(raw)) {
+      continue;
+    }
     const normalized = normalizeUrl(raw);
     const existing = await client.execute({
       sql: "SELECT id FROM articles WHERE normalized_url = ? LIMIT 1",
@@ -70,6 +74,7 @@ async function attachUrls(sourceId: string, urls: string[]): Promise<void> {
             VALUES (?, ?, ?)`,
       args: [sourceId, articleId, raw],
     });
+    await enqueueArticleFetch(articleId);
   }
 }
 

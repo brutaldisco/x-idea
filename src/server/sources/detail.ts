@@ -49,7 +49,14 @@ export type SourceDetail = {
   parent: PostCard | null;
   thread: PostCard[];
   replies: PostCard[];
-  articles: { id: string; title: string | null; url: string; scope: string }[];
+  articles: {
+    id: string;
+    title: string | null;
+    url: string;
+    scope: string;
+    description: string | null;
+    contentText: string | null;
+  }[];
 };
 
 function asMedia(row: Record<string, unknown>): MediaItem {
@@ -236,7 +243,8 @@ export async function getSourceDetail(
   }
 
   const articles = await getClient().execute({
-    sql: `SELECT a.id, a.title, a.original_url, a.fetch_scope
+    sql: `SELECT a.id, a.title, a.original_url, a.fetch_scope, a.description,
+                 a.content_text
           FROM source_articles sa
           JOIN articles a ON a.id = sa.article_id
           WHERE sa.source_id = ?
@@ -260,6 +268,8 @@ export async function getSourceDetail(
       title: item.title ? String(item.title) : null,
       url: String(item.original_url),
       scope: String(item.fetch_scope),
+      description: item.description ? String(item.description) : null,
+      contentText: item.content_text ? String(item.content_text) : null,
     })),
   };
 }

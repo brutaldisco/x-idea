@@ -140,7 +140,9 @@ async function RecentSources({
   }
   return (
     <section>
-      <p className="mb-2 text-ink-2 text-xs">最近の Source · {label}</p>
+      <p className="mb-2 text-ink-2 text-xs">
+        最近の Source · {label} · 新しい順
+      </p>
       <ul className="flex gap-3 overflow-x-auto pb-1">
         {items.map((item) => (
           <li

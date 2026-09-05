@@ -25,6 +25,9 @@ async function InboxBody() {
 
   return (
     <ul className="mt-4 space-y-3">
+      <li className="text-ink-2 text-xs">
+        {label} · {count}件 · 新しい順
+      </li>
       {items.map((item) => (
         <SourceCard
           key={item.id}

@@ -46,7 +46,8 @@ export async function listSources(input: {
           FROM sources s
           LEFT JOIN x_posts p ON p.id = s.x_post_id
           WHERE ${where.join(" AND ")}
-          ORDER BY s.saved_at DESC, s.id DESC
+          ORDER BY COALESCE(p.posted_at, s.bookmarked_at, s.saved_at) DESC,
+                   s.id DESC
           LIMIT ?`,
     args,
   });

@@ -344,7 +344,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 - **フィルタバー**：カテゴリ（階層ピッカー）、情報タイプ、状態（未読/読了/実践予定/実践済/KC化）、タグ、期間、`kind`（投稿/記事/手動）。Lens はフィルタバーにピン留め。
 - **表示**：リスト（密）／グリッド（サムネ重視）／**Atlas**。
-- **並び**：保存日、重要度、関連度（Lens 時）。
+- **並び**：既定は投稿日時の新しい順（`posted_at`。取り込み順の `saved_at` ではない）。重要度・関連度（Lens 時）は後続。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
 - **カーソルページネーション**：30件、Intersection Observer で追加読み込み。
 - **Atlas（P2）**：`<canvas>`（`d3-force` + `d3-zoom`、または `pixi.js`）。ノード＝Source（最大 3,000 表示、超過は代表点に集約）。座標はサーバーで週次計算（PCA→UMAP 相当の近似、`source_layout` テーブル）。クラスタ命名は Flash-Lite。タップ→クラスタ内リスト、ロングタップ→そのクラスタを Lens 化。タイムスライダーで `saved_at` によるフェード。PC 優先、モバイルは簡易（ピンチズームのみ）。
@@ -364,7 +364,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 - **ヒーロー**：投稿者アバター・名前・日時・X で開く。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。
-- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、スレッド展開があれば連結表示（P2）。4 時間超の動画は確認 UI（14.6）。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。Reader に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。X の自動翻訳文は API に無い。原文カラムは書き換えない。
+- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、スレッド展開があれば連結表示（P2）。4 時間超の動画は確認 UI（14.6）。**動画はページ離脱・タブ非表示・画面外で停止**。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。Reader に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。X の自動翻訳文は API に無い。原文カラムは書き換えない。
 - **記事**：リーダー表示。`fetch_scope` を先頭にバッジ（全文／一部／概要のみ／失敗）。
 - **要約**：「✦ AI」バッジ、3行要約、情報タイプ、重要度、タグ、カテゴリ（確信度）。「AI で再処理」。
 - **Marginalia（P2）**：記事・原文の重要文を AI がハイライト（薄いマーカー色）、余白（PC は右カラム、モバイルはハイライトタップで下部シート）に注釈。ユーザーは選択→「ハイライト」「メモ」「これについて聞く」。
@@ -732,14 +732,14 @@ X データダウンロードからの手動補完、Quick Capture による手�
 ```
 article_fetch(url):
   1. URL 正規化（t.co 展開、UTM 除去、短縮 URL 解決 上限5、末尾スラッシュ・フラグメント除去）
-  2. articles.normalized_url で重複確認
+  2. articles.normalized_url で重複確認。x.com / twitter.com は記事化しない（15.3）
   3. 除外ドメインなら metadata_only
   4. robots.txt 確認（robots-parser）→ 拒否なら metadata_only
-  5. HTML 取得（UA: "MarginaliaBot/1.0 (+contact)", 15秒, 3MB, text/html のみ, リダイレクト5）
+  5. HTML 取得（UA: "MarginaliaBot/1.0 (+https://x-idea.vercel.app)", 15秒, 3MB, text/html のみ, リダイレクト5）
   6. OGP / Twitter Card / JSON-LD → メタデータ
   7. Readability で本文 → sanitize-html → content_html / content_text
   8. 短文（<400字）/ ペイウォール検出 → partial / metadata_only
-  9. 保存、enrich_batch に再投入（記事付きで再要約が必要な場合）
+  9. 保存。enrich_batch 再投入は T-202 以降
 ```
 
 ### 15.2 `fetch_scope`
@@ -1569,7 +1569,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 
 ### 21.3 共通規約
 
-- 一覧はカーソルページネーション（`saved_at DESC, id DESC`、`limit` 既定 30、最大 100）。**全件 SELECT 禁止**。
+- 一覧はカーソルページネーション（既定 `COALESCE(posted_at, bookmarked_at, saved_at) DESC, id DESC`、`limit` 既定 30、最大 100）。**全件 SELECT 禁止**。
 - エラー形：`{ error: { code, message, retryable } }`。
 - 変更系はクライアント楽観更新＋失敗時ロールバック。
 - `/api/jobs/tick` 以外の内部 API に同一オリジンチェック（`Origin`/`Sec-Fetch-Site`）。

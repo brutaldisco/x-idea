@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MediaItem } from "@/server/sources/detail";
 
 function confirmDownload(id: string, action: "start" | "skip") {
@@ -53,6 +53,82 @@ export function MediaGallery({ items }: { items: MediaItem[] }) {
   );
 }
 
+function stopVideo(video: HTMLVideoElement): void {
+  video.pause();
+  try {
+    video.currentTime = 0;
+  } catch {
+    // ignore seek errors on unloaded media
+  }
+}
+
+function MediaVideo({
+  src,
+  poster,
+  onError,
+}: {
+  src: string;
+  poster: string;
+  onError: () => void;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) {
+      return;
+    }
+
+    const pause = () => {
+      if (!video.paused) {
+        video.pause();
+      }
+    };
+    const leavePage = () => {
+      stopVideo(video);
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        leavePage();
+      }
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => !entry.isIntersecting)) {
+          pause();
+        }
+      },
+      { threshold: 0.2 },
+    );
+    observer.observe(video);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", leavePage);
+
+    return () => {
+      leavePage();
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", leavePage);
+    };
+  }, []);
+
+  return (
+    <video
+      ref={ref}
+      controls
+      playsInline
+      preload="metadata"
+      poster={poster}
+      src={src}
+      className="max-h-[32rem] w-full bg-ink"
+      onError={onError}
+    >
+      <track kind="captions" />
+    </video>
+  );
+}
+
 function MediaTile({ item, onOpen }: { item: MediaItem; onOpen: () => void }) {
   const [videoFailed, setVideoFailed] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
@@ -86,19 +162,13 @@ function MediaTile({ item, onOpen }: { item: MediaItem; onOpen: () => void }) {
           </div>
         )
       ) : showVideo ? (
-        <video
-          controls
-          playsInline
-          preload="metadata"
-          poster={item.previewSrc}
+        <MediaVideo
           src={item.src}
-          className="max-h-[32rem] w-full bg-ink"
+          poster={item.previewSrc}
           onError={() => {
             setVideoFailed(true);
           }}
-        >
-          <track kind="captions" />
-        </video>
+        />
       ) : (
         <Image
           src={item.previewSrc}
