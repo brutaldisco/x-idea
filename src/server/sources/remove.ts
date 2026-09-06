@@ -4,8 +4,16 @@ import { ensureSchema } from "@/db/ensure";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { resolveMediaPath, safeMediaSegment } from "@/server/media/paths";
+import {
+  advanceSyncHeadIfNeeded,
+  rememberDismissedBookmark,
+} from "@/server/sources/dismiss";
 import { sourceScopeSql } from "@/server/sources/scope";
+import { getXAccountSecret } from "@/server/x/account";
+import { removeBookmark } from "@/server/x/client";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
+import { hasOauthScope } from "@/server/x/pkce";
+import { ensureValidToken } from "@/server/x/token";
 
 async function deleteFts(sourceId: string): Promise<void> {
   try {
@@ -95,6 +103,12 @@ export async function deleteSource(
     item.local_path ? [String(item.local_path)] : [],
   );
 
+  const dismissAccountId = xAccountId ?? contextAccountId(ctx);
+  if (tweetId && dismissAccountId) {
+    await rememberDismissedBookmark(dismissAccountId, tweetId);
+    await tryUnbookmark(dismissAccountId, tweetId);
+  }
+
   await unlinkLocalMedia(paths);
   await removeTweetMediaDir(xAccountId, tweetId);
   await deleteFts(sourceId);
@@ -140,5 +154,39 @@ export async function deleteSource(
     }
   }
 
+  if (tweetId && dismissAccountId) {
+    await advanceSyncHeadIfNeeded(dismissAccountId, tweetId);
+  }
+
   logger.info({ sourceId }, "source deleted");
+}
+
+async function tryUnbookmark(
+  accountId: string,
+  tweetId: string,
+): Promise<void> {
+  const account = await getXAccountSecret(accountId);
+  if (!account) {
+    return;
+  }
+  const scopes = await getClient().execute({
+    sql: "SELECT scopes_json FROM x_account WHERE id = ? LIMIT 1",
+    args: [accountId],
+  });
+  if (
+    !hasOauthScope(
+      scopes.rows[0]?.scopes_json ? String(scopes.rows[0].scopes_json) : null,
+      "bookmark.write",
+    )
+  ) {
+    logger.info({ accountId }, "unbookmark skipped: no bookmark.write");
+    return;
+  }
+  try {
+    const token = await ensureValidToken(account);
+    await removeBookmark(token, account.xUserId, tweetId);
+    logger.info({ accountId, tweetId }, "x bookmark removed");
+  } catch (error) {
+    logger.warn({ err: error, tweetId }, "unbookmark failed");
+  }
 }

@@ -1,5 +1,5 @@
 import type { EnrichItemOutput } from "@/server/ai/enrich-schema";
-import type { InfoType } from "@/server/ai/info-types";
+import { INFO_TYPES } from "@/server/ai/info-types";
 
 export type AppliedEnrich = {
   sourceId: string;
@@ -10,7 +10,7 @@ export type AppliedEnrich = {
   newCategorySuggestion: string | null;
   uncertaintyReason: string | null;
   tags: string[];
-  infoType: InfoType;
+  infoType: string;
   infoTypeConfidence: number;
   importance: 1 | 2 | 3;
   language: string;
@@ -86,6 +86,19 @@ export function pickKeySentences(
   return out;
 }
 
+function pickInfoType(raw: string, allowed?: ReadonlySet<string>): string {
+  if (!allowed || allowed.size === 0) {
+    return (INFO_TYPES as readonly string[]).includes(raw) ? raw : "idea";
+  }
+  if (allowed.has(raw)) {
+    return raw;
+  }
+  if (allowed.has("idea")) {
+    return "idea";
+  }
+  return [...allowed][0] ?? "idea";
+}
+
 export function decideTriage(
   categoryId: string | null,
   confidence: number,
@@ -103,6 +116,7 @@ export function applyEnrichItem(
     sourceId: string;
     corpus: string;
     categoryIds: ReadonlySet<string>;
+    infoTypeIds?: ReadonlySet<string>;
     threshold: number;
     aliases?: ReadonlyMap<string, string>;
   },
@@ -134,7 +148,7 @@ export function applyEnrichItem(
     newCategorySuggestion: item.new_category_suggestion?.trim() || null,
     uncertaintyReason: triage === "needs_review" ? reason : null,
     tags: uniqueTags.length > 0 ? uniqueTags : ["未分類"],
-    infoType: item.info_type,
+    infoType: pickInfoType(item.info_type, input.infoTypeIds),
     infoTypeConfidence: item.info_type_confidence,
     importance: item.importance,
     language: item.language.slice(0, 16),

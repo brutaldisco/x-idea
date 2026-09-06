@@ -19,12 +19,14 @@ import {
 } from "@/server/ai/prompts/enrich";
 import { attachTags, loadTagContext } from "@/server/ai/tags";
 import { enqueueEnrichBatch } from "@/server/jobs/enrich";
+import { taxonomyForAccount } from "@/server/taxonomy";
 
 const BATCH_SIZE = 5;
 
 type BatchSource = EnrichPromptSource & {
   language: string | null;
   corpus: string;
+  xAccountId: string | null;
 };
 
 export async function enrichBatch(): Promise<void> {
@@ -33,36 +35,57 @@ export async function enrichBatch(): Promise<void> {
     return;
   }
 
-  const [categories, tagContext, settings] = await Promise.all([
-    loadCategories(),
+  const [tagContext, settings] = await Promise.all([
     loadTagContext(),
     loadThreshold(),
   ]);
-  const categoryIds = new Set(categories.map((row) => row.id));
-  const raw = await classifyBatch(sources, categories, tagContext.frequent);
-  const byId = new Map(raw.items.map((item) => [item.source_id, item]));
+  const groups = new Map<string, BatchSource[]>();
+  for (const source of sources) {
+    const key = source.xAccountId ?? "";
+    const list = groups.get(key) ?? [];
+    list.push(source);
+    groups.set(key, list);
+  }
   const batchId = newId();
 
-  for (const source of sources) {
-    const item = byId.get(source.id);
-    const applied = item
-      ? applyEnrichItem(item, {
-          sourceId: source.id,
-          corpus: source.corpus,
-          categoryIds,
-          threshold: settings.threshold,
-          aliases: tagContext.aliases,
-        })
-      : fallbackEnrich({
-          sourceId: source.id,
-          corpus: source.corpus,
-          language: source.language,
-        });
-    await persistEnrichment(applied, {
-      batchId,
-      model: settings.model,
-      output: item ?? applied,
-    });
+  for (const [accountKey, group] of groups) {
+    const taxonomy = await taxonomyForAccount(accountKey || null);
+    const categories = taxonomy.categories.map((row) => ({
+      id: row.id,
+      path: row.name,
+      description: null,
+    }));
+    const categoryIds = new Set(taxonomy.categories.map((row) => row.id));
+    const infoTypeIds = new Set(taxonomy.infoTypes.map((row) => row.id));
+    const raw = await classifyBatch(
+      group,
+      categories,
+      tagContext.frequent,
+      taxonomy.infoTypes,
+    );
+    const byId = new Map(raw.items.map((item) => [item.source_id, item]));
+    for (const source of group) {
+      const item = byId.get(source.id);
+      const applied = item
+        ? applyEnrichItem(item, {
+            sourceId: source.id,
+            corpus: source.corpus,
+            categoryIds,
+            infoTypeIds,
+            threshold: settings.threshold,
+            aliases: tagContext.aliases,
+          })
+        : fallbackEnrich({
+            sourceId: source.id,
+            corpus: source.corpus,
+            language: source.language,
+          });
+      await persistEnrichment(applied, {
+        batchId,
+        model: settings.model,
+        output: item ?? applied,
+      });
+    }
   }
 
   const more = await getClient().execute(
@@ -82,6 +105,7 @@ async function classifyBatch(
   sources: BatchSource[],
   categories: { id: string; path: string; description: string | null }[],
   tags: string[],
+  infoTypes: { id: string; name: string }[],
 ): Promise<EnrichBatchOutput> {
   if (process.env.MOCK_EXTERNAL === "1" || !process.env.GEMINI_API_KEY) {
     const reason =
@@ -107,7 +131,12 @@ async function classifyBatch(
     };
   }
 
-  const prompt = buildEnrichUserPrompt({ categories, tags, sources });
+  const prompt = buildEnrichUserPrompt({
+    categories,
+    tags,
+    sources,
+    infoTypes,
+  });
   try {
     return await generateLaneObject({
       lane: "bulk",
@@ -164,7 +193,7 @@ async function loadPendingSources(): Promise<BatchSource[]> {
   const placeholders = ids.rows.map(() => "?").join(",");
   const idList = ids.rows.map((row) => String(row.id));
   const result = await getClient().execute({
-    sql: `SELECT s.id, s.language,
+    sql: `SELECT s.id, s.language, s.x_account_id,
             p.text AS post_text, p.author_name, p.author_username, p.posted_at,
             p.quoted_snapshot_json,
             a.title AS article_title, a.author AS article_author,
@@ -200,6 +229,7 @@ async function loadPendingSources(): Promise<BatchSource[]> {
       articleText: articleText ? articleText.slice(0, 2000) : null,
       language: row.language ? String(row.language) : null,
       corpus: [text, quoted ?? "", articleText ?? ""].join("\n"),
+      xAccountId: row.x_account_id ? String(row.x_account_id) : null,
     });
   }
   const order = new Map(idList.map((id, index) => [id, index]));
@@ -217,43 +247,6 @@ function parseQuoted(raw: unknown): string | null {
   } catch {
     return null;
   }
-}
-
-async function loadCategories(): Promise<
-  { id: string; path: string; description: string | null }[]
-> {
-  const result = await getClient().execute(
-    `SELECT id, parent_id, name, description
-     FROM categories
-     ORDER BY sort_order, name
-     LIMIT 100`,
-  );
-  const byId = new Map(
-    result.rows.map((row) => [
-      String(row.id),
-      {
-        id: String(row.id),
-        parentId: row.parent_id ? String(row.parent_id) : null,
-        name: String(row.name),
-        description: row.description ? String(row.description) : null,
-      },
-    ]),
-  );
-  const pathOf = (id: string, depth = 0): string => {
-    const row = byId.get(id);
-    if (!row || depth > 6) {
-      return id;
-    }
-    if (!row.parentId || !byId.has(row.parentId)) {
-      return row.name;
-    }
-    return `${pathOf(row.parentId, depth + 1)} / ${row.name}`;
-  };
-  return [...byId.values()].map((row) => ({
-    id: row.id,
-    path: pathOf(row.id),
-    description: row.description,
-  }));
 }
 
 async function loadThreshold(): Promise<{ threshold: number; model: string }> {

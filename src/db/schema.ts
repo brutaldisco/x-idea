@@ -78,6 +78,31 @@ export const categories = sqliteTable("categories", {
   createdAt: text("created_at").notNull(),
 });
 
+export const accountTaxonomy = sqliteTable(
+  "account_taxonomy",
+  {
+    id: text("id").primaryKey(),
+    xAccountId: text("x_account_id").notNull(),
+    kind: text("kind").notNull(),
+    itemId: text("item_id").notNull(),
+    name: text("name").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("account_taxonomy_account_kind_item").on(
+      table.xAccountId,
+      table.kind,
+      table.itemId,
+    ),
+    index("idx_account_taxonomy_account").on(
+      table.xAccountId,
+      table.kind,
+      table.sortOrder,
+    ),
+  ],
+);
+
 export const sources = sqliteTable(
   "sources",
   {
@@ -293,6 +318,19 @@ export const apiTokens = sqliteTable(
     revokedAt: text("revoked_at"),
   },
   (table) => [uniqueIndex("api_tokens_token_hash").on(table.tokenHash)],
+);
+
+export const dismissedBookmarks = sqliteTable(
+  "dismissed_bookmarks",
+  {
+    xAccountId: text("x_account_id").notNull(),
+    tweetId: text("tweet_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.xAccountId, table.tweetId] }),
+    index("idx_dismissed_bookmarks_tweet").on(table.tweetId),
+  ],
 );
 
 export const xCreditLedger = sqliteTable(

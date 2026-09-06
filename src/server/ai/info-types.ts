@@ -33,3 +33,14 @@ export const INFO_TYPE_LABELS: Record<InfoType, string> = {
 export function isInfoType(value: string): value is InfoType {
   return (INFO_TYPES as readonly string[]).includes(value);
 }
+
+export function infoTypeLabel(
+  id: string,
+  custom?: { id: string; name: string }[],
+): string {
+  const fromCustom = custom?.find((row) => row.id === id)?.name;
+  if (fromCustom) {
+    return fromCustom;
+  }
+  return id in INFO_TYPE_LABELS ? INFO_TYPE_LABELS[id as InfoType] : id;
+}

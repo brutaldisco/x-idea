@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  billedSince,
+  estimateBilledUsage,
   estimateCostUsd,
   estimatePostReadUsd,
   isLowRemaining,
@@ -115,5 +117,97 @@ describe("parseTweetUsageDays", () => {
       { date: "2026-09-04", tweets: 12 },
       { date: "2026-09-05", tweets: 3 },
     ]);
+  });
+
+  it("reads the current daily_project_usage object shape", () => {
+    expect(
+      parseTweetUsageDays({
+        data: {
+          daily_project_usage: {
+            project_id: "1",
+            usage: [
+              { date: "2026-09-04T00:00:00.000Z", usage: "80" },
+              { date: "2026-09-05T00:00:00.000Z", usage: "39" },
+            ],
+          },
+        },
+      }),
+    ).toEqual([
+      { date: "2026-09-04", tweets: 80 },
+      { date: "2026-09-05", tweets: 39 },
+    ]);
+  });
+});
+
+describe("estimateBilledUsage", () => {
+  it("does not bill incremental rereads inside 24 hours", () => {
+    const billed = estimateBilledUsage([
+      {
+        accountId: "a1",
+        mode: "initial",
+        startedAt: "2026-09-04T21:35:51.100Z",
+        resourcesRead: 198,
+        newSources: 198,
+        recordedCostUsd: 0.198,
+      },
+      {
+        accountId: "a1",
+        mode: "incremental",
+        startedAt: "2026-09-04T22:00:29.070Z",
+        resourcesRead: 100,
+        newSources: 0,
+        recordedCostUsd: 0.1,
+      },
+      {
+        accountId: "a1",
+        mode: "incremental",
+        startedAt: "2026-09-05T12:00:00.000Z",
+        resourcesRead: 97,
+        newSources: 1,
+        recordedCostUsd: 0.097,
+      },
+      {
+        accountId: "a1",
+        mode: "parent",
+        startedAt: "2026-09-05 01:34:02",
+        resourcesRead: 81,
+        newSources: 0,
+        recordedCostUsd: 0.405,
+      },
+      {
+        accountId: "a1",
+        mode: "thread",
+        startedAt: "2026-09-05 02:27:13",
+        resourcesRead: 27,
+        newSources: 0,
+        recordedCostUsd: 0.135,
+      },
+    ]);
+    expect(billed.usedResources).toBe(198 + 1 + 81 + 27);
+    expect(billed.usedUsd).toBe(0.739);
+    expect(billedSince(billed, "2026-09-04 19:53:12")).toBe(0.739);
+  });
+
+  it("bills a full owned-read page again after 24 hours", () => {
+    const billed = estimateBilledUsage([
+      {
+        accountId: "a1",
+        mode: "initial",
+        startedAt: "2026-09-04T21:00:00.000Z",
+        resourcesRead: 50,
+        newSources: 50,
+        recordedCostUsd: 0.05,
+      },
+      {
+        accountId: "a1",
+        mode: "incremental",
+        startedAt: "2026-09-05T22:00:00.000Z",
+        resourcesRead: 10,
+        newSources: 0,
+        recordedCostUsd: 0.01,
+      },
+    ]);
+    expect(billed.usedResources).toBe(60);
+    expect(billed.usedUsd).toBe(0.06);
   });
 });

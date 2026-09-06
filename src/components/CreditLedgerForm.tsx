@@ -44,7 +44,8 @@ export function CreditLedgerForm() {
     >
       <p className="text-ink-2 text-xs">
         なくなったら Developer Console
-        で追加し、ここに記録します。残量をコンソールと合わせたいときは「いまの残量」。{" "}
+        で追加し、ここに記録します。下の残量は同期の課金見積もりです（24
+        時間以内の再取得は除く）。コンソールと合わせたいときは「いまの残量」。{" "}
         <a
           href={X_DEVELOPER_CONSOLE_URL}
           className="break-all underline"

@@ -44,7 +44,7 @@ export function SourceCard({
         variant === "rail"
           ? "w-56 shrink-0 rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
           : variant === "grid"
-            ? "w-full rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
+            ? "w-full rounded-[var(--radius-card)] border border-line bg-paper-2 p-2"
             : "rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
       }
     >
@@ -52,7 +52,9 @@ export function SourceCard({
         <Link
           href={`/source/${id}`}
           transitionTypes={["nav-forward"]}
-          className="relative mb-2 block"
+          className={
+            variant === "grid" ? "relative mb-1.5 block" : "relative mb-2 block"
+          }
           style={sourceTransitionStyle(id)}
         >
           <Image
@@ -61,7 +63,7 @@ export function SourceCard({
             width={448}
             height={224}
             unoptimized
-            className="h-28 w-full rounded-lg object-cover"
+            className={`${variant === "grid" ? "h-20" : "h-28"} w-full rounded-lg object-cover`}
           />
           {mediaType && mediaType !== "photo" ? (
             <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
@@ -114,7 +116,13 @@ export function SourceCard({
           <Link
             href={`/source/${id}`}
             transitionTypes={["nav-forward"]}
-            className={`mt-1 block text-sm hover:underline ${stacked ? "line-clamp-4" : ""}`}
+            className={`mt-1 block text-sm hover:underline ${
+              variant === "grid"
+                ? "line-clamp-3"
+                : stacked
+                  ? "line-clamp-4"
+                  : ""
+            }`}
             {...textAttrs}
           >
             {summary}

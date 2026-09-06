@@ -18,6 +18,9 @@ describe("library filters", () => {
       categoryId: "cat_ai",
     });
     expect(
+      parseLibraryFilters(new URLSearchParams("info_type=it_custom1")),
+    ).toMatchObject({ infoType: "it_custom1" });
+    expect(
       parseLibraryFilters(new URLSearchParams("kind=nope&read=evil")),
     ).toEqual({});
     expect(parseLibraryView("grid")).toBe("grid");

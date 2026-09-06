@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   loadVideoRoot,
+  peekVideoRoot,
   pickVideoRoot,
   supportsDirectoryPicker,
 } from "@/lib/video-store";
@@ -18,13 +19,15 @@ export function useVideoSaveFolder(initialFolderName?: string | null): {
   supported: boolean | null;
   folderName: string | null;
   linked: boolean;
+  persistWarning: string | null;
   linkFolder: () => Promise<void>;
 } {
   const [supported, setSupported] = useState<boolean | null>(null);
   const [folderName, setFolderName] = useState<string | null>(
-    initialFolderName ?? null,
+    peekVideoRoot()?.name ?? initialFolderName ?? null,
   );
-  const [linked, setLinked] = useState(false);
+  const [linked, setLinked] = useState(() => Boolean(peekVideoRoot()));
+  const [persistWarning, setPersistWarning] = useState<string | null>(null);
   const genRef = useRef(0);
 
   useEffect(() => {
@@ -51,7 +54,7 @@ export function useVideoSaveFolder(initialFolderName?: string | null): {
       setFolderName(
         saved?.folderName ?? handle?.name ?? initialFolderName ?? null,
       );
-      setLinked(Boolean(handle));
+      setLinked(Boolean(handle ?? peekVideoRoot()));
     })();
     return () => {
       cancelled = true;
@@ -73,10 +76,15 @@ export function useVideoSaveFolder(initialFolderName?: string | null): {
   }, []);
 
   const linkFolder = useCallback(async () => {
-    const handle = await pickVideoRoot();
+    const { handle, persisted } = await pickVideoRoot();
     genRef.current += 1;
     setFolderName(handle.name);
     setLinked(true);
+    setPersistWarning(
+      persisted
+        ? null
+        : "このプレビューではフォルダを保持できません。再読み込みすると外れます。保存と再生は Chrome / Edge で開いてください。",
+    );
     window.dispatchEvent(
       new CustomEvent<FolderState>(CHANGED, {
         detail: { folderName: handle.name, linked: true },
@@ -94,5 +102,5 @@ export function useVideoSaveFolder(initialFolderName?: string | null): {
     }
   }, []);
 
-  return { supported, folderName, linked, linkFolder };
+  return { supported, folderName, linked, persistWarning, linkFolder };
 }

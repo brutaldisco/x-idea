@@ -18,8 +18,9 @@ export type OauthPayload = {
   state: string;
   verifier: string;
   exp: number;
-  intent?: "link" | "add";
+  intent?: "link" | "add" | "reauth";
   next?: string;
+  redirectUri?: string;
 };
 
 export function normalizeXHint(raw: string | null | undefined): string | null {
@@ -130,12 +131,48 @@ export function decryptPayload(value: string | undefined): OauthPayload | null {
   }
 }
 
+export function allowedOauthOrigins(): Set<string> {
+  const origins = new Set<string>([
+    "http://localhost:3344",
+    "http://127.0.0.1:3344",
+  ]);
+  for (const raw of [process.env.APP_URL, process.env.X_REDIRECT_URI]) {
+    if (!raw) {
+      continue;
+    }
+    try {
+      origins.add(new URL(raw).origin);
+    } catch {
+      // ignore bad env
+    }
+  }
+  try {
+    origins.add(new URL(redirectUri()).origin);
+  } catch {
+    origins.add("https://x-idea.vercel.app");
+  }
+  return origins;
+}
+
+export function callbackUriForRequest(requestUrl: string): string {
+  try {
+    const origin = new URL(requestUrl).origin;
+    if (allowedOauthOrigins().has(origin)) {
+      return `${origin}/api/x/oauth/callback`;
+    }
+  } catch {
+    // fall through
+  }
+  return redirectUri();
+}
+
 export function beginOauth(
   options: {
     forceLogin?: boolean;
     screenName?: string;
-    intent?: "link" | "add";
+    intent?: "link" | "add" | "reauth";
     next?: string;
+    redirectUri?: string;
   } = {},
 ): { url: string; cookie: string } {
   const clientId = process.env.X_CLIENT_ID;
@@ -144,9 +181,10 @@ export function beginOauth(
   }
   const verifier = createVerifier();
   const state = createState();
+  const callback = options.redirectUri ?? redirectUri();
   const authorizeUrl = buildAuthorizeUrl({
     clientId,
-    redirectUri: redirectUri(),
+    redirectUri: callback,
     state,
     challenge: challengeS256(verifier),
     forceLogin: options.forceLogin,
@@ -162,6 +200,7 @@ export function beginOauth(
       exp: Date.now() + TTL_MS,
       intent: options.intent ?? "link",
       next: safeNextPath(options.next ?? "/onboarding?step=3"),
+      redirectUri: callback,
     }),
   };
 }
@@ -187,11 +226,12 @@ export type TokenResponse = {
 export async function exchangeCode(
   code: string,
   verifier: string,
+  callbackUri = redirectUri(),
 ): Promise<TokenResponse> {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
-    redirect_uri: redirectUri(),
+    redirect_uri: callbackUri,
     code_verifier: verifier,
     client_id: process.env.X_CLIENT_ID ?? "",
   });

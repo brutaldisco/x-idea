@@ -347,10 +347,10 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.3 SC-03 Library（＋ SC-14 Atlas）
 
-- **フィルタバー**：カテゴリ（階層ピッカー）、情報タイプ、状態（未読/読了/実践予定/実践済/KC化）、タグ、期間、`kind`（投稿/記事/手動）。Lens はフィルタバーにピン留め。
+- **フィルタバー**：カテゴリ（現在の X アカウントの分類）、情報タイプ（同）、状態（未読/読了/実践予定/実践済/KC化）、タグ、期間、`kind`（投稿/記事/手動）。Lens はフィルタバーにピン留め。カテゴリと情報タイプは Settings でアカウントごとに編集する。
 - **表示**：リスト（密）／グリッド（サムネ重視）／**Atlas**。
 - **並び**：既定は投稿日時の新しい順（`posted_at`。取り込み順の `saved_at` ではない）。Library / Inbox は `?sort=` で **新しい順 / 古い順 / 保存が新しい順 / 保存が古い順** を切り替えられる。重要度・関連度（Lens 時）は後続。
-- **カード**：投稿者、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。**3 点メニュー**から「X で開く」と **削除**（DB 行＋ローカル画像/動画ファイル）。
+- **カード**：投稿者、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。**3 点メニュー**から「X で開く」と **削除**（DB 行＋ローカル画像/動画ファイル。`dismissed_bookmarks` に残し同期では戻さない。`bookmark.write` があれば X のブックマークも外す。ADR-013）。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
 - **カーソルページネーション**：30件、Intersection Observer で追加読み込み。
 - **Atlas（P2）**：`<canvas>`（`d3-force` + `d3-zoom`、または `pixi.js`）。ノード＝Source（最大 3,000 表示、超過は代表点に集約）。座標はサーバーで週次計算（PCA→UMAP 相当の近似、`source_layout` テーブル）。クラスタ命名は Flash-Lite。タップ→クラスタ内リスト、ロングタップ→そのクラスタを Lens 化。タイムスライダーで `saved_at` によるフェード。PC 優先、モバイルは簡易（ピンチズームのみ）。
@@ -389,9 +389,9 @@ UI/UX の判断に迷ったら以下に従う。
 ### 8.7 SC-05 Settings
 
 - **使用量メーター（最上部）**：なくなったら追加する運用。残量を大きく出し、日次バーとアカウント別バーを添える。
-  - X API：残量 USD（`GET /2/usage/credits` が取れればそれを優先。取れなければ追加記録／コンソール残量スナップショット − 推定使用）。推定使用は `sources`（Owned Reads $0.001）と `sync_runs.est_cost_usd`。アカウント別に件数と推定コスト。
+  - X API：残量 USD（`GET /2/usage/credits` が取れればそれを優先。取れなければ追加記録／コンソール残量スナップショット − 推定使用）。推定使用は `sync_runs` を 24 時間重複排除した実課金見積もり（Owned Reads $0.001、スレッド等は $0.005）。ライブラリ件数や incremental の再取得回数は足さない。アカウント別に件数と推定コスト。
   - Gemini：レーン別「残り / 上限」。リセットは太平洋時間 0:00。
-  - 追加記録は `x_credit_ledger`（`topup` / `snapshot`）。`X_BEARER_TOKEN` があれば残量を再取得（15 分キャッシュ）。
+  - 追加記録は `x_credit_ledger`（`topup` / `snapshot`）。公式残量は App Bearer（`X_BEARER_TOKEN` または client credentials）か連携トークンで再取得（15 分キャッシュ）。
 - **外部サービス / 課金**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
   - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings / Today に「今すぐ同期」。自動は最短 6 時間（`sync_interval_min`、下限 360）。差分確認は `max_results=10`。1回の取り込み上限は `sync_max_per_run`（既定 100、10〜500）
   - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
@@ -399,7 +399,9 @@ UI/UX の判断に迷ったら以下に従う。
   - 直近 7 日の返信取得：`reply_context_enabled`（追加課金、$0.005/投稿。既定 OFF。上限はスレッド展開と共用）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
   - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
-- **X 連携**：接続中アカウント一覧（最大 3）。各アカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、再連携、個別解除、「アカウントを追加」（ユーザー名/メール入力 → X のログイン画面）、フォルダ選択（P2）、スレッド展開 ON/OFF と月次コスト上限（P2）。3 件に達したら追加ボタンを無効化。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
+- **アカウント**：1 枚のカードにまとめる。上部で 1 件だけ選び、同じ枠内に X 連携と分類を項目として出す。同時に複数アカウントは表示しない。切替は既存の `x_ctx`（Library / Inbox と同じ）。「アカウントを追加」もここ（最大 3）。
+- **X 連携**：選んだアカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、個別解除。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
+- **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除）。初期値は seed カテゴリと既定の情報タイプ。Library の絞り込みと AI enrich がこの一覧を使う（`account_taxonomy`）。
 - **同期**：自動は最短 6 時間＋手動。返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
@@ -629,7 +631,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **重複課金の排除**：同一リソースは 24 時間内は再課金されない（ソフト保証）。
 - **一般の投稿読み取り**（スレッド展開で使用）：**$0.005/投稿**。
 - **レート制限**：bookmarks は 180 リクエスト/15分/ユーザー。
-- **認証**：OAuth 2.0 Authorization Code with PKCE。スコープ `bookmark.read tweet.read users.read offline.access`。
+- **認証**：OAuth 2.0 Authorization Code with PKCE。スコープ `bookmark.read bookmark.write tweet.read users.read offline.access`。既存連携に `bookmark.write` が無いときは Settings の「連携を更新」。
 - **取得仕様**：`max_results` 1〜100、`pagination_token`。自身のブックマークのみ。
 
 ### 14.2 認証フロー（ユーザー登録なし、複数 X アカウント）
@@ -676,6 +678,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
     if new_head is null and page.data: new_head = page.data[0].id
     for t in page.data:
       if t.id == known_head: goto done
+      if dismissed_bookmarks(account, t.id): continue
       if exists(x_posts.tweet_id = t.id): continue
       fetched.push(t)
     if !page.meta.next_token: goto done
@@ -689,6 +692,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 
 - `note_tweet` があれば長文本文を優先。X Articles は `tweet.fields=article` の `title` / `plain_text` を本文として保存する（`text` は t.co だけのことがある）。
 - 削除・非公開は `errors[]` から `sources.availability` を更新。
+- ユーザーがアプリで削除した tweet は `dismissed_bookmarks` に残し、再取り込みしない。可能なら X のブックマークも外す（ADR-013）。
 - 返信投稿は `settings.save_replies`（既定 保存）。
 - 編集追跡は行わない **[仮定]**。
 
@@ -975,7 +979,7 @@ RETURNING *;
 | `x_bookmark_folders` / `x_post_folders` | フォルダ（P2） |
 | `sources` | 保存単位の中核 |
 | `x_posts` / `articles` / `source_articles` / `media_assets` | 一次情報 |
-| `categories` / `tags` / `tag_aliases` / `source_tags` | 分類 |
+| `categories` / `account_taxonomy` / `tags` / `tag_aliases` / `source_tags` | 分類（カテゴリ／情報タイプはアカウント別） |
 | `enrichments` / `feedback_examples` / `ai_usage_daily` | AI 記録・学習・予算 |
 | `source_chunks` / `media_embeddings` | 検索チャンク＋埋め込み（P2） |
 | `source_relations` | 関連・重複・矛盾（P2） |
@@ -1077,6 +1081,24 @@ CREATE TABLE categories (
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (parent_id, name)
+);
+
+CREATE TABLE account_taxonomy (
+  id TEXT PRIMARY KEY,
+  x_account_id TEXT NOT NULL REFERENCES x_account(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('category', 'info_type')),
+  item_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (x_account_id, kind, item_id)
+);
+
+CREATE TABLE dismissed_bookmarks (
+  x_account_id TEXT NOT NULL REFERENCES x_account(id) ON DELETE CASCADE,
+  tweet_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (x_account_id, tweet_id)
 );
 
 CREATE TABLE sources (
@@ -1576,7 +1598,7 @@ recall_items ─▶ sources | knowledge_cards ; recall_items 1──* recall_eve
 x_bookmark_folders 1──* x_post_folders ─▶ x_posts.tweet_id
 briefings / insights ─▶ sources (source_ids_json)
 qa_sessions 1──* qa_messages
-jobs, job_schedules, sync_runs, ai_usage_daily, x_credit_ledger, push_subscriptions, api_tokens（独立）
+jobs, job_schedules, sync_runs, ai_usage_daily, x_credit_ledger, dismissed_bookmarks, push_subscriptions, api_tokens（独立）
 ```
 
 - Source : x_post = 1 : 1（ブックマーク 1 件）。スレッド展開の連投は `x_posts` のみ（Source なし）。
@@ -1600,10 +1622,11 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | POST | `/api/sync` | 手動同期（60秒スロットル、最大 3 ジョブ消化） | 同一オリジン | P1 |
 | PATCH | `/api/settings` | `x_api_enabled` のみ。人間が切り替える | 同一オリジン | P1 |
 | GET/POST | `/api/settings/video-folder` | 動画保存フォルダ名の共有。ハンドルはブラウザごと | 同一オリジン | P1 |
+| GET/POST/PATCH/DELETE | `/api/settings/taxonomy` | アカウント別カテゴリ／情報タイプ | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
 | GET | `/api/sources` | 一覧（フィルタ・カーソル `?cursor=saved_at,id&limit=30`） | 同一オリジン | P1 |
 | GET | `/api/sources/:id` | 詳細（原文・記事・要約・タグ・関連） | 同一オリジン | P1 |
-| DELETE | `/api/sources/:id` | Source 削除（紐づく投稿・孤立記事・ローカルメディア） | 同一オリジン | P1 |
+| DELETE | `/api/sources/:id` | Source 削除（除外記録＋可能なら X ブックマーク解除・孤立記事・ローカルメディア） | 同一オリジン | P1 |
 | GET | `/api/search` | `?q=&mode=keyword|hybrid&filters=` | 同一オリジン | P1（hybrid は P2） |
 | GET | `/api/search/suggest` | 入力中サジェスト（FTS、上位 8） | 同一オリジン | P1 |
 | GET | `/api/inbox/count` | 要確認件数（Badging 用） | 同一オリジン | P1 |
@@ -1945,7 +1968,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-208 | FTS 検索 `/api/search`（trigram、短語 LIKE、bm25 重み、フィルタ）＋ `/api/search/suggest` ＋ Ask SC-04（キーワードモード） | `src/server/search/keyword.ts`, `src/app/(tabs)/ask/*` | T-105 | 日本語 2/3/4 文字クエリでヒット |
 | T-209 | Today SC-01（同期ピル、新着サマリー、Inbox チップ、最近。Briefing/Echo/Insights はプレースホルダ） | `src/app/(tabs)/today/*` | T-204 | `use cache` + Suspense、空状態 3 種 |
 | T-210 | Settings SC-05（**使用量メーター**、外部サービス/課金トグル、同期、AI レーン/キャップ/しきい値、除外ドメイン、表示、データ削除、エクスポート導線）。有料は既定 OFF | `src/app/(tabs)/settings/*`, `src/server/usage/*` | T-204 | 残量・日次バー・アカウント別が見える。付録H のトグルが UI に並ぶ。OFF の機能はジョブ未投入。worker はトグルを勝手に ON にしない |
-| T-211 | Categories SC-08（階層 CRUD、統合） | `src/app/(tabs)/settings/categories/*` | T-204 | 統合で Source 再割当 |
+| T-211 | Categories SC-08（階層 CRUD、統合） | `src/app/(tabs)/settings/categories/*` | T-204 | 統合で Source 再割当。当面は Settings のアカウント別分類（`account_taxonomy`）で追加・改名・削除 |
 | T-212 | PWA（`/sw.js`、manifest、オフライン閲覧、インストール案内） | `public/sw.js`, `src/app/manifest.ts` | T-209 | Chrome でインストール可、機内モードで直近閲覧可（ADR-008） |
 | T-213 | Instant Navigations 適用と `instant()` E2E、`<Activity>` でタブ状態保持 | `tests/e2e/instant.spec.ts` | T-205〜T-210 | 5 タブすべて instant |
 | T-214 | 任意ゲート（`APP_PASSCODE` / Google、`proxy.ts`、Cookie 1 年） | `src/proxy.ts` | T-001 | 未設定でオープン、設定で `/unlock` |
@@ -2331,7 +2354,7 @@ x-idea/
 
 | # | サービス | 作業 | 料金 | アプリ側トグル（既定） | 未完了時の挙動 |
 | --- | --- | --- | --- | --- | --- |
-| H-10 | **X Developer Portal** | ① developer.x.com で開発者アカウント（審査・待ちがあり得る）② Project + App ③ User authentication: OAuth 2.0 PKCE、Callback `https://x-idea.vercel.app/api/x/oauth/callback`、Scopes `bookmark.read tweet.read users.read offline.access` ④ **クレジット購入** ⑤ **スペンディングリミット**（推奨 $10） | 従量。Owned Reads $0.001/リソース。初回 5,000 件で約 $5。通常月 $1〜4 | **`x_api_enabled=OFF`** | 同期ジョブを投入しない。Today に「X API のクレジット設定が必要」。T-101〜T-109 は msw モックで完了させる |
+| H-10 | **X Developer Portal** | ① developer.x.com で開発者アカウント（審査・待ちがあり得る）② Project + App ③ User authentication: OAuth 2.0 PKCE、Callback `https://x-idea.vercel.app/api/x/oauth/callback`、Scopes `bookmark.read bookmark.write tweet.read users.read offline.access` ④ **クレジット購入** ⑤ **スペンディングリミット**（推奨 $10） | 従量。Owned Reads $0.001/リソース。初回 5,000 件で約 $5。通常月 $1〜4 | **`x_api_enabled=OFF`** | 同期ジョブを投入しない。Today に「X API のクレジット設定が必要」。T-101〜T-109 は msw モックで完了させる |
 | H-11 | **Gemini 有料（Tier 1）** | AI Studio で課金アカウントをリンク。無料枠入力が学習利用されるのが嫌なとき、または RPD 不足のときだけ | 従量。月額上限 `$5` を Settings で設定 | **`ai_paid_enabled=OFF`** | 無料枠のみ。429 はクールダウン。**自動で有料に切替しない** |
 | H-12 | **X スレッド展開** | H-10 完了後。追加で Post read $0.005/投稿 | 月上限 `$2`（Settings） | **`thread_expand_enabled=OFF`** | 同期では投入しない。OFF ならボタンなし。ON なら対象ごとに手動取得 |
 | H-13 | **Anthropic / OpenAI** | 各社で API キー取得・課金設定。`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` を Vercel に追加 | 従量 | **`paid_providers_json` 両方 false** | プロバイダ選択肢を Settings で無効表示 |

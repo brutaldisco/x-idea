@@ -15,7 +15,7 @@ import type { UsageDashboard } from "@/server/usage/dashboard";
 const SOURCE_LABEL = {
   live: "X の残量",
   snapshot: "コンソール残量からの見積もり",
-  purchased: "追加記録からの見積もり",
+  purchased: "追加記録 − 24時間重複を除いた同期課金",
   unknown: "まだ残量を記録していません",
 } as const;
 
@@ -25,7 +25,13 @@ const LANE_LABEL = {
   embed: "埋め込み",
 } as const;
 
-export function UsageMeters({ data }: { data: UsageDashboard }) {
+export function UsageMeters({
+  data,
+  accountId,
+}: {
+  data: UsageDashboard;
+  accountId?: string | null;
+}) {
   const remainLabel =
     data.x.remainingUsd == null
       ? "残量未設定"
@@ -87,14 +93,16 @@ export function UsageMeters({ data }: { data: UsageDashboard }) {
             labels={data.x.daily.map((row) => row.date)}
           />
         </div>
-        <h3 className="mt-5 font-medium text-sm">アカウント別</h3>
+        <h3 className="mt-5 font-medium text-sm">このアカウント</h3>
         <div className="mt-2">
           <AccountBars
-            accounts={data.x.accounts.map((row) => ({
-              username: row.id ? `@${row.username}` : row.username,
-              resources: row.resources,
-              costUsd: row.costUsd,
-            }))}
+            accounts={data.x.accounts
+              .filter((row) => !accountId || row.id === accountId)
+              .map((row) => ({
+                username: row.id ? `@${row.username}` : row.username,
+                resources: row.resources,
+                costUsd: row.costUsd,
+              }))}
           />
         </div>
         <CreditLedgerForm />

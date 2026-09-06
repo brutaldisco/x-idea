@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { AccountSyncToggle } from "@/components/AccountSyncToggle";
@@ -9,6 +8,8 @@ import { MediaUsageCard } from "@/components/MediaUsageCard";
 import { InstallAppCard } from "@/components/pwa/InstallAppCard";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { SyncLimitsForm } from "@/components/SyncLimitsForm";
+import { AccountTaxonomyCard } from "@/components/settings/AccountTaxonomyCard";
+import { SettingsAccountPicker } from "@/components/settings/SettingsAccountPicker";
 import { UsageMeters } from "@/components/UsageMeters";
 import { VideoSaveFolderCard } from "@/components/videos/VideoSaveFolderCard";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
@@ -25,9 +26,14 @@ import {
   getSyncSettings,
   getVideoSaveFolderName,
 } from "@/server/settings";
+import { getAccountTaxonomy } from "@/server/taxonomy";
 import { getUsageDashboard } from "@/server/usage/dashboard";
 import { getVideoLibraryUsage } from "@/server/videos/queue";
-import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
+import {
+  accountHasBookmarkWrite,
+  listXAccounts,
+  MAX_X_ACCOUNTS,
+} from "@/server/x/account";
 import { contextLabel, getAccountContext } from "@/server/x/context";
 
 async function SettingsBody({
@@ -59,7 +65,11 @@ async function SettingsBody({
     getAccountContext(),
     getVideoSaveFolderName(),
   ]);
-  const canAdd = accounts.length < MAX_X_ACCOUNTS;
+  const current = ctx.kind === "account" ? ctx.account : null;
+  const taxonomy = current ? await getAccountTaxonomy(current.id) : null;
+  const canUnbookmark = current
+    ? await accountHasBookmarkWrite(current.id)
+    : false;
   return (
     <div className="space-y-3">
       <InstallAppCard />
@@ -78,7 +88,7 @@ async function SettingsBody({
           <li>出ないときは「原文を選択」→ 右クリック →「日本語に翻訳」</li>
         </ol>
       </article>
-      <UsageMeters data={usage} />
+      <UsageMeters data={usage} accountId={current?.id ?? null} />
       {params.x === "missing" ? (
         <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">
           X_CLIENT_ID が未設定です。Vercel の環境変数を入れてください。
@@ -104,65 +114,83 @@ async function SettingsBody({
           ユーザー名またはメールアドレスを入力してください。
         </p>
       ) : null}
+      {params.x === "oauth" ? (
+        <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">
+          X の許可から戻れませんでした。Chrome か Edge で、この同じアドレスの
+          Settings から「連携を更新」をやり直してください。Developer Console の
+          Callback にこの環境の URL があるかも確認してください。
+        </p>
+      ) : null}
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">X 連携</h2>
-          <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
-            {accounts.length} / {MAX_X_ACCOUNTS}
-          </span>
-        </div>
-        {accounts.length === 0 ? (
-          <p className="mt-2 text-ink-2 text-sm">
-            ブックマークの取り込みに X 連携が必要です。
+        {current ? (
+          <p className="mb-4 text-ink-2 text-xs">
+            いまのアカウント · @{current.username}
           </p>
-        ) : (
-          <ul className="mt-3 space-y-3">
-            {accounts.map((account) => (
-              <li
-                key={account.id}
-                className="rounded-xl border border-line bg-paper p-3"
+        ) : null}
+        <SettingsAccountPicker
+          accounts={accounts}
+          currentId={current?.id ?? null}
+          maxAccounts={MAX_X_ACCOUNTS}
+        />
+        <section className="mt-7 border-line border-t pt-7">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">X 連携</h3>
+            {current ? (
+              <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
+                {current.status}
+              </span>
+            ) : null}
+          </div>
+          {current ? (
+            <>
+              <p className="mt-2 text-ink-2 text-xs">
+                OFF のあいだ、このアカウントのブックマーク同期は走りません。
+              </p>
+              <p className="mt-2 text-ink-2 text-xs">
+                {canUnbookmark
+                  ? "アプリで削除した投稿は同期で戻りません。権限があるときは X のブックマークからも外します。"
+                  : "アプリで削除した投稿は同期で戻りません。X からも外すには、下の「連携を更新」で許可を取り直してください。"}
+              </p>
+              <AccountSyncToggle
+                id={current.id}
+                enabled={current.syncEnabled}
+              />
+              <a
+                href={`/api/x/oauth/start?next=/settings&reauth=1&hint=${encodeURIComponent(current.username)}`}
+                className="mt-3 inline-block rounded-full border border-line px-4 py-2 text-sm"
               >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm">@{account.username}</p>
-                  <span className="text-ink-2 text-xs">{account.status}</span>
-                </div>
-                <p className="mt-1 text-ink-2 text-xs">
-                  OFF
-                  のあいだ、このアカウントのブックマーク同期は走りません。必要なアカウントだけ
-                  ON にしてください。
-                </p>
-                <AccountSyncToggle
-                  id={account.id}
-                  enabled={account.syncEnabled}
-                />
-                <DisconnectX id={account.id} />
-              </li>
-            ))}
-          </ul>
-        )}
-        {canAdd ? (
-          <Link
-            href={
-              accounts.length === 0
-                ? "/api/x/oauth/start?next=/settings"
-                : "/settings/x/add"
-            }
-            className="mt-3 inline-block rounded-full bg-ink px-4 py-2 text-paper text-sm"
-          >
-            {accounts.length === 0 ? "X と連携" : "アカウントを追加"}
-          </Link>
-        ) : (
-          <p className="mt-3 text-ink-2 text-xs">
-            上限 {MAX_X_ACCOUNTS} 件に達しています。
-          </p>
-        )}
+                @{current.username} の連携を更新
+              </a>
+              <p className="mt-2 text-ink-2 text-xs">
+                押すと、いまの X
+                ログインを一度切ってから、選んだアカウントの許可画面を開きます。
+              </p>
+              <DisconnectX id={current.id} />
+            </>
+          ) : (
+            <p className="mt-2 text-ink-2 text-sm">
+              上でアカウントを選ぶか、X と連携してください。
+            </p>
+          )}
+        </section>
+        <div className="mt-7 border-line border-t pt-7">
+          <AccountTaxonomyCard
+            key={current?.id ?? "none"}
+            accountId={current?.id ?? null}
+            initial={taxonomy}
+          />
+        </div>
       </article>
       <MediaUsageCard blobs={blobUsage} videos={videoUsage} />
       <VideoSaveFolderCard
         accountLabel={contextLabel(ctx)}
         initialFolderName={videoFolderName}
       />
-      <MediaFoldersCard accounts={accounts} />
+      <MediaFoldersCard
+        accounts={
+          current ? [{ id: current.id, username: current.username }] : []
+        }
+      />
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">X API</h2>
@@ -171,17 +199,14 @@ async function SettingsBody({
           </span>
         </div>
         <p className="mt-2 text-ink-2 text-sm">
-          全体トグルと、アカウントごとの「同期（課金）」が両方 ON
+          全体トグルと、選んだアカウントの「同期（課金）」が両方 ON
           のときだけブックマークを取り込みます。自動は最短 6 時間。差分確認は 10
           件ずつです。急ぐときは「今すぐ同期」。
         </p>
         <XApiEnabledToggle enabled={health.x_api_enabled} />
         <ManualSyncButton
-          disabled={
-            !health.x_api_enabled ||
-            !accounts.some((account) => account.syncEnabled)
-          }
-          hint="アカウントの「同期（課金）」も ON にしてください。"
+          disabled={!health.x_api_enabled || !current?.syncEnabled}
+          hint="上で選んだアカウントの「同期（課金）」も ON にしてください。"
         />
         <SyncLimitsForm
           syncMaxPerRun={sync.syncMaxPerRun}

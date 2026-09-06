@@ -19,6 +19,7 @@ import {
   parseCategoryCandidates,
   resolveConfirmCategory,
 } from "@/server/sources/triage";
+import { taxonomyForAccount } from "@/server/taxonomy";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 const NOT_SNOOZED =
@@ -351,11 +352,15 @@ export async function countSources(input: {
   return Number(result.rows[0]?.n ?? 0);
 }
 
-export async function listCategories(): Promise<
-  { id: string; name: string }[]
-> {
+export async function listCategories(
+  accountId?: string | null,
+): Promise<{ id: string; name: string }[]> {
   if (!isDbConfigured()) {
     return [];
+  }
+  if (accountId) {
+    const taxonomy = await taxonomyForAccount(accountId);
+    return taxonomy.categories;
   }
   await ensureSchema();
   const names = await loadCategoryNames();

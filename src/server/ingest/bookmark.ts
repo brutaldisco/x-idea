@@ -14,6 +14,7 @@ import {
 import { enqueueEnrichBatch } from "@/server/jobs/enrich";
 import { enqueueJob } from "@/server/jobs/queue";
 import { getContextSettings } from "@/server/settings";
+import { isDismissedBookmark } from "@/server/sources/dismiss";
 import {
   type BookmarksPage,
   isReply,
@@ -25,7 +26,7 @@ import {
 
 export type IngestResult =
   | { created: true; sourceId: string; postId: string }
-  | { created: false; skipped: "exists" | "reply" };
+  | { created: false; skipped: "exists" | "reply" | "dismissed" };
 
 export async function tweetExists(tweetId: string): Promise<boolean> {
   return Boolean(await findPostIdByTweetId(tweetId));
@@ -107,6 +108,9 @@ export async function ingestBookmark(input: {
 }): Promise<IngestResult> {
   if (!input.saveReplies && isReply(input.tweet)) {
     return { created: false, skipped: "reply" };
+  }
+  if (await isDismissedBookmark(input.accountId, input.tweet.id)) {
+    return { created: false, skipped: "dismissed" };
   }
 
   const existingSource = await getClient().execute({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import {
   parseRepeatMode,
   REPEAT_MODES,
@@ -102,45 +102,135 @@ export function VideoPlayer({
         </video>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-full border border-line px-3 py-1 text-xs hover:bg-paper-2 disabled:opacity-40"
-              disabled={total < 2}
-              onClick={onPrev}
-            >
-              前へ
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-line px-3 py-1 text-xs hover:bg-paper-2 disabled:opacity-40"
-              disabled={total < 2}
-              onClick={onNext}
-            >
-              次へ
-            </button>
+            <IconButton label="前へ" disabled={total < 2} onClick={onPrev}>
+              <SkipBackIcon />
+            </IconButton>
+            <IconButton label="次へ" disabled={total < 2} onClick={onNext}>
+              <SkipForwardIcon />
+            </IconButton>
           </div>
           <div className="flex flex-wrap gap-1">
             {REPEAT_MODES.map((mode) => {
               const active = repeat === mode.id;
               return (
-                <button
+                <IconButton
                   key={mode.id}
-                  type="button"
-                  aria-pressed={active}
+                  label={mode.label}
+                  pressed={active}
                   onClick={() => onRepeatChange(mode.id)}
-                  className={`rounded-full px-3 py-1 text-xs ${
-                    active
-                      ? "bg-ink text-paper"
-                      : "border border-line hover:bg-paper-2"
-                  }`}
                 >
-                  {mode.label}
-                </button>
+                  {mode.id === "off" ? (
+                    <RepeatOffIcon />
+                  ) : mode.id === "one" ? (
+                    <RepeatOneIcon />
+                  ) : (
+                    <FolderLoopIcon />
+                  )}
+                </IconButton>
               );
             })}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function IconButton({
+  label,
+  children,
+  disabled,
+  pressed,
+  onClick,
+}: {
+  label: string;
+  children: ReactNode;
+  disabled?: boolean;
+  pressed?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={pressed}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex size-8 items-center justify-center rounded-full disabled:opacity-40 ${
+        pressed ? "bg-ink text-paper" : "border border-line hover:bg-paper-2"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PlayerIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function SkipBackIcon() {
+  return (
+    <PlayerIcon>
+      <polygon points="19 20 9 12 19 4 19 20" />
+      <line x1="5" x2="5" y1="19" y2="5" />
+    </PlayerIcon>
+  );
+}
+
+function SkipForwardIcon() {
+  return (
+    <PlayerIcon>
+      <polygon points="5 4 15 12 5 20 5 4" />
+      <line x1="19" x2="19" y1="5" y2="19" />
+    </PlayerIcon>
+  );
+}
+
+function RepeatOffIcon() {
+  return (
+    <PlayerIcon>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h10" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H7" />
+      <path d="M4 4l16 16" />
+    </PlayerIcon>
+  );
+}
+
+function RepeatOneIcon() {
+  return (
+    <PlayerIcon>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+      <path d="M11 10h1v4" />
+    </PlayerIcon>
+  );
+}
+
+function FolderLoopIcon() {
+  return (
+    <PlayerIcon>
+      <path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+      <path d="M9 14a3 3 0 1 0 3-3" />
+      <path d="M12 11v3h-3" />
+    </PlayerIcon>
   );
 }

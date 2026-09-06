@@ -2,12 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { isTaxonomyItemId } from "@/lib/taxonomy-id";
 import {
   archiveSource,
   confirmSource,
   snoozeSource,
 } from "@/server/actions/sources";
-import { INFO_TYPE_LABELS, type InfoType } from "@/server/ai/info-types";
 
 export function SourceActions({
   id,
@@ -82,9 +82,7 @@ export function SourceActions({
               id,
               category_id: categoryId ?? undefined,
               info_type:
-                infoType && infoType in INFO_TYPE_LABELS
-                  ? (infoType as InfoType)
-                  : undefined,
+                infoType && isTaxonomyItemId(infoType) ? infoType : undefined,
             }).then((result) => {
               setBusy(false);
               after(result, "確定しました");

@@ -57,13 +57,15 @@ function loadFixture(name: string): unknown {
   );
 }
 
-async function xGet(
+async function xRequest(
   accessToken: string,
   url: string,
+  method: "GET" | "DELETE",
 ): Promise<{ body: unknown; rateLimit: RateLimit }> {
   return withRetry(
     async () => {
       const res = await fetch(url, {
+        method,
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
@@ -71,7 +73,9 @@ async function xGet(
       if (!res.ok) {
         throw new XApiError(res.status, `x api failed (${res.status})`);
       }
-      return { body: await res.json(), rateLimit };
+      const body: unknown =
+        res.status === 204 ? null : await res.json().catch(() => null);
+      return { body, rateLimit };
     },
     {
       attempts: 3,
@@ -83,6 +87,13 @@ async function xGet(
       },
     },
   );
+}
+
+async function xGet(
+  accessToken: string,
+  url: string,
+): Promise<{ body: unknown; rateLimit: RateLimit }> {
+  return xRequest(accessToken, url, "GET");
 }
 
 function tweetQuery(): URLSearchParams {
@@ -156,4 +167,19 @@ export async function searchRecentConversation(
     `https://api.x.com/2/tweets/search/recent?${params}`,
   );
   return { ...parseBookmarksPage(body), rateLimit };
+}
+
+export async function removeBookmark(
+  accessToken: string,
+  xUserId: string,
+  tweetId: string,
+): Promise<void> {
+  if (process.env.MOCK_EXTERNAL === "1") {
+    return;
+  }
+  await xRequest(
+    accessToken,
+    `https://api.x.com/2/users/${encodeURIComponent(xUserId)}/bookmarks/${encodeURIComponent(tweetId)}`,
+    "DELETE",
+  );
 }

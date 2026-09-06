@@ -1,4 +1,4 @@
-import { INFO_TYPE_LABELS } from "@/server/ai/info-types";
+import { INFO_TYPE_LABELS, INFO_TYPES } from "@/server/ai/info-types";
 
 export const PROMPT_VERSION = "enrich-v3.0";
 
@@ -29,6 +29,7 @@ export function buildEnrichUserPrompt(input: {
   categories: { id: string; path: string; description: string | null }[];
   tags: string[];
   sources: EnrichPromptSource[];
+  infoTypes?: { id: string; name: string }[];
 }): string {
   const categoryLines =
     input.categories.length > 0
@@ -41,9 +42,11 @@ export function buildEnrichUserPrompt(input: {
       : "- （カテゴリ未作成）";
   const tagLine =
     input.tags.length > 0 ? input.tags.join(" / ") : "（既存タグなし）";
-  const typeLine = Object.entries(INFO_TYPE_LABELS)
-    .map(([id, label]) => `${id}=${label}`)
-    .join(" / ");
+  const infoTypes =
+    input.infoTypes && input.infoTypes.length > 0
+      ? input.infoTypes
+      : INFO_TYPES.map((id) => ({ id, name: INFO_TYPE_LABELS[id] }));
+  const typeLine = infoTypes.map((row) => `${row.id}=${row.name}`).join(" / ");
   const items = input.sources
     .map((source) => {
       const article = source.articleTitle

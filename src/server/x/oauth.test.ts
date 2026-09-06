@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAuthorizeUrl,
+  callbackUriForRequest,
   normalizeXHint,
   safeNextPath,
   withQuery,
@@ -42,6 +43,7 @@ describe("oauth urls", () => {
     );
     expect(parsed.searchParams.get("force_login")).toBe("true");
     expect(parsed.searchParams.get("screen_name")).toBe("alice");
+    expect(parsed.searchParams.get("scope") ?? "").toContain("bookmark.write");
   });
 
   it("wraps authorize behind X logout", () => {
@@ -56,5 +58,11 @@ describe("oauth urls", () => {
     expect(withQuery("/onboarding?step=3", "x", "same")).toBe(
       "/onboarding?step=3&x=same",
     );
+  });
+
+  it("keeps localhost callback when the request started locally", () => {
+    expect(
+      callbackUriForRequest("http://localhost:3344/api/x/oauth/start"),
+    ).toBe("http://localhost:3344/api/x/oauth/callback");
   });
 });

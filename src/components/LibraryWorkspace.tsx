@@ -12,7 +12,6 @@ import {
   SOURCE_KINDS,
 } from "@/lib/source-filters";
 import type { SourceSort } from "@/lib/source-sort";
-import { INFO_TYPE_LABELS, INFO_TYPES } from "@/server/ai/info-types";
 import type { SourceListItem } from "@/server/sources/query";
 import { READ_STATUSES } from "@/server/sources/triage";
 
@@ -115,6 +114,7 @@ export function LibraryWorkspace({
   view,
   filters,
   categories,
+  infoTypes,
 }: {
   items: SourceListItem[];
   nextCursor: string | null;
@@ -124,6 +124,7 @@ export function LibraryWorkspace({
   view: LibraryView;
   filters: LibraryFilters;
   categories: { id: string; name: string }[];
+  infoTypes: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -241,9 +242,9 @@ export function LibraryWorkspace({
           name="info_type"
           value={filters.infoType ?? ""}
           emptyLabel="情報タイプ"
-          options={INFO_TYPES.map((id) => ({
-            id,
-            label: INFO_TYPE_LABELS[id],
+          options={infoTypes.map((item) => ({
+            id: item.id,
+            label: item.name,
           }))}
         />
         <FilterSelect
@@ -272,7 +273,7 @@ export function LibraryWorkspace({
       ) : (
         <ul
           className={
-            view === "grid" ? "mt-4 grid grid-cols-2 gap-2" : "mt-4 space-y-3"
+            view === "grid" ? "mt-4 grid grid-cols-3 gap-2" : "mt-4 space-y-3"
           }
         >
           {rows.map((item) => (

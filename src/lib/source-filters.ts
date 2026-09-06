@@ -1,5 +1,5 @@
 import type { SearchFilters } from "@/lib/search-query";
-import { INFO_TYPES } from "@/server/ai/info-types";
+import { isTaxonomyItemId } from "@/lib/taxonomy-id";
 import { READ_STATUSES } from "@/server/sources/triage";
 
 export const SOURCE_KINDS = [
@@ -17,7 +17,6 @@ export type LibraryFilters = SearchFilters & {
 };
 
 const KIND_IDS = new Set<string>(SOURCE_KINDS.map((item) => item.id));
-const INFO_IDS = new Set<string>(INFO_TYPES);
 const READ_IDS = new Set<string>(READ_STATUSES);
 
 function pick(
@@ -45,7 +44,7 @@ export function parseLibraryFilters(params: {
   const tag = pick(params, "tag", 40);
   return {
     categoryId: pick(params, "category"),
-    infoType: infoType && INFO_IDS.has(infoType) ? infoType : undefined,
+    infoType: infoType && isTaxonomyItemId(infoType) ? infoType : undefined,
     triage: pick(params, "triage", 24),
     readStatus: readStatus && READ_IDS.has(readStatus) ? readStatus : undefined,
     from: pick(params, "from", 32),

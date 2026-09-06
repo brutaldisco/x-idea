@@ -6,6 +6,8 @@ const HANDLE_KEY = "root";
 const START_CHUNK = 8 * 1024 * 1024;
 const MIN_CHUNK = 1024 * 1024;
 
+let memoryRoot: FileSystemDirectoryHandle | null = null;
+
 export function supportsDirectoryPicker(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -40,10 +42,15 @@ async function idbGet<T>(key: string): Promise<T | undefined> {
 async function idbSet(key: string, value: unknown): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction("kv", "readwrite");
-    tx.objectStore("kv").put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error("idb set failed"));
+    try {
+      const tx = db.transaction("kv", "readwrite");
+      const req = tx.objectStore("kv").put(value, key);
+      req.onerror = () => reject(req.error ?? new Error("idb put failed"));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error("idb set failed"));
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error("idb set failed"));
+    }
   });
 }
 
@@ -57,22 +64,56 @@ async function idbDel(key: string): Promise<void> {
   });
 }
 
-export async function pickVideoRoot(): Promise<FileSystemDirectoryHandle> {
+async function openDirectoryPicker(): Promise<FileSystemDirectoryHandle> {
   if (!window.showDirectoryPicker) {
     throw new Error("unsupported");
   }
-  const handle = await window.showDirectoryPicker({
-    id: "x-idea-videos",
-    mode: "readwrite",
-    startIn: "videos",
-  });
-  await idbSet(HANDLE_KEY, handle);
-  return handle;
+  try {
+    return await window.showDirectoryPicker({
+      id: "x-idea-videos",
+      mode: "readwrite",
+      startIn: "videos",
+    });
+  } catch (error) {
+    if ((error as { name?: string }).name === "AbortError") {
+      throw error;
+    }
+    return await window.showDirectoryPicker({ mode: "readwrite" });
+  }
+}
+
+export async function persistVideoRoot(
+  handle: FileSystemDirectoryHandle,
+): Promise<boolean> {
+  try {
+    await idbSet(HANDLE_KEY, handle);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function pickVideoRoot(): Promise<{
+  handle: FileSystemDirectoryHandle;
+  persisted: boolean;
+}> {
+  const handle = await openDirectoryPicker();
+  memoryRoot = handle;
+  const persisted = await persistVideoRoot(handle);
+  return { handle, persisted };
+}
+
+export function peekVideoRoot(): FileSystemDirectoryHandle | null {
+  return memoryRoot;
 }
 
 export async function loadVideoRoot(): Promise<FileSystemDirectoryHandle | null> {
+  if (memoryRoot) {
+    return memoryRoot;
+  }
   try {
-    return (await idbGet<FileSystemDirectoryHandle>(HANDLE_KEY)) ?? null;
+    memoryRoot = (await idbGet<FileSystemDirectoryHandle>(HANDLE_KEY)) ?? null;
+    return memoryRoot;
   } catch {
     return null;
   }

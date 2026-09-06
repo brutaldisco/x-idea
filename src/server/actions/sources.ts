@@ -3,7 +3,7 @@
 import { refresh, updateTag } from "next/cache";
 import { z } from "zod";
 import { type ActionResult, actionFail, actionOk } from "@/lib/action-result";
-import { INFO_TYPES } from "@/server/ai/info-types";
+import { isTaxonomyItemId } from "@/lib/taxonomy-id";
 import {
   archiveSource as archiveSourceRow,
   bulkConfirmSources,
@@ -71,7 +71,7 @@ export async function confirmSource(input: {
       z.object({
         id: idSchema,
         category_id: z.string().min(1).max(48).optional(),
-        info_type: z.enum(INFO_TYPES).optional(),
+        info_type: z.string().max(40).refine(isTaxonomyItemId).optional(),
         tags: z.array(z.string().max(40)).max(8).optional(),
       }),
       input,
@@ -161,7 +161,12 @@ export async function updateSource(input: {
       z.object({
         id: idSchema,
         category_id: z.string().min(1).max(48).nullable().optional(),
-        info_type: z.enum(INFO_TYPES).nullable().optional(),
+        info_type: z
+          .string()
+          .max(40)
+          .refine(isTaxonomyItemId)
+          .nullable()
+          .optional(),
         tags: z.array(z.string().max(40)).max(8).optional(),
       }),
       input,

@@ -12,11 +12,13 @@ import {
 import {
   appUrl,
   beginOauth,
+  callbackUriForRequest,
   normalizeXHint,
   OAUTH_COOKIE,
   safeNextPath,
   withQuery,
 } from "@/server/x/oauth";
+import { X_SCOPES } from "@/server/x/pkce";
 
 export const instant = false;
 
@@ -30,15 +32,18 @@ export async function GET(request: Request) {
   const forceLogin =
     url.searchParams.get("force_login") === "1" ||
     url.searchParams.get("force_login") === "true";
+  const reauth =
+    url.searchParams.get("reauth") === "1" ||
+    url.searchParams.get("reauth") === "true";
 
   try {
     if (isDbConfigured()) {
       await ensureSchema();
     }
-    if (forceLogin && !hint) {
+    if (forceLogin && !hint && !reauth) {
       return Response.redirect(`${appUrl()}${withQuery(next, "x", "hint")}`);
     }
-    if (hint && (await isLinkedUsername(hint))) {
+    if (hint && !reauth && (await isLinkedUsername(hint))) {
       return Response.redirect(`${appUrl()}${withQuery(next, "x", "same")}`);
     }
     if (process.env.MOCK_EXTERNAL === "1") {
@@ -53,19 +58,20 @@ export async function GET(request: Request) {
           access_token: "mock-access",
           refresh_token: "mock-refresh",
           expires_in: 7200,
-          scope: "bookmark.read tweet.read users.read offline.access",
+          scope: X_SCOPES,
         },
       );
       return Response.redirect(`${appUrl()}${next}`);
     }
-    if ((await countXAccounts()) >= MAX_X_ACCOUNTS) {
+    if (!reauth && (await countXAccounts()) >= MAX_X_ACCOUNTS) {
       return Response.redirect(`${appUrl()}${withQuery(next, "x", "limit")}`);
     }
     const { url: oauthUrl, cookie } = beginOauth({
-      forceLogin,
+      forceLogin: reauth || forceLogin,
       screenName: hint ?? undefined,
-      intent: forceLogin ? "add" : "link",
+      intent: reauth ? "reauth" : forceLogin ? "add" : "link",
       next,
+      redirectUri: callbackUriForRequest(request.url),
     });
     const jar = await cookies();
     jar.set(OAUTH_COOKIE, cookie, {

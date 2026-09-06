@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { INFO_TYPES } from "@/server/ai/info-types";
 
 export const enrichItemSchema = z.object({
   source_id: z.string().min(1),
@@ -18,7 +17,7 @@ export const enrichItemSchema = z.object({
   new_category_suggestion: z.string().nullable(),
   uncertainty_reason: z.string().nullable(),
   tags: z.array(z.string()).min(1).max(5),
-  info_type: z.enum(INFO_TYPES),
+  info_type: z.string().min(1).max(40),
   info_type_confidence: z.number().min(0).max(1),
   importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   language: z.string().min(1).max(16),

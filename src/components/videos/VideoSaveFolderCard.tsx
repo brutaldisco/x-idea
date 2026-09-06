@@ -10,7 +10,7 @@ export function VideoSaveFolderCard({
   accountLabel: string;
   initialFolderName?: string | null;
 }) {
-  const { supported, folderName, linked, linkFolder } =
+  const { supported, folderName, linked, persistWarning, linkFolder } =
     useVideoSaveFolder(initialFolderName);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -68,6 +68,9 @@ export function VideoSaveFolderCard({
           ) : null}
         </>
       )}
+      {persistWarning ? (
+        <p className="mt-2 text-ink-2 text-xs">{persistWarning}</p>
+      ) : null}
       {message ? <p className="mt-2 text-ink-2 text-xs">{message}</p> : null}
     </article>
   );

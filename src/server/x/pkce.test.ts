@@ -1,13 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { challengeS256, createVerifier } from "./pkce";
+import { hasOauthScope, parseOauthScopes, X_SCOPES } from "./pkce";
 
-describe("pkce", () => {
-  it("creates an S256 challenge", () => {
-    const verifier = createVerifier();
-    const challenge = challengeS256(verifier);
-    expect(verifier).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(challenge).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(challenge).not.toBe(verifier);
-    expect(challengeS256(verifier)).toBe(challenge);
+describe("oauth scopes", () => {
+  it("includes bookmark.write for delete-on-X", () => {
+    expect(X_SCOPES.split(" ")).toContain("bookmark.write");
+  });
+
+  it("reads JSON array scopes_json", () => {
+    expect(
+      parseOauthScopes(JSON.stringify(["bookmark.read", "tweet.read"])),
+    ).toEqual(["bookmark.read", "tweet.read"]);
+    expect(
+      hasOauthScope(
+        JSON.stringify(["bookmark.read", "bookmark.write"]),
+        "bookmark.write",
+      ),
+    ).toBe(true);
+    expect(
+      hasOauthScope(JSON.stringify(["bookmark.read"]), "bookmark.write"),
+    ).toBe(false);
   });
 });

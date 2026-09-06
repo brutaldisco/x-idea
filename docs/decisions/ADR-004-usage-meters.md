@@ -11,8 +11,8 @@ X API はクレジット前払い（Owned Reads $0.001/リソース）。ユー�
 ## 決定
 
 - Settings 最上部に使用量メーターを置く。主表示は **残量**（使用量ではない）。
-- X 残量の優先順：① `GET /2/usage/credits`（`X_BEARER_TOKEN`、15 分キャッシュ）② コンソール残量のスナップショット − 以降の推定使用 ③ 追加記録合計 − 生涯推定使用。
-- 推定使用は `sync_runs.est_cost_usd` と、取り込み済み `sources`（origin=`x_bookmark`）× $0.001 の大きい方。アカウント別も同じ。
+- X 残量の優先順：① `GET /2/usage/credits`（App Bearer / client credentials / 連携アカウントの user token、15 分キャッシュ）② コンソール残量のスナップショット − 以降の推定使用 ③ 追加記録合計 − 同期の実課金見積もり。
+- 推定使用は `sync_runs` を **24 時間重複排除** して積む。Owned Reads（`initial` / `incremental`）は、同じアカウントで 24 時間以内の再取得を `new_sources` だけ数える。スレッド／親投稿／返信は Post read $0.005 の記録を使う。ライブラリ件数や incremental の `resources_read` 合計は使わない（同じ投稿を何度も数えて残量が数ドルずれるため）。
 - 追加・残量合わせは `x_credit_ledger`。`user_id` は追加しない。
 - `x_api_enabled` は人間が ON にする。メーター実装ではトグルを勝手に ON にしない。
 

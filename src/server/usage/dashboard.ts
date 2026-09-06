@@ -2,6 +2,8 @@ import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { logger } from "@/lib/logger";
 import {
+  billedSince,
+  estimateBilledUsage,
   estimateCostUsd,
   isLowRemaining,
   lastDateKeys,
@@ -84,6 +86,9 @@ function parseCache(raw: unknown): XUsageLive | null {
   if (Date.now() - Date.parse(row.fetchedAt) > CACHE_MS) {
     return null;
   }
+  if (typeof row.error === "string" && row.error.includes("X_BEARER_TOKEN")) {
+    return null;
+  }
   return {
     remainingUsd:
       typeof row.remainingUsd === "number" ? row.remainingUsd : null,
@@ -137,111 +142,61 @@ export async function getUsageDashboard(options?: {
   const tokyoDays = lastDateKeys(USAGE_DAYS, "Asia/Tokyo");
   const ptDays = lastDateKeys(USAGE_DAYS, "America/Los_Angeles");
 
-  const [
-    ledger,
-    accounts,
-    live,
-    settings,
-    sourceCounts,
-    sourceDays,
-    runSums,
-    runDays,
-    aiToday,
-  ] = await Promise.all([
-    readLedger(),
-    listXAccounts(),
-    loadLive(options?.refresh === true),
-    client.execute(
-      "SELECT ai_lane_caps_json FROM settings WHERE id = 1 LIMIT 1",
-    ),
-    client.execute(
-      `SELECT x_account_id, COUNT(*) AS n
+  const [ledger, accounts, live, settings, sourceCounts, runRows, aiToday] =
+    await Promise.all([
+      readLedger(),
+      listXAccounts(),
+      loadLive(options?.refresh === true),
+      client.execute(
+        "SELECT ai_lane_caps_json FROM settings WHERE id = 1 LIMIT 1",
+      ),
+      client.execute(
+        `SELECT x_account_id, COUNT(*) AS n
          FROM sources
          WHERE origin = 'x_bookmark'
          GROUP BY x_account_id
          LIMIT 16`,
-    ),
-    client.execute({
-      sql: `SELECT substr(saved_at, 1, 10) AS d, COUNT(*) AS n
-              FROM sources
-              WHERE origin = 'x_bookmark' AND saved_at >= ?
-              GROUP BY d
-              LIMIT 31`,
-      args: [since],
-    }),
-    client.execute(
-      `SELECT COALESCE(SUM(resources_read), 0) AS n,
-                COALESCE(SUM(est_cost_usd), 0) AS cost
+      ),
+      client.execute(
+        `SELECT x_account_id, mode, started_at, resources_read, new_sources, est_cost_usd
          FROM sync_runs
-         LIMIT 1`,
-    ),
-    client.execute({
-      sql: `SELECT substr(started_at, 1, 10) AS d,
-                     COALESCE(SUM(resources_read), 0) AS n,
-                     COALESCE(SUM(est_cost_usd), 0) AS cost
-              FROM sync_runs
-              WHERE started_at >= ?
-              GROUP BY d
-              LIMIT 31`,
-      args: [since],
-    }),
-    client.execute({
-      sql: `SELECT day_pt, lane, requests
+         ORDER BY started_at DESC
+         LIMIT 4000`,
+      ),
+      client.execute({
+        sql: `SELECT day_pt, lane, requests
               FROM ai_usage_daily
               WHERE day_pt >= ?
               LIMIT 64`,
-      args: [ptDays[0] ?? since.slice(0, 10)],
-    }),
-  ]);
+        args: [ptDays[0] ?? since.slice(0, 10)],
+      }),
+    ]);
 
-  let usedSinceSnapshotUsd = 0;
-  if (ledger.snapshotAt) {
-    const sinceSnap = await client.execute({
-      sql: `SELECT COALESCE(SUM(est_cost_usd), 0) AS cost,
-                   COALESCE(SUM(resources_read), 0) AS n
-            FROM sync_runs
-            WHERE started_at >= ?
-            LIMIT 1`,
-      args: [ledger.snapshotAt],
-    });
-    const runCost = Number(sinceSnap.rows[0]?.cost ?? 0);
-    if (runCost > 0) {
-      usedSinceSnapshotUsd = runCost;
-    } else {
-      const saved = await client.execute({
-        sql: `SELECT COUNT(*) AS n
-              FROM sources
-              WHERE origin = 'x_bookmark' AND saved_at >= ?
-              LIMIT 1`,
-        args: [ledger.snapshotAt],
-      });
-      usedSinceSnapshotUsd = estimateCostUsd(Number(saved.rows[0]?.n ?? 0));
-    }
-  }
+  const billed = estimateBilledUsage(
+    runRows.rows.map((row) => ({
+      accountId: row.x_account_id ? String(row.x_account_id) : null,
+      mode: String(row.mode ?? ""),
+      startedAt: String(row.started_at ?? ""),
+      resourcesRead: Number(row.resources_read ?? 0),
+      newSources: Number(row.new_sources ?? 0),
+      recordedCostUsd: Number(row.est_cost_usd ?? 0),
+    })),
+  );
+  const usedSinceSnapshotUsd = billedSince(billed, ledger.snapshotAt);
 
   const names = new Map(
     accounts.map((account) => [account.id, account.username]),
   );
-  const accountRows = sourceCounts.rows.map((row) => {
-    const id = row.x_account_id ? String(row.x_account_id) : null;
-    const resources = Number(row.n ?? 0);
-    return {
-      id,
-      username: id ? (names.get(id) ?? id) : "未割当",
-      resources,
-      costUsd: estimateCostUsd(resources),
-    };
-  });
-  accountRows.sort((a, b) => b.costUsd - a.costUsd);
-
-  const sourceResources = accountRows.reduce(
-    (sum, row) => sum + row.resources,
+  const sourceResources = sourceCounts.rows.reduce(
+    (sum, row) => sum + Number(row.n ?? 0),
     0,
   );
-  const runResources = Number(runSums.rows[0]?.n ?? 0);
-  const runCost = Number(runSums.rows[0]?.cost ?? 0);
-  const usedResources = Math.max(sourceResources, runResources);
-  const usedUsd = Math.max(estimateCostUsd(sourceResources), runCost);
+  let usedResources = billed.usedResources;
+  let usedUsd = billed.usedUsd;
+  if (usedResources === 0 && sourceResources > 0) {
+    usedResources = sourceResources;
+    usedUsd = estimateCostUsd(sourceResources);
+  }
 
   const credit = remainingCredits({
     liveRemainingUsd: live.remainingUsd,
@@ -251,26 +206,7 @@ export async function getUsageDashboard(options?: {
     lifetimeUsedUsd: usedUsd,
   });
 
-  const dailyCost = new Map<string, { costUsd: number; resources: number }>();
-  for (const row of sourceDays.rows) {
-    const date = String(row.d ?? "");
-    const resources = Number(row.n ?? 0);
-    dailyCost.set(date, { costUsd: estimateCostUsd(resources), resources });
-  }
-  for (const row of runDays.rows) {
-    const date = String(row.d ?? "");
-    const resources = Number(row.n ?? 0);
-    const costUsd = Number(row.cost ?? 0);
-    const prev = dailyCost.get(date);
-    dailyCost.set(date, {
-      resources: Math.max(prev?.resources ?? 0, resources),
-      costUsd: Math.max(
-        prev?.costUsd ?? 0,
-        costUsd,
-        estimateCostUsd(resources),
-      ),
-    });
-  }
+  const dailyCost = new Map(billed.daily);
   for (const day of live.dailyTweets) {
     const prev = dailyCost.get(day.date);
     const fromApi = estimateCostUsd(day.tweets);
@@ -279,6 +215,26 @@ export async function getUsageDashboard(options?: {
       costUsd: Math.max(prev?.costUsd ?? 0, fromApi),
     });
   }
+
+  const accountRows =
+    billed.accounts.size > 0
+      ? [...billed.accounts.entries()].map(([id, row]) => ({
+          id: id || null,
+          username: id ? (names.get(id) ?? id) : "未割当",
+          resources: row.resources,
+          costUsd: row.costUsd,
+        }))
+      : sourceCounts.rows.map((row) => {
+          const id = row.x_account_id ? String(row.x_account_id) : null;
+          const resources = Number(row.n ?? 0);
+          return {
+            id,
+            username: id ? (names.get(id) ?? id) : "未割当",
+            resources,
+            costUsd: estimateCostUsd(resources),
+          };
+        });
+  accountRows.sort((a, b) => b.costUsd - a.costUsd);
 
   const caps = { bulk: 400, quality: 16, embed: 800 };
   try {

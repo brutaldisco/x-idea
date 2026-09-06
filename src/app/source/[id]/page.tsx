@@ -12,7 +12,7 @@ import { SourceHero } from "@/components/SourceHero";
 import { SourceNote } from "@/components/SourceNote";
 import { SourceReenrichButton } from "@/components/SourceReenrichButton";
 import { SourceStatusBar } from "@/components/SourceStatusBar";
-import { INFO_TYPE_LABELS, type InfoType } from "@/server/ai/info-types";
+import { infoTypeLabel } from "@/server/ai/info-types";
 import { ensureSourceArticles } from "@/server/fetch/attach";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
 import { hydrateXArticleFromApi } from "@/server/fetch/x-article";
@@ -21,6 +21,7 @@ import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { persistLocalMedia } from "@/server/media/persist";
 import { getContextSettings } from "@/server/settings";
 import { getSourceDetail } from "@/server/sources/detail";
+import { taxonomyForAccount } from "@/server/taxonomy";
 import { getAccountContext } from "@/server/x/context";
 
 export const instant = false;
@@ -49,6 +50,7 @@ export default async function SourcePage({
   if (!source) {
     notFound();
   }
+  const taxonomy = await taxonomyForAccount(source.xAccountId);
   await enqueuePendingArticleFetches(8, source.id);
   if (source.xAccountId) {
     await enqueuePendingMediaDownloads(source.xAccountId, 16);
@@ -71,10 +73,9 @@ export default async function SourcePage({
 
   const hasArticle = source.articles.length > 0;
   const hasSummary = Boolean(source.aiSummary);
-  const infoLabel =
-    source.infoType && source.infoType in INFO_TYPE_LABELS
-      ? INFO_TYPE_LABELS[source.infoType as InfoType]
-      : null;
+  const infoLabel = source.infoType
+    ? infoTypeLabel(source.infoType, taxonomy.infoTypes)
+    : null;
 
   return (
     <main className="scroll-smooth px-6 pt-8 pb-8">

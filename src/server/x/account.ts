@@ -3,6 +3,7 @@ import { ensureSchema } from "@/db/ensure";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import type { TokenResponse, XMe } from "@/server/x/oauth";
+import { hasOauthScope, X_SCOPES } from "@/server/x/pkce";
 
 export const MAX_X_ACCOUNTS = 3;
 
@@ -67,11 +68,7 @@ export async function saveXAccount(
         tokens.access_token,
         tokens.refresh_token ?? "",
         expires,
-        JSON.stringify(
-          (
-            tokens.scope ?? "bookmark.read tweet.read users.read offline.access"
-          ).split(" "),
-        ),
+        JSON.stringify((tokens.scope ?? X_SCOPES).split(" ")),
         existing.rows[0].id,
       ],
     });
@@ -99,11 +96,7 @@ export async function saveXAccount(
       tokens.access_token,
       tokens.refresh_token ?? "",
       expires,
-      JSON.stringify(
-        (
-          tokens.scope ?? "bookmark.read tweet.read users.read offline.access"
-        ).split(" "),
-      ),
+      JSON.stringify((tokens.scope ?? X_SCOPES).split(" ")),
     ],
   });
   logger.info({ username: me.username }, "x_account saved");
@@ -137,6 +130,20 @@ export async function deleteXAccount(id: string): Promise<void> {
     args: [id],
   });
   logger.info({ id }, "x_account deleted");
+}
+
+export async function accountHasBookmarkWrite(id: string): Promise<boolean> {
+  if (!isDbConfigured()) {
+    return false;
+  }
+  const result = await getClient().execute({
+    sql: "SELECT scopes_json FROM x_account WHERE id = ? LIMIT 1",
+    args: [id],
+  });
+  return hasOauthScope(
+    result.rows[0]?.scopes_json ? String(result.rows[0].scopes_json) : null,
+    "bookmark.write",
+  );
 }
 
 export async function listXAccounts(): Promise<XAccountPublic[]> {
@@ -198,6 +205,20 @@ export async function getXAccountSecret(
   });
   const row = result.rows[0];
   return row ? asSecret(row as Record<string, unknown>) : null;
+}
+
+export async function listXAccountSecrets(): Promise<XAccountSecret[]> {
+  if (!isDbConfigured()) {
+    return [];
+  }
+  await ensureSchema();
+  const result = await getClient().execute(
+    `SELECT ${SECRET_COLUMNS} FROM x_account
+     WHERE status = 'active'
+     ORDER BY created_at ASC
+     LIMIT ${MAX_X_ACCOUNTS}`,
+  );
+  return result.rows.map((row) => asSecret(row as Record<string, unknown>));
 }
 
 export async function listSyncableAccounts(): Promise<XAccountSecret[]> {

@@ -36,7 +36,7 @@ export function SourceCardMenu({
   async function onDelete() {
     if (
       !window.confirm(
-        "この投稿と保存した画像を削除しますか？手元にダウンロードした動画ファイルは残り、Finder で手動削除してください。元に戻せません。",
+        "この投稿と保存した画像を削除しますか？同期では戻りません。権限があれば X のブックマークからも外します。手元にダウンロードした動画ファイルは残り、Finder で手動削除してください。",
       )
     ) {
       setOpen(false);

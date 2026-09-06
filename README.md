@@ -35,7 +35,7 @@ pnpm dev                     # http://localhost:3344 （このリポジトリ専
 
 ## 運用メモ
 
-- 同期・ジョブ・AI 予算の状態は Settings。残量メーターは「なくなったら追加」。X の公式残量を出すなら `X_BEARER_TOKEN`。
+- 同期・ジョブ・AI 予算の状態は Settings。残量メーターは「なくなったら追加」。公式残量は `X_BEARER_TOKEN` か App の client credentials。無いときは同期記録から 24 時間重複を除いて見積もる。
 - Gemini の日次クォータは太平洋時間 0:00（JST 16:00/17:00）にリセット。
 - MCP エンドポイント: `https://x-idea.vercel.app/api/mcp`（Settings でトークン発行、`Authorization: Bearer`）。
 - 有料プラン（X クレジット、Gemini 課金、スレッド展開、返信取得、Anthropic/OpenAI）はすべて Settings トグル既定 OFF。契約後に人間が ON にする。

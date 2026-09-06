@@ -14,7 +14,12 @@ import {
   listCategories,
   listSourcesPage,
 } from "@/server/sources/query";
-import { contextLabel, getAccountContext } from "@/server/x/context";
+import { taxonomyForAccount } from "@/server/taxonomy";
+import {
+  contextAccountId,
+  contextLabel,
+  getAccountContext,
+} from "@/server/x/context";
 
 export const instant = false;
 
@@ -34,10 +39,12 @@ async function LibraryBody({
   const view = parseLibraryView(params.view);
   const filters = parseLibraryFilters(query);
   const ctx = await getAccountContext();
-  const [count, page, categories] = await Promise.all([
+  const accountId = contextAccountId(ctx);
+  const [count, page, categories, taxonomy] = await Promise.all([
     countSources({ ctx, filters }),
     listSourcesPage({ ctx, limit: SOURCE_PAGE_SIZE, sort, filters }),
-    listCategories(),
+    listCategories(accountId),
+    taxonomyForAccount(accountId),
   ]);
   const label = contextLabel(ctx);
 
@@ -60,6 +67,7 @@ async function LibraryBody({
         view={view}
         filters={filters}
         categories={categories}
+        infoTypes={taxonomy.infoTypes}
       />
     </LibraryQueryProvider>
   );
