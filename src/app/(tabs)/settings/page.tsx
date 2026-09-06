@@ -169,7 +169,7 @@ async function SettingsBody({
           field="thread_expand_enabled"
           enabled={flags.threadExpandEnabled}
           label="セルフスレッド展開"
-          hint="起点投稿の連投を取得します。$0.005/件。既定 OFF。"
+          hint="Reader で対象ごとに手動取得。$0.005/件。既定 OFF。"
         />
         <SettingsFlagToggle
           field="reply_context_enabled"

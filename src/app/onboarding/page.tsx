@@ -22,7 +22,8 @@ async function OnboardingBody({
         <h1 className="mt-3 font-semibold text-3xl">Marginalia へ</h1>
         <p className="mt-4 text-ink-2">
           X
-          でブックマークした投稿を、要約と分類のあるライブラリにします。ログイン画面はありません。
+          でブックマークした投稿を、要約と分類のあるライブラリにします。ユーザー登録はありません。必要なら
+          Google またはパスコードで開きます。
         </p>
         <Link
           href="/onboarding?step=2"

@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { ensureMediaDir, isLocalMediaEnabled } from "@/server/media/paths";
 import { encodePhotoWebp } from "@/server/media/webp";
 
-export const COMPANION_PORTS = [3000, 3001, 3010, 3011];
+export const COMPANION_PORTS = [3344, 3000, 3001, 3010, 3011];
 export const MAX_COMPANION_BYTES = 200 * 1024 * 1024;
 
 const PROD_ORIGINS = new Set([

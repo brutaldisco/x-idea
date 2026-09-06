@@ -143,6 +143,10 @@ export default async function SourcePage({
               <PostBlock key={post.id} post={post} />
             ))}
           </CollapsibleSection>
+        ) : source.threadLoaded ? (
+          <p className="mt-6 text-ink-2 text-sm">
+            追加のセルフスレッドはありません。
+          </p>
         ) : flags.threadExpandEnabled ? (
           <div className="mt-6">
             <ContextFetchButton
@@ -151,7 +155,11 @@ export default async function SourcePage({
               label="セルフスレッドを取得"
             />
           </div>
-        ) : null}
+        ) : (
+          <p className="mt-6 text-ink-2 text-sm">
+            セルフスレッドの取得は Settings のトグルが OFF です。
+          </p>
+        )}
 
         {source.replies.length > 0 ? (
           <CollapsibleSection title="直近の返信" count={source.replies.length}>

@@ -55,6 +55,7 @@ export type SourceDetail = {
   aiSummary: string | null;
   post: PostCard;
   parent: PostCard | null;
+  threadLoaded: boolean;
   thread: PostCard[];
   replies: PostCard[];
   articles: {
@@ -182,7 +183,7 @@ export async function getSourceDetail(
                  p.id AS post_id, p.tweet_id, p.url, p.text, p.lang,
                  p.author_username, p.author_name, p.author_avatar_url,
                  p.posted_at, p.is_reply, p.reply_to_tweet_id, p.quoted_tweet_id,
-                 p.quoted_snapshot_json, p.conversation_id
+                 p.quoted_snapshot_json, p.conversation_id, p.thread_root_id
           FROM sources s
           JOIN x_posts p ON p.id = s.x_post_id
           LEFT JOIN categories c ON c.id = s.category_id
@@ -242,17 +243,34 @@ export async function getSourceDetail(
     ? String(bookmarkAuthor.rows[0].author_id)
     : null;
 
+  let threadLoaded = String(row.thread_root_id ?? "") === post.tweetId;
+  if (!threadLoaded) {
+    const expanded = await getClient().execute({
+      sql: `SELECT id FROM x_posts
+            WHERE thread_root_id = ? AND tweet_id != ?
+            LIMIT 1`,
+      args: [post.tweetId, post.tweetId],
+    });
+    threadLoaded = expanded.rows.length > 0;
+  }
+
   const thread: PostCard[] = [];
   const replies: PostCard[] = [];
   for (const extra of extras.rows) {
+    if (parent && String(extra.tweet_id) === parent.tweetId) {
+      continue;
+    }
+    const isThreadMate = Boolean(
+      authorId && String(extra.author_id) === authorId,
+    );
+    if (isThreadMate && !threadLoaded) {
+      continue;
+    }
     const card = asPost(
       extra as Record<string, unknown>,
       await loadMedia(String(extra.id)),
     );
-    if (parent && card.tweetId === parent.tweetId) {
-      continue;
-    }
-    if (authorId && String(extra.author_id) === authorId) {
+    if (isThreadMate) {
       thread.push(card);
     } else {
       replies.push(card);
@@ -295,6 +313,7 @@ export async function getSourceDetail(
     aiSummary: row.ai_summary ? String(row.ai_summary) : null,
     post,
     parent,
+    threadLoaded,
     thread,
     replies,
     articles: articles.rows.map((item) => ({

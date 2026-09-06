@@ -49,6 +49,9 @@ export function shouldBypassServiceWorker(
   if (pathname.startsWith("/api/x/")) {
     return true;
   }
+  if (pathname.startsWith("/api/auth/")) {
+    return true;
+  }
   if (pathname.startsWith("/api/mcp")) {
     return true;
   }

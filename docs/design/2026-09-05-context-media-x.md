@@ -138,7 +138,7 @@
 
 ### Phase B（任意・既定 OFF トグル）
 
-5. **セルフスレッド展開**（既存 T-509）：起点投稿のみ `search/recent?query=conversation_id:{id} from:{author}`。1 スレッド 25 件・月 $2 上限。
+5. **セルフスレッド展開**（既存 T-509）：同期では取らない。Reader で押した Source だけ `search/recent?query=conversation_id:{id} from:{author}`。1 スレッド 25 件・月 $2 上限。
 6. **直近 7 日の返信コンテキスト**：`reply_context_enabled`（既定 OFF）。必要な Source だけ `conversation_id` で直近の返信を取得（1 Source 25 件まで、月次上限はスレッド展開と共用）。
 
 ### Phase C（やらない／後回し）

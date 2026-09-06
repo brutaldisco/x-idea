@@ -12,7 +12,7 @@
 
 ## 絶対に守ること（付録F 4 項の要約）
 
-- `user_id` を追加しない。ログイン UI を作らない（任意の `APP_PASSCODE` ゲートのみ）。
+- `user_id` を追加しない。任意ゲートは `APP_PASSCODE` と許可メール 1 件の Google ログインだけ（`/unlock`）。マルチユーザーのログイン UI は作らない。
 - 全件 SELECT・ベクトルのフルスキャン（`vector_distance_cos` 単独）をしない。必ず LIMIT / `vector_top_k`。
 - AI 呼び出しは必ず `budget.guard(lane)` 経由。429 で有料へ自動切替しない。
 - 原文カラム（`x_posts.text`, `articles.content_*`）を AI が書き換えない。ユーザー記述カラム（`user_note`, `my_*`）に AI が書かない。

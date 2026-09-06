@@ -28,6 +28,9 @@ describe("shouldBypassServiceWorker", () => {
     expect(shouldBypassServiceWorker("/today", "POST")).toBe(true);
     expect(shouldBypassServiceWorker("/api/media/abc/file", "GET")).toBe(true);
     expect(shouldBypassServiceWorker("/api/videos/queue", "GET")).toBe(true);
+    expect(shouldBypassServiceWorker("/api/auth/google/start", "GET")).toBe(
+      true,
+    );
     expect(shouldBypassServiceWorker("/today", "GET")).toBe(false);
   });
 });

@@ -36,6 +36,9 @@ function bypass(request, url) {
   if (path.startsWith("/api/x/")) {
     return true;
   }
+  if (path.startsWith("/api/auth/")) {
+    return true;
+  }
   if (path.startsWith("/api/mcp")) {
     return true;
   }

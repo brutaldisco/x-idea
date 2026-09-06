@@ -16,7 +16,6 @@ import { enqueueJob } from "@/server/jobs/queue";
 import { getContextSettings } from "@/server/settings";
 import {
   type BookmarksPage,
-  isConversationRoot,
   isReply,
   replyToTweetId,
   tweetText,
@@ -96,20 +95,6 @@ async function enqueueContextJobs(input: {
         source_id: input.sourceId,
       },
       dedupeKey: `reply_context:${input.tweet.conversation_id ?? input.tweet.id}`,
-    });
-    return;
-  }
-  if (settings.threadExpandEnabled && isConversationRoot(input.tweet)) {
-    await enqueueJob({
-      type: "expand_thread",
-      payload: {
-        tweet_id: input.tweet.id,
-        account_id: input.accountId,
-        author_username:
-          input.page.users.get(input.tweet.author_id ?? "")?.username ?? null,
-        source_id: input.sourceId,
-      },
-      dedupeKey: `expand_thread:${input.tweet.id}`,
     });
   }
 }

@@ -1,9 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { gateCookieName, isPublicPath, verifyGate } from "@/lib/gate";
+import {
+  gateCookieName,
+  gateRequired,
+  isPublicPath,
+  verifyGate,
+} from "@/lib/gate";
 import { safeInternalPath } from "@/lib/pwa";
 
 export async function proxy(request: NextRequest) {
-  if (!process.env.APP_PASSCODE) {
+  if (!gateRequired()) {
     return NextResponse.next();
   }
 

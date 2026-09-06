@@ -1,3 +1,4 @@
+import { getClient } from "@/db/client";
 import { persistContextTweets } from "@/server/ingest/context";
 import { getContextSettings } from "@/server/settings";
 import { estimatePostReadUsd } from "@/server/usage/estimate";
@@ -45,6 +46,10 @@ export async function expandThread(payload: {
     tweets: page.tweets,
     skipTweetId: payload.tweet_id,
     threadRootId: payload.tweet_id,
+  });
+  await getClient().execute({
+    sql: "UPDATE x_posts SET thread_root_id = tweet_id WHERE tweet_id = ?",
+    args: [payload.tweet_id],
   });
   await writeContextRun({
     accountId: account.id,

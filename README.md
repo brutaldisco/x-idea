@@ -19,7 +19,7 @@ pnpm install
 cp .env.example .env.local   # 付録D の変数を設定
 pnpm db:migrate              # drizzle/ の SQL を適用（ローカルは file:local.db）
 pnpm db:seed                 # settings / 初期カテゴリ / job_schedules
-pnpm dev
+pnpm dev                     # http://localhost:3344 （このリポジトリ専用。他アプリの 3000 と分けている）
 ```
 
 ## 外部サービス
@@ -30,6 +30,7 @@ pnpm dev
 | Vercel | `https://x-idea.vercel.app`（Hobby, hnd1） | プロジェクト名 `x-idea`。接続手順は付録H.4 |
 | X Developer Console | OAuth 2.0 PKCE、bookmarks（Owned Reads $0.001/リソース） | **審査・クレジット購入が必要なことがある**。完了まで `x_api_enabled=OFF` |
 | Google AI Studio | Gemini API キー | 無料で開始。有料は Settings トグル OFF のまま |
+| Google Cloud OAuth | 任意のアプリゲート | 許可メール 1 件。未設定ならゲートなし。パスコードと併用可 |
 | cron-job.org | 1 分間隔で `POST https://x-idea.vercel.app/api/jobs/tick`（`Authorization: Bearer <CRON_SECRET>`） | GitHub Actions schedule でも可 |
 
 ## 運用メモ

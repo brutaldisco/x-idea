@@ -6,7 +6,7 @@
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
 | 版 | **v3.5** |
 | 作成日 | 2026-07-12 |
-| 改訂日 | **2026-09-05** |
+| 改訂日 | **2026-09-06** |
 | ステータス | 実装着手可能 |
 | 外部サービス情報の確認日 | 2026-09-04（Next.js / Turso / Gemini / X API / Vercel / AI SDK / MCP の各公式ドキュメント） |
 | リポジトリ | `https://github.com/brutaldisco/x-idea.git`（空。本書のコミットから開始） |
@@ -21,7 +21,7 @@
 > 1. **技術スタックを 2026-09 時点の最新に刷新**：Next.js 16.3（Cache Components / Instant Navigations / `proxy.ts`）、React 19.2（`<ViewTransition>` / `<Activity>`）、Tailwind CSS v4、shadcn/ui、AI SDK 6（`ToolLoopAgent` / `Output.object` / 生成UI）、Drizzle ORM 1.0、Zod 4、Turso libSQL（ネイティブ vector + DiskANN、FTS5 trigram）。
 > 2. **Gemini 無料枠の激減に対応**：2026-09 実測で Flash 系は **20 リクエスト/日**、Flash-Lite は **500/日**、Embedding 2 は **1,000/日**。→ 「AI予算（AI Budget）」を第一級の設計概念にし、**レーン別モデルルーティング**・**バッチenrich**・**日次クォータ管理**を導入。インフラ/AI $0 の原則は維持。
 > 3. **「驚き」を生む体験を追加**：朝の **Daily Briefing**（音声つき）、引用と生成UIつきの **Ask**、知識の星図 **Atlas**、忘却に逆らう **Echo**、AIが余白に書き込む **Marginalia Reader**、スクショの文字まで検索できる **マルチモーダル取り込み**、自分の知識を Claude / ChatGPT / Cursor から使える **MCPサーバー**、Xの **ブックマークフォルダ連動**、自然言語で作る **Lens（スマートコレクション）**、ユーザー修正から学ぶ **「学習する司書」**。
-> 4. **個人用途・シングルテナント・アプリログインなし** は維持。ただし外部から機械アクセスする経路（MCP / Quick Capture / Cron）には **Bearer トークン必須**。任意で `APP_PASSCODE`。
+> 4. **個人用途・シングルテナント・ユーザー登録なし** は維持。外部から機械アクセスする経路（MCP / Quick Capture / Cron）には **Bearer トークン必須**。任意で `APP_PASSCODE` と許可メール 1 件の Google ログイン（ADR-012）。
 > 5. **リポジトリと本番DB・本番URLを確定**：GitHub `brutaldisco/x-idea`、Turso 東京、Vercel `https://x-idea.vercel.app`（`hnd1`）。有料プランはすべて **設定トグル既定 OFF**。契約が遅れても実装は `MOCK_EXTERNAL=1` と無料枠で進められる（付録H）。
 
 > **v3.2 の要点（v3.1 からの変更）**
@@ -111,7 +111,7 @@
 | 画面 | 9 画面 | **14 画面**（Today / Inbox / Library+Atlas / Ask / Settings ＋ Reader, KC, Briefing, Echo, Capture, Onboarding, Sync, Categories&Lens） | 「開いた瞬間に価値がある」体験へ |
 | 外部連携 | なし | **MCPサーバー**（`mcp-handler` 2.x、Bearer認証）、**Quick Capture**（iOSショートカット / Android Share Target）、**Web Push** | 自分の知識をAIエージェントの記憶にする |
 | X連携 | bookmarks のみ | ＋ **ブックマークフォルダ**同期（フォルダ→カテゴリ写像）、**スレッド展開**（P2、コスト上限つき） | Owned Reads $0.001/リソース（2026-04-20 改定） |
-| 認証 | なし（任意 APP_PASSWORD） | UIはなし／**機械アクセスは Bearer 必須**／任意 `APP_PASSCODE`（`proxy.ts`） | MCP 公開に伴う最小限の抑止 |
+| 認証 | なし（任意 APP_PASSWORD） | ユーザー登録なし／**機械アクセスは Bearer 必須**／任意 `APP_PASSCODE` と Google ゲート（`proxy.ts`、ADR-012） | MCP 公開に伴う最小限の抑止 |
 | リージョン | 未指定 | **Vercel `hnd1` × Turso `aws-ap-northeast-1`** | DBラウンドトリップ最小化 |
 
 ---
@@ -238,13 +238,13 @@ PC でライブラリを Atlas 表示に切り替える。埋め込みから自�
 | F-36 | **MCP サーバー** | 検索・取得・メモ追加・KC作成ツールを MCP で公開。Bearer 認証 | P2 |
 | F-37 | **Quick Capture** | 任意 URL／テキストを iOS ショートカット・Android 共有から取り込み（`origin='manual'`） | P2 |
 | F-38 | **Web Push / Badging** | Briefing 完成・Inbox 件数・再認証要求を通知。アイコンバッジ | P2 |
-| F-39 | **スレッド展開** | ブックマーク投稿が起点のセルフスレッドを取得（7日以内、上限・コスト上限つき） | P2 |
+| F-39 | **スレッド展開** | Reader でボタンを押した Source だけ、起点のセルフスレッドを取得（7日以内、上限・コスト上限つき） | P2 |
 | F-20 | 定期レビュー | 古くなった可能性・未読の掘り起こし（Insights に統合） | P2 |
 | F-21 | エクスポート | Markdown（Obsidian 互換）／JSON | P2 |
 | F-40 | コマンドパレット | PC で ⌘K。検索・移動・状態変更・自然言語コマンド | P2 |
 | F-23 | 動画文字起こし等 | 動画音声の書き起こし・チャプター | P3 |
 | F-41 | MCP OAuth | ChatGPT / Claude.ai Web など OAuth 必須クライアント向けの認可サーバー連携 | P3 |
-| F-01 | （廃止）アプリ認証 | ログイン画面・ユーザー登録は持たない | — |
+| F-01 | 任意ゲート | ユーザー登録なし。`APP_PASSCODE` と許可メール 1 件の Google ログイン（`/unlock`、ADR-012） | P1 |
 
 ---
 
@@ -254,7 +254,7 @@ MVP（P1）は「**X でブックマークするだけで、要約・分類済�
 
 含まれるもの：
 
-- X 連携（F-02）、Onboarding（F-27）。アプリログインは無し
+- X 連携（F-02）、Onboarding（F-27）。ユーザー登録なし。任意ゲートはパスコード／Google
 - 同期：定期（最短6時間）＋手動、差分は10件ページ、重複防止、削除・非公開の状態管理（F-03/F-04）
 - X 投稿の保存：本文、投稿者、日時、URL、リンク、引用（1階層）、メディア基本情報（F-05/F-22）
 - 外部記事の取得（F-06）
@@ -370,7 +370,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 - **ヒーロー**：投稿者アバター・名前・日時・X で開く。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。
-- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは折りたたみ**（件数つき、既定は展開）。動画はアプリ内再生せず **サムネイル＋「X で見る」＋「あとで保存」**（ダウンロードキューへ投入、14.6 / SC-15）。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。Reader に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。X の自動翻訳文は API に無い。原文カラムは書き換えない。
+- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは Reader で対象ごとに手動取得**し、取得後は折りたたみ（件数つき、既定は展開）。未取得時はボタン、トグル OFF 時は案内。動画はアプリ内再生せず **サムネイル＋「X で見る」＋「あとで保存」**（ダウンロードキューへ投入、14.6 / SC-15）。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。Reader に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。X の自動翻訳文は API に無い。原文カラムは書き換えない。
 - **記事**：外部リンクだけにせず、取得できた本文を **アプリ内リーダー**で表示する。タイトル＋本文（sanitize 済み HTML 優先）＋補助の「元の記事を開く」。`fetch_scope` バッジ（全文／一部／概要のみ／失敗）。既存 Source は Reader 表示時に URL を拾ってバックフィルする。
 - **要約**：「✦ AI」バッジ、3行要約、情報タイプ、重要度、タグ、カテゴリ（確信度）。「AI で再処理」。
 - **Marginalia（P2）**：記事・原文の重要文を AI がハイライト（薄いマーカー色）、余白（PC は右カラム、モバイルはハイライトタップで下部シート）に注釈。ユーザーは選択→「ハイライト」「メモ」「これについて聞く」。
@@ -395,7 +395,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **外部サービス / 課金**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
   - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings / Today に「今すぐ同期」。自動は最短 6 時間（`sync_interval_min`、下限 360）。差分確認は `max_results=10`。1回の取り込み上限は `sync_max_per_run`（既定 100、10〜500）
   - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
-  - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF）
+  - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF。Reader で対象ごとに手動取得）
   - 直近 7 日の返信取得：`reply_context_enabled`（追加課金、$0.005/投稿。既定 OFF。上限はスレッド展開と共用）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
   - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
@@ -542,7 +542,7 @@ UI/UX の判断に迷ったら以下に従う。
 │ ├ /api/jobs/tick（ワーカー入口）        │
 │ ├ /api/mcp（MCP サーバー, Bearer）      │◀── Claude / ChatGPT / Cursor
 │ ├ /api/capture（Quick Capture, Bearer） │◀── iOS ショートカット / Android 共有
-│ └ proxy.ts（任意 APP_PASSCODE）         │
+│ └ proxy.ts（任意 APP_PASSCODE / Google） │
 └───────┬──────────────────────────────┘
         │ @libsql/client（HTTP）
 ┌───────▼──────────────────────────────┐
@@ -632,9 +632,9 @@ UI/UX の判断に迷ったら以下に従う。
 - **認証**：OAuth 2.0 Authorization Code with PKCE。スコープ `bookmark.read tweet.read users.read offline.access`。
 - **取得仕様**：`max_results` 1〜100、`pagination_token`。自身のブックマークのみ。
 
-### 14.2 認証フロー（アプリログインなし、複数アカウント）
+### 14.2 認証フロー（ユーザー登録なし、複数 X アカウント）
 
-**v3.2（ADR-002）**：`x_account` はシングルトンではなく **最大 3 行**。追加は Settings の「アカウントを追加」から行い、同じ X アカウント（`x_user_id`）は上書き更新する。アプリ側のログイン／ユーザー切替は作らない。
+**v3.2（ADR-002）**：`x_account` はシングルトンではなく **最大 3 行**。追加は Settings の「アカウントを追加」から行い、同じ X アカウント（`x_user_id`）は上書き更新する。アプリのユーザー概念や `user_id` は追加しない。任意ゲートはパスコードまたは Google（ADR-012）。
 
 ```
 [Settings] 「アカウントを追加」
@@ -654,6 +654,8 @@ UI/UX の判断に迷ったら以下に従う。
 
 - ジョブ実行時に期限を確認し、失効 5 分前ならリフレッシュ。失敗はその行の `status='reauth_required'`、Today に赤ピル、（P2）Push。
 - 3 件目以降の追加は拒否し、Settings に「上限 3」と表示する。
+
+**任意ゲート（ADR-012）**：`APP_PASSCODE` または `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` + `ALLOWED_GOOGLE_EMAIL` があるとき `/unlock`。Google は `openid email` のみ。`email_verified` かつ許可メールと一致したら `marginalia_gate`（1 年）。Google トークンは保存しない。Cursor 内ブラウザが Google に弾かれたらパスコード。どちらも未設定ならゲートなし。
 
 ### 14.3 差分取得アルゴリズム
 
@@ -699,9 +701,11 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 
 ### 14.5 スレッド展開（P2、コスト上限つき）
 
-- 対象：`conversation_id == id`（起点投稿）かつ投稿から 7 日以内。
-- `GET /2/tweets/search/recent?query=conversation_id:{id} from:{author} to:{author}&max_results=100` → 同一著者の連投を `x_posts` に保存し `thread_root_id` で連結。Source は起点のみ（連投は Reader で連結表示、enrich 入力にも連結）。
-- 上限：1 スレッド 25 投稿、月次コスト上限（既定 $2）。超過時はスキップし Reader に「スレッド未取得」を表示。
+- **同期では投入しない**。Reader の「セルフスレッドを取得」を押した Source だけ `expand_thread` を投入する。
+- 対象：`conversation_id == id`（起点投稿）かつ投稿から 7 日以内。`search/recent` は 7 日窓。
+- `GET /2/tweets/search/recent?query=conversation_id:{id} from:{author}&max_results=25` → 同一著者の連投を `x_posts` に保存し `thread_root_id` で連結。成功時（0 件でも）起点投稿の `thread_root_id` を自身の `tweet_id` にする。Source は起点のみ。
+- **表示**：展開済み（起点の `thread_root_id == tweet_id`、または当該起点で保存した連投がある）のときだけセルフスレッドを出す。未展開の会話内の他投稿は出さない。
+- 上限：1 スレッド 25 投稿、月次コスト上限（既定 $2）。超過時はスキップし、未展開のままボタンを残す。`thread_expand_enabled` が OFF ならボタンも出さない。
 
 ### 14.6 メディア保存（画像は DB、動画は手動ダウンロード。ADR-005 → ADR-007）
 
@@ -802,7 +806,7 @@ article_fetch(url):
 - `thinkingLevel`：bulk は `MINIMAL`（分類）／`LOW`（要約）、quality は `MEDIUM`。
 - モデル ID は `settings.ai_models_json` で差し替え可能。**着手時に AI Studio の Rate limits 画面で実クォータを確認し、`ai_lane_caps_json` を合わせる**。
 - 有料利用（`ai_paid_enabled`）は既定 OFF。ON にしても月額上限（`ai_paid_monthly_cap_usd`、既定 $5）を超えたら無料枠挙動に戻す。**429 で自動 ON しない。**
-- `x_api_enabled` が 0 のあいだは `sync_bookmarks` / `sync_folders` / `expand_thread` を投入しない（T-104 のガード）。X クレジット契約は即日できないことがある（付録H）。
+- `x_api_enabled` が 0 のあいだは `sync_bookmarks` / `sync_folders` を投入しない（T-104 のガード）。`expand_thread` は Reader 手動のみで、OFF なら API が拒否する。X クレジット契約は即日できないことがある（付録H）。
 
 ### 16.3 AI 予算管理（F-25）
 
@@ -919,7 +923,7 @@ RETURNING *;
 | --- | --- | --- | --- | --- | --- |
 | `sync_bookmarks` | 差分/初回同期 | schedule / 手動 | 100 | 120s | — |
 | `sync_folders`（P2） | フォルダ同期 | 日次 | 90 | 120s | — |
-| `expand_thread`（P2） | スレッド展開 | sync 後 | 60 | 60s | — |
+| `expand_thread`（P2） | スレッド展開 | Reader 手動 | 60 | 60s | — |
 | `article_fetch` | 記事取得 | sync 後 | 50 | 60s | — |
 | `enrich_batch` | AI 整理（最大5件） | sync/記事取得後に coalesce | 40 | 120s | bulk |
 | `embed_source`（P2） | 埋め込み | enrich 後 | 30 | 60s | embed |
@@ -1621,7 +1625,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 - エラー形：`{ error: { code, message, retryable } }`。
 - 変更系はクライアント楽観更新＋失敗時ロールバック。
 - `/api/jobs/tick` 以外の内部 API に同一オリジンチェック（`Origin`/`Sec-Fetch-Site`）。
-- 任意の `APP_PASSCODE` が設定されているときは `proxy.ts` が全ページ／API（`/api/mcp`, `/api/capture`, `/api/jobs/tick`, `/api/health`, `/api/x/oauth/*` を除く）に Cookie セッションを要求。
+- 任意の `APP_PASSCODE` または Google ゲート（`ALLOWED_GOOGLE_EMAIL` + クライアント）が設定されているときは `proxy.ts` が全ページ／API（`/api/mcp`, `/api/capture`, `/api/jobs/tick`, `/api/health`, `/api/x/oauth/*`, `/api/auth/google/*` を除く）に Cookie セッションを要求。
 
 ---
 
@@ -1782,12 +1786,12 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 - `/api/jobs/tick`（Cron）は `CRON_SECRET`。`/api/mcp`・`/api/capture` は **Bearer 必須**（`api_tokens` ハッシュ照合、定数時間比較、失効可能）。
 - 内部 API・Server Actions は同一オリジンチェック。
 - 記事 HTML は保存時サニタイズ。
-- 任意 `APP_PASSCODE`：`proxy.ts` で Cookie セッション（HttpOnly、30 日）を要求。未設定なら完全オープン（v2.0 と同じ）。
+- 任意 `APP_PASSCODE` と Google ゲート：`proxy.ts` で Cookie セッション（HttpOnly、1 年）を要求。どちらも未設定なら完全オープン（v2.0 と同じ）。Google は許可メール 1 件。`user_id` は持たない（ADR-012）。
 - 依存更新は Renovate（週次、自動マージは patch のみ）。
 
 ### 28.2 やらないこと
 
-アプリログイン/OTP/RLS/MFA、トークンの追加暗号化、WAF、IP 制限、監査ログ基盤、マルチテナント認可テスト。
+マルチユーザーログイン/OTP/RLS/MFA、トークンの追加暗号化、WAF、IP 制限、監査ログ基盤、マルチテナント認可テスト。
 
 ---
 
@@ -1942,7 +1946,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-211 | Categories SC-08（階層 CRUD、統合） | `src/app/(tabs)/settings/categories/*` | T-204 | 統合で Source 再割当 |
 | T-212 | PWA（`/sw.js`、manifest、オフライン閲覧、インストール案内） | `public/sw.js`, `src/app/manifest.ts` | T-209 | Chrome でインストール可、機内モードで直近閲覧可（ADR-008） |
 | T-213 | Instant Navigations 適用と `instant()` E2E、`<Activity>` でタブ状態保持 | `tests/e2e/instant.spec.ts` | T-205〜T-210 | 5 タブすべて instant |
-| T-214 | 任意 `APP_PASSCODE`（`proxy.ts`、Cookie セッション） | `src/proxy.ts` | T-001 | 未設定でオープン、設定で要求 |
+| T-214 | 任意ゲート（`APP_PASSCODE` / Google、`proxy.ts`、Cookie 1 年） | `src/proxy.ts` | T-001 | 未設定でオープン、設定で `/unlock` |
 | T-215 | 評価セット 50 件と `pnpm eval:enrich`、README（環境変数・運用手順・枠監視） | `eval/`, `README.md` | T-202 | S3 初期値記録 |
 
 ### Phase 3（レーン E）
@@ -1978,7 +1982,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-506 | Atlas（`compute_layout`：PCA→2D 近似＋k-means、クラスタ命名、`AtlasCanvas`、タイムスライダー、Lens 化） | `computeLayout.ts`, `src/app/(tabs)/library/atlas/*` | T-301 | 3,000 ノードで 60fps（PC） |
 | T-507 | エクスポート（Markdown/Obsidian frontmatter、JSON、zip ストリーミング） | `/api/export` | T-204 | Obsidian で開ける |
 | T-508 | コマンドパレット ⌘K（検索・移動・状態変更） | `components/CommandK.tsx` | T-208 | PC で主要操作到達 |
-| T-509 | スレッド展開（`expand_thread`、コスト上限、Reader 連結表示、enrich 入力） | `expandThread.ts` | T-104 | 上限で停止、表示 |
+| T-509 | スレッド展開（`expand_thread`、コスト上限、Reader 手動取得と連結表示、enrich 入力） | `expandThread.ts` | T-104 | 上限で停止、押した Source だけ表示 |
 | T-601 | `media_assets` 拡張（migration `0003`）＋ `media.fields` に `variants` 追加 | `drizzle/0003_*`, `src/server/x/client.ts`, `parse.ts` | — | variants が DB に入る |
 | T-602 | `media_download` ジョブ（画像 `name=orig`→WebP 保存／動画 max bit_rate、4h 保留、空き容量チェック） | `src/server/media/download.ts`, jobs | T-601 | ローカルに WebP / mp4 が保存される |
 | T-603 | `GET /api/media/[id]` 配信（Range、未保存時プロキシ、パス検証、variants 補完） | `src/app/api/media/[id]/route.ts` | T-602 | 動画がシークできる |
@@ -2012,7 +2016,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | A-10 | 削除/非公開を状態表示し同期は継続 | fixture＋実データ |
 | A-11 | X 429・トークン失効・記事失敗・Gemini 日次 429 が 27 章どおりに動く | モック |
 | A-12 | 375px 幅で主要操作が完結 | 実機 |
-| A-13 | ログイン画面が存在せず、開いてすぐ使える（`APP_PASSCODE` 未設定時） | UI |
+| A-13 | ゲート未設定時は開いてすぐ使える。設定時は `/unlock`（パスコードまたは Google） | UI |
 | A-14 | X トークン・API キーがクライアント応答・ログに出ない | レビュー |
 | A-15 | AI 予算メーターが実使用と一致し、キャップ到達で自動先送りされる | 1 日の実測 |
 | A-16 | 5 タブのナビゲーションが instant（`instant()` テスト pass） | E2E |
@@ -2048,7 +2052,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | R-10 | ブックマーク時刻が API から取れない | 並びが近似 | `saved_at` 代用 |
 | R-11 | Next.js 16.3 Instant Navigations の制約（URL 依存 shell） | 開発コスト | `searchParams` 依存は Suspense 内、`instant()` テスト |
 | R-12 | iOS PWA 制約（Push は追加後のみ、Share Target 非対応、7 日キャッシュ） | 体験差 | インストール案内、iOS ショートカット |
-| R-13 | デプロイ URL 漏洩 | 第三者閲覧 | 任意 `APP_PASSCODE`。MCP/Capture は Bearer |
+| R-13 | デプロイ URL 漏洩 | 第三者閲覧 | 任意 `APP_PASSCODE` / Google ゲート。MCP/Capture は Bearer |
 | R-14 | Drizzle 1.0 が RC の期間 | 破壊的変更 | バージョン固定、SQL マイグレーションは手書き優先 |
 | R-15 | `mcp-handler` 2.x と MCP 仕様改定 | クライアント非互換 | 2025 系フォールバックあり。OAuth は P3 |
 | R-16 | Embedding 2 の日本語検索品質 | 意味検索精度 | 評価セットで確認、次元 1536 へ切替可能（再埋め込み要） |
@@ -2093,7 +2097,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | P-28 | クレジット残量 | 公式残量 API → スナップショット → 追加記録の順。不足は $2 以下で警告 | なくなったら追加する運用 |
 | P-15 | 初期カテゴリ | 社会学/AI/組織/デザイン/筋力トレーニング/健康/仕事/思想 | 要件例示 |
 | P-16 | Cron | cron-job.org 1 分 | Hobby 制約回避 |
-| P-17 | `APP_PASSCODE` | 未設定 | 最小セキュリティ |
+| P-17 | `APP_PASSCODE` / Google ゲート | 未設定 | 最小セキュリティ |
 | P-24 | 本番 URL | `https://x-idea.vercel.app` | ユーザー指定（2026-09-04） |
 | P-25 | 有料トグル | すべて OFF | 契約遅延でも実装継続 |
 | P-18 | フォルダ写像のヒント加点 | +0.15 | 運用で調整 |
@@ -2211,12 +2215,15 @@ images: [image_1, image_2]（添付）                 ← P2
 | `TURSO_AUTH_TOKEN` | ✓（本番） | Turso 認証トークン |
 | `X_CLIENT_ID` / `X_CLIENT_SECRET` | ✓ | X Developer App（PKCE。Confidential client の場合は secret） |
 | `X_BEARER_TOKEN` | 任意 | App-only Bearer。Settings の X 残量を `GET /2/usage/credits` で取るとき |
-| `X_REDIRECT_URI` | ✓ | `https://x-idea.vercel.app/api/x/oauth/callback`（ローカルは `http://localhost:3000/api/x/oauth/callback`） |
+| `X_REDIRECT_URI` | ✓ | `https://x-idea.vercel.app/api/x/oauth/callback`（ローカルは `http://localhost:3344/api/x/oauth/callback`） |
 | `GEMINI_API_KEY` | ✓ | Google AI Studio（無料キーで開始。有料は Settings トグル） |
 | `CRON_SECRET` | ✓ | `/api/jobs/tick` 用 |
 | `APP_URL` | ✓ | **`https://x-idea.vercel.app`**（Push・MCP・OAuth の絶対 URL） |
-| `SESSION_SECRET` | ✓ | OAuth state Cookie / APP_PASSCODE セッションの署名 |
-| `APP_PASSCODE` | 任意 | 設定時のみ全ページに要求 |
+| `SESSION_SECRET` | ✓ | OAuth state Cookie / ゲートセッションの署名 |
+| `APP_PASSCODE` | 任意 | 設定時は `/unlock` で要求。Google と併用可 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | 任意 | 3 つ揃うと Google ゲート（ADR-012） |
+| `ALLOWED_GOOGLE_EMAIL` | 任意 | 入れる Google アカウント（1 件） |
+| `GOOGLE_REDIRECT_URI` | 任意 | 既定は `{APP_URL}/api/auth/google/callback` |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | P2 | Web Push。契約不要。`npx web-push generate-vapid-keys` |
 | `ANTHROPIC_API_KEY` | 任意 | 有料トグル OFF のあいだ未使用 |
 | `OPENAI_API_KEY` | 任意 | 有料トグル OFF のあいだ未使用 |
@@ -2251,7 +2258,7 @@ x-idea/
     │   ├─ source/[id]/  kc/[id]/  briefing/[date]/  echo/  capture/  onboarding/
     │   ├─ api/{health,sync,jobs/tick,sources,search,inbox,export,ask,capture,mcp,push,x/oauth}/
     │   ├─ layout.tsx / globals.css / manifest.ts / offline / capture/
-    ├─ proxy.ts                                 ← APP_PASSCODE ゲート
+    ├─ proxy.ts                                 ← 任意ゲート（パスコード / Google）
     ├─ components/{ui,features}/
     ├─ db/{client.ts,schema.ts,seed.ts}
     ├─ server/
@@ -2271,7 +2278,7 @@ x-idea/
 1. **入口**：`AGENTS.md` → 本書 35 章で担当タスクを選ぶ → 該当章（画面なら 8・10 章、DB なら 19 章、AI なら 16 章・付録B）を読む。
 2. **ブランチ／PR**：`feat/T-xxx-短い説明`。1 タスク 1 PR。PR 本文にタスク ID、DoD のチェックリスト、スクリーンショット（UI）を含める。
 3. **設計と実装が食い違ったら**：実挙動（API の実レスポンス、実クォータ）を正とし、本書の該当箇所と `docs/decisions/ADR-xxx.md` を **同じ PR で** 更新する。特に 14 章・16.2・付録C。
-4. **やってはいけないこと**：`user_id` の追加、ログイン UI の追加、全件 SELECT、`vector_distance_cos` によるフルスキャン、AI 429 時の有料切替、**有料トグル（`x_api_enabled` / `ai_paid_enabled` / `thread_expand_enabled` / `paid_providers_json`）を人間の指示なしに ON にする**、原文カラムの書き換え、ユーザー記述カラムへの AI 書き込み、トークンのログ出力。
+4. **やってはいけないこと**：`user_id` の追加、マルチユーザーのログイン UI、全件 SELECT、`vector_distance_cos` によるフルスキャン、AI 429 時の有料切替、**有料トグル（`x_api_enabled` / `ai_paid_enabled` / `thread_expand_enabled` / `paid_providers_json`）を人間の指示なしに ON にする**、原文カラムの書き換え、ユーザー記述カラムへの AI 書き込み、トークンのログ出力。
 5. **コーディング規約**：TypeScript strict、Biome 既定、Server Actions は Zod 入力検証＋`{ok, data|error}`、DB アクセスは `src/server/*` のみ（コンポーネントから直接叩かない）、時間は UTC ISO 保存・表示時に `Asia/Tokyo`、AI 呼び出しは必ず `budget.guard(lane)` 経由。
 6. **テスト**：単体はロジック（同期打ち切り、予算、SM-2、RRF、cron）。統合はローカル libSQL。E2E は msw でX/Gemini をモック。UI 変更は `instant()` を壊さない。
 7. **コミット**：Conventional Commits（`feat:`, `fix:`, `docs:`, `chore:`）。
@@ -2316,6 +2323,7 @@ x-idea/
 | H-05 | **cron-job.org**（または GitHub Actions `schedule`） | `POST https://x-idea.vercel.app/api/jobs/tick`、ヘッダー `Authorization: Bearer <CRON_SECRET>`、間隔 1〜5 分。シークレットを URL に載せない | $0 | — | アプリ起動時 tick で代替可。本番の定期同期には必要 |
 | H-06 | **Vercel 環境変数** | 付録D をすべて登録。最低限: `TURSO_*`, `GEMINI_API_KEY`, `CRON_SECRET`, `APP_URL=https://x-idea.vercel.app`, `SESSION_SECRET`, `X_*`（未発行なら空で Preview のみ） | $0 | — | キー欠落時は該当機能を OFF のまま |
 | H-07 | **VAPID**（P2） | `npx web-push generate-vapid-keys` をローカルで実行し、3 変数を Vercel に設定。外部契約なし | $0 | 通知トグル（P2、既定 OFF） | Phase 4 まで不要 |
+| H-08 | **Google OAuth**（任意ゲート） | Cloud Console で Web クライアント。JS origin と redirect に本番と `http://localhost:3344`（`pnpm dev` 固定）。テストユーザーに自分のメール。`GOOGLE_*` と `ALLOWED_GOOGLE_EMAIL` を Vercel / ローカルに設定 | $0 | — | 未設定ならゲートなし、またはパスコードのみ |
 
 ### H.2 契約・審査が必要（すぐできないことがある）
 
@@ -2323,7 +2331,7 @@ x-idea/
 | --- | --- | --- | --- | --- | --- |
 | H-10 | **X Developer Portal** | ① developer.x.com で開発者アカウント（審査・待ちがあり得る）② Project + App ③ User authentication: OAuth 2.0 PKCE、Callback `https://x-idea.vercel.app/api/x/oauth/callback`、Scopes `bookmark.read tweet.read users.read offline.access` ④ **クレジット購入** ⑤ **スペンディングリミット**（推奨 $10） | 従量。Owned Reads $0.001/リソース。初回 5,000 件で約 $5。通常月 $1〜4 | **`x_api_enabled=OFF`** | 同期ジョブを投入しない。Today に「X API のクレジット設定が必要」。T-101〜T-109 は msw モックで完了させる |
 | H-11 | **Gemini 有料（Tier 1）** | AI Studio で課金アカウントをリンク。無料枠入力が学習利用されるのが嫌なとき、または RPD 不足のときだけ | 従量。月額上限 `$5` を Settings で設定 | **`ai_paid_enabled=OFF`** | 無料枠のみ。429 はクールダウン。**自動で有料に切替しない** |
-| H-12 | **X スレッド展開** | H-10 完了後。追加で Post read $0.005/投稿 | 月上限 `$2`（Settings） | **`thread_expand_enabled=OFF`** | ジョブ未投入。Reader に「スレッド未取得」 |
+| H-12 | **X スレッド展開** | H-10 完了後。追加で Post read $0.005/投稿 | 月上限 `$2`（Settings） | **`thread_expand_enabled=OFF`** | 同期では投入しない。OFF ならボタンなし。ON なら対象ごとに手動取得 |
 | H-13 | **Anthropic / OpenAI** | 各社で API キー取得・課金設定。`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` を Vercel に追加 | 従量 | **`paid_providers_json` 両方 false** | プロバイダ選択肢を Settings で無効表示 |
 | H-14 | **Turso Developer** | Free の rows/storage が 80% を超えたら検討 | $4.99〜/月 | インフラ側。アプリトグルなし | 超過時は読み取り専用バナー（E-14） |
 | H-15 | **Vercel Pro** | Hobby の Functions / 商用制限に当たったら検討。Workflows を主系にするならここ | $20/月 | インフラ側。アプリトグルなし | 現状は Hobby で足りる前提 |

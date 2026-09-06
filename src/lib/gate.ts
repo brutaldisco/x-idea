@@ -1,6 +1,7 @@
 import { isPwaPublicPath } from "@/lib/pwa";
 
 const COOKIE = "marginalia_gate";
+export const GATE_MAX_AGE_SEC = 60 * 60 * 24 * 365;
 
 function encoder() {
   return new TextEncoder();
@@ -43,9 +44,24 @@ export function gateCookieName(): string {
   return COOKIE;
 }
 
-export async function signGate(): Promise<string> {
-  const issued = String(Date.now());
+export async function signGate(issued = String(Date.now())): Promise<string> {
   return `${issued}.${await hmac(issued)}`;
+}
+
+export function gateCookieOptions(): {
+  httpOnly: true;
+  sameSite: "lax";
+  secure: boolean;
+  path: "/";
+  maxAge: number;
+} {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: GATE_MAX_AGE_SEC,
+  };
 }
 
 export async function verifyGate(value: string | undefined): Promise<boolean> {
@@ -61,15 +77,51 @@ export async function verifyGate(value: string | undefined): Promise<boolean> {
     return false;
   }
   const age = Date.now() - Number(issued);
-  return Number.isFinite(age) && age >= 0 && age < 1000 * 60 * 60 * 24 * 30;
+  return Number.isFinite(age) && age >= 0 && age < GATE_MAX_AGE_SEC * 1000;
+}
+
+export function normalizeEmail(raw: string | null | undefined): string | null {
+  if (!raw) {
+    return null;
+  }
+  const email = raw.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return null;
+  }
+  return email;
+}
+
+export function allowedGoogleEmail(): string | null {
+  return normalizeEmail(process.env.ALLOWED_GOOGLE_EMAIL);
+}
+
+export function googleGateConfigured(): boolean {
+  return Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+      process.env.GOOGLE_CLIENT_SECRET &&
+      allowedGoogleEmail(),
+  );
+}
+
+export function gateRequired(): boolean {
+  return Boolean(process.env.APP_PASSCODE || googleGateConfigured());
 }
 
 export function passcodeOk(input: string): boolean {
   const expected = process.env.APP_PASSCODE;
   if (!expected) {
-    return true;
+    return false;
   }
   return safeEqual(input, expected);
+}
+
+export function emailAllowed(email: string | null | undefined): boolean {
+  const allowed = allowedGoogleEmail();
+  const got = normalizeEmail(email);
+  if (!allowed || !got) {
+    return false;
+  }
+  return safeEqual(allowed, got);
 }
 
 export function isPublicPath(pathname: string): boolean {
@@ -79,6 +131,7 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/api/jobs/tick" ||
     pathname.startsWith("/api/mcp") ||
     pathname.startsWith("/api/capture") ||
+    pathname.startsWith("/api/auth/google") ||
     pathname.startsWith("/api/x/oauth") ||
     pathname === "/api/media/companion" ||
     isPwaPublicPath(pathname)
