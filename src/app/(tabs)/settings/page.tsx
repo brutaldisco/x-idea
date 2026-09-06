@@ -10,6 +10,7 @@ import { InstallAppCard } from "@/components/pwa/InstallAppCard";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { UsageMeters } from "@/components/UsageMeters";
+import { VideoSaveFolderCard } from "@/components/videos/VideoSaveFolderCard";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
 import { getHealth } from "@/server/health";
 import { getMediaBlobUsage } from "@/server/media/blob";
@@ -19,10 +20,15 @@ import {
   mediaFolderHref,
   mediaRoot,
 } from "@/server/media/paths";
-import { getContextSettings, getSyncSettings } from "@/server/settings";
+import {
+  getContextSettings,
+  getSyncSettings,
+  getVideoSaveFolderName,
+} from "@/server/settings";
 import { getUsageDashboard } from "@/server/usage/dashboard";
 import { getVideoLibraryUsage } from "@/server/videos/queue";
 import { listXAccounts, MAX_X_ACCOUNTS } from "@/server/x/account";
+import { contextLabel, getAccountContext } from "@/server/x/context";
 
 async function SettingsBody({
   searchParams,
@@ -30,17 +36,29 @@ async function SettingsBody({
   searchParams: Promise<{ x?: string }>;
 }) {
   await connection();
-  const [health, accounts, usage, params, flags, sync, blobUsage, videoUsage] =
-    await Promise.all([
-      getHealth(),
-      listXAccounts(),
-      getUsageDashboard(),
-      searchParams,
-      getContextSettings(),
-      getSyncSettings(),
-      getMediaBlobUsage(),
-      getVideoLibraryUsage(),
-    ]);
+  const [
+    health,
+    accounts,
+    usage,
+    params,
+    flags,
+    sync,
+    blobUsage,
+    videoUsage,
+    ctx,
+    videoFolderName,
+  ] = await Promise.all([
+    getHealth(),
+    listXAccounts(),
+    getUsageDashboard(),
+    searchParams,
+    getContextSettings(),
+    getSyncSettings(),
+    getMediaBlobUsage(),
+    getVideoLibraryUsage(),
+    getAccountContext(),
+    getVideoSaveFolderName(),
+  ]);
   const canAdd = accounts.length < MAX_X_ACCOUNTS;
   return (
     <div className="space-y-3">
@@ -140,6 +158,10 @@ async function SettingsBody({
         )}
       </article>
       <MediaUsageCard blobs={blobUsage} videos={videoUsage} />
+      <VideoSaveFolderCard
+        accountLabel={contextLabel(ctx)}
+        initialFolderName={videoFolderName}
+      />
       <MediaFoldersCard accounts={accounts} />
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
         <div className="flex items-center justify-between">
@@ -210,7 +232,7 @@ function MediaFoldersCard({
         開発者向け（MEDIA_ROOT）
       </summary>
       <p className="mt-2 text-ink-2 text-sm">
-        普段の動画保存は Videos タブのフォルダ選択を使います。
+        普段の動画保存は上の「保存フォルダ」で選びます。
         <code className="text-xs">MEDIA_ROOT</code> と{" "}
         <code className="text-xs">pnpm dev</code> 保存役は開発用途だけです。
       </p>

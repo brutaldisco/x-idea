@@ -123,6 +123,28 @@ export async function setXApiEnabled(enabled: boolean): Promise<void> {
   logger.info({ enabled }, "settings.x_api_enabled updated");
 }
 
+export async function getVideoSaveFolderName(): Promise<string | null> {
+  await ensureSchema();
+  const result = await getClient().execute(
+    "SELECT video_save_folder_name FROM settings WHERE id = 1 LIMIT 1",
+  );
+  const raw = result.rows[0]?.video_save_folder_name;
+  return raw ? String(raw) : null;
+}
+
+export async function setVideoSaveFolderName(name: string): Promise<void> {
+  await ensureSchema();
+  const value = name.trim().slice(0, 255);
+  if (!value) {
+    throw new Error("folder name required");
+  }
+  await getClient().execute({
+    sql: `UPDATE settings SET video_save_folder_name = ?, updated_at = datetime('now')
+          WHERE id = 1`,
+    args: [value],
+  });
+}
+
 export async function setPaidFlag(
   column: "thread_expand_enabled" | "reply_context_enabled",
   enabled: boolean,

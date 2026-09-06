@@ -404,7 +404,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
 - **連携**（P2）：MCP エンドポイント URL とトークン（再発行）、Quick Capture トークン、iOS ショートカット導入手順。
-- **メディア**：DB（Turso）内の画像・サムネイルの件数と合計サイズの目安メーター、動画ライブラリの件数・合計サイズ、Videos タブへの導線。動画の保存先は Videos タブで選ぶローカルフォルダ（File System Access API）で、引っ越しはアカウントフォルダ単位のコピー＋再リンク。旧 `MEDIA_ROOT` ローカル保存／`pnpm dev` 保存役は開発用途の注記のみ（ADR-007）。
+- **メディア**：DB（Turso）内の画像・サムネイルの件数と合計サイズの目安メーター、動画ライブラリの件数・合計サイズ、Videos タブへの導線。動画の保存先フォルダ名は Settings に保存して全環境で共有する。書き込みハンドルはブラウザごと（localhost / 本番 / 別ブラウザは再リンク）。旧 `MEDIA_ROOT` は開発用途の注記のみ（ADR-007）。
 - **データ**：エクスポート（Markdown/JSON）、全削除（危険ゾーン）。
 - **表示**：テーマ（システム/ライト/ダーク）、文字サイズ、モーション低減。
 
@@ -424,7 +424,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.10 SC-15 Videos（v3.5、ADR-007）
 
-- **保存フォルダカード**：File System Access API で選んだルートのリンク状態バッジ＋「保存フォルダを選ぶ / 再リンク」。未リンク時はこのカードだけ有効。Safari/Firefox は非対応案内＋通常ダウンロードにフォールバック。
+- **保存フォルダ**：Settings の「保存フォルダ」カードで選ぶ（File System Access API）。フォルダ名は `settings.video_save_folder_name` で全環境共有。書き込みハンドルはブラウザ／オリジンごとなので、localhost・本番・別ブラウザでは同じフォルダを再リンクする。Videos は未リンク／要再リンク時に Settings への案内だけ出す。Safari/Firefox は非対応案内＋通常ダウンロードにフォールバック。
 - **ダウンロードキュー**：`N / 15` 件表示＋「ダウンロード開始」。各アイテムはサムネイル・投稿抜粋・`@username`・状態・進捗バー・取消。`failed` は理由と「再試行」。実行は逐次 1 件、8MB チャンク＋レジューム（14.6）。
 - **ライブラリ**：フォルダチップ（すべて／未分類／ユーザー作成フォルダ／＋新規フォルダ）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日。操作は「フォルダ移動」「削除」「X で開く」「Source を開く」。
 - **プレーヤー**：カードタップでモーダル（モバイルは全画面）。`<video controls playsInline>` に object URL を渡すブラウザ標準 UI。
@@ -1027,6 +1027,7 @@ CREATE TABLE settings (
   initial_import_state_json TEXT, -- {requested, fetched, enriched, embedded, done}
   onboarding_done INTEGER NOT NULL DEFAULT 0,
   x_usage_cache_json TEXT,                       -- X usage/credits の短時間キャッシュ
+  video_save_folder_name TEXT,                   -- 動画保存フォルダ名。ハンドルはブラウザごと
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1598,6 +1599,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | POST | `/api/x/credits` | クレジット追加/残量合わせ/再取得 | 同一オリジン | P1 |
 | POST | `/api/sync` | 手動同期（60秒スロットル、最大 3 ジョブ消化） | 同一オリジン | P1 |
 | PATCH | `/api/settings` | `x_api_enabled` のみ。人間が切り替える | 同一オリジン | P1 |
+| GET/POST | `/api/settings/video-folder` | 動画保存フォルダ名の共有。ハンドルはブラウザごと | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
 | GET | `/api/sources` | 一覧（フィルタ・カーソル `?cursor=saved_at,id&limit=30`） | 同一オリジン | P1 |
 | GET | `/api/sources/:id` | 詳細（原文・記事・要約・タグ・関連） | 同一オリジン | P1 |

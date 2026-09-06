@@ -78,20 +78,35 @@ export async function loadVideoRoot(): Promise<FileSystemDirectoryHandle | null>
   }
 }
 
+export async function hasWritePermission(
+  handle: FileSystemDirectoryHandle,
+): Promise<boolean> {
+  if (!handle.queryPermission) {
+    return true;
+  }
+  try {
+    return (await handle.queryPermission({ mode: "readwrite" })) === "granted";
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureWritePermission(
   handle: FileSystemDirectoryHandle,
 ): Promise<boolean> {
-  const query = handle.queryPermission
-    ? await handle.queryPermission({ mode: "readwrite" })
-    : "prompt";
-  if (query === "granted") {
+  if (await hasWritePermission(handle)) {
     return true;
   }
   if (!handle.requestPermission) {
+    return true;
+  }
+  try {
+    return (
+      (await handle.requestPermission({ mode: "readwrite" })) === "granted"
+    );
+  } catch {
     return false;
   }
-  const next = await handle.requestPermission({ mode: "readwrite" });
-  return next === "granted";
 }
 
 async function getDir(

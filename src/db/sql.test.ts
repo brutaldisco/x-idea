@@ -23,6 +23,9 @@ describe("sql helpers", () => {
     );
     expect(statements.some((sql) => sql.includes("0 */6 * * *"))).toBe(true);
     expect(
+      statements.some((sql) => sql.includes("video_save_folder_name")),
+    ).toBe(true);
+    expect(
       statements.filter((sql) => isOptionalStatement(sql)).length,
     ).toBeGreaterThan(0);
   });

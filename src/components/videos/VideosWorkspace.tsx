@@ -10,6 +10,7 @@ import {
   VideoPlayer,
 } from "@/components/videos/VideoPlayer";
 import { formatBytes } from "@/lib/bytes";
+import { useVideoSaveFolder } from "@/lib/video-folder";
 import {
   folderPlaylist,
   playlistIndex,
@@ -23,9 +24,7 @@ import {
   loadVideoRoot,
   moveVideoFile,
   openVideoObjectUrl,
-  pickVideoRoot,
   suggestedRelPath,
-  supportsDirectoryPicker,
 } from "@/lib/video-store";
 import { formatDuration } from "@/server/media/select";
 import type {
@@ -45,17 +44,16 @@ function errorMessage(error: unknown): string {
 
 export function VideosWorkspace({
   initial,
-  accountLabel,
+  initialFolderName,
 }: {
   initial: VideoLibraryPayload;
-  accountLabel: string;
+  initialFolderName?: string | null;
 }) {
   const router = useRouter();
-  const supported = supportsDirectoryPicker();
+  const { supported, linked, folderName } =
+    useVideoSaveFolder(initialFolderName);
   const [data, setData] = useState(initial);
-  const [rootName, setRootName] = useState<string | null>(null);
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
-  const [linked, setLinked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -69,6 +67,7 @@ export function VideosWorkspace({
   const [repeat, setRepeat] = useState<RepeatMode>("folder");
   const abortRef = useRef<AbortController | null>(null);
   const [offlineHint, setOfflineHint] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
 
   useEffect(() => {
     setData(initial);
@@ -80,12 +79,9 @@ export function VideosWorkspace({
 
   useEffect(() => {
     void loadVideoRoot().then((handle) => {
-      if (!handle) {
-        return;
+      if (handle) {
+        setRoot(handle);
       }
-      setRoot(handle);
-      setRootName(handle.name);
-      void ensureWritePermission(handle).then((ok) => setLinked(ok));
     });
   }, []);
 
@@ -122,32 +118,18 @@ export function VideosWorkspace({
     router.refresh();
   }
 
-  async function linkFolder() {
-    try {
-      const handle = await pickVideoRoot();
-      setRoot(handle);
-      setRootName(handle.name);
-      setLinked(await ensureWritePermission(handle));
-      setMessage(null);
-    } catch (error) {
-      if ((error as { name?: string }).name === "AbortError") {
-        return;
-      }
-      setMessage(errorMessage(error));
-    }
-  }
-
   async function startDownloads() {
-    if (!root) {
-      setMessage("先に保存フォルダを選んでください");
+    const handle = root ?? (await loadVideoRoot());
+    if (!handle) {
+      setMessage("Settings で保存フォルダを選んでください");
       return;
     }
+    setRoot(handle);
     if (!navigator.onLine) {
       setMessage("オフラインです。ネットワークが良い場所で実行してください");
       return;
     }
-    const allowed = await ensureWritePermission(root);
-    setLinked(allowed);
+    const allowed = await ensureWritePermission(handle);
     if (!allowed) {
       setMessage("フォルダへの書き込みを許可してください");
       return;
@@ -180,7 +162,7 @@ export function VideosWorkspace({
             downloadId: item.id,
             mediaId: item.mediaId,
             relPath,
-            root,
+            root: handle,
             signal: controller.signal,
             onProgress: (received, total) => {
               setProgress((prev) => ({
@@ -287,9 +269,13 @@ export function VideosWorkspace({
       ...item,
       folderName: destFolder,
     });
-    if (root && item.relPath && item.status === "ready") {
+    const handle = root ?? (await loadVideoRoot());
+    if (handle) {
+      setRoot(handle);
+    }
+    if (handle && item.relPath && item.status === "ready") {
       try {
-        await moveVideoFile(root, item.relPath, nextPath);
+        await moveVideoFile(handle, item.relPath, nextPath);
       } catch (error) {
         setMessage(`ファイル移動に失敗しました: ${errorMessage(error)}`);
       }
@@ -310,9 +296,13 @@ export function VideosWorkspace({
     ) {
       return;
     }
-    if (root && item.relPath) {
+    const handle = root ?? (await loadVideoRoot());
+    if (handle) {
+      setRoot(handle);
+    }
+    if (handle && item.relPath) {
       try {
-        await deleteVideoFile(root, item.relPath);
+        await deleteVideoFile(handle, item.relPath);
       } catch {
         // leftover files are expected
       }
@@ -322,12 +312,14 @@ export function VideosWorkspace({
   }
 
   async function playItem(item: VideoItem) {
-    if (!root || !item.relPath) {
-      setMessage("保存フォルダにリンクしてから再生してください");
+    const handle = root ?? (await loadVideoRoot());
+    if (!handle || !item.relPath) {
+      setMessage("Settings で保存フォルダにリンクしてから再生してください");
       return;
     }
+    setRoot(handle);
     try {
-      const url = await openVideoObjectUrl(root, item.relPath);
+      const url = await openVideoObjectUrl(handle, item.relPath);
       setPlaying((current) => {
         if (current) {
           URL.revokeObjectURL(current.url);
@@ -393,254 +385,274 @@ export function VideosWorkspace({
   }, [data.queue]);
 
   return (
-    <div className="mt-4 space-y-4">
-      <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-semibold">保存フォルダ</h2>
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs ${
-              linked ? "bg-ok/15 text-ok" : "bg-paper text-ink-2"
-            }`}
-          >
-            {linked ? "リンク済" : "未リンク"}
-          </span>
-        </div>
-        {supported ? (
-          <>
-            <p className="mt-2 text-ink-2 text-sm">
-              この PC のフォルダを一度選ぶと、アカウントごとのサブフォルダに mp4
-              を保存します。引っ越しはアカウントフォルダをコピーして、こちらで再リンクします。
-            </p>
-            <p className="mt-2 text-ink-2 text-xs">{accountLabel}</p>
-            {rootName ? (
-              <p className="mt-1 break-all font-mono text-ink-2 text-xs">
-                {rootName}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void linkFolder()}
-              className="mt-3 rounded-full bg-ink px-4 py-2 text-paper text-sm"
-            >
-              {rootName ? "再リンク" : "保存フォルダを選ぶ"}
-            </button>
-          </>
-        ) : (
-          <p className="mt-2 text-ink-2 text-sm">
+    <>
+      <p className="text-ink-2 text-sm">Videos</p>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-semibold text-2xl">動画</h1>
+        <button
+          type="button"
+          aria-expanded={queueOpen}
+          onClick={() => setQueueOpen((value) => !value)}
+          className="shrink-0 rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper-2"
+        >
+          ダウンロードキュー · {data.queuedCount} / {data.queueMax}
+        </button>
+      </div>
+      <p className="mt-2 text-ink-2 text-sm">
+        残したい動画だけを手元に保存し、ここで再生します。保存フォルダは{" "}
+        <Link href="/settings" className="text-accent hover:underline">
+          Settings
+        </Link>{" "}
+        で選びます。
+      </p>
+
+      <div className="mt-4 space-y-4">
+        {supported === false ? (
+          <p className="text-ink-2 text-sm">
             このブラウザではフォルダ保存に対応していません。Chrome / Edge
             で開いてください。通常ダウンロードは各動画の「ファイルを保存」からできます。
           </p>
-        )}
-      </article>
-
-      <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-semibold">
-            ダウンロードキュー · {data.queuedCount} / {data.queueMax}
-          </h2>
-          <button
-            type="button"
-            disabled={busy || !supported || !linked}
-            onClick={() => void startDownloads()}
-            className="rounded-full bg-ink px-3 py-1.5 text-paper text-sm disabled:opacity-50"
-          >
-            {busy ? "実行中…" : "ダウンロード開始"}
-          </button>
-        </div>
-        {eta ? <p className="mt-1 text-ink-2 text-xs">{eta}</p> : null}
-        {offlineHint ? (
-          <p className="mt-2 text-warn text-xs">
-            回線が切れました。つながったら「ダウンロード開始」で再開できます。
-          </p>
         ) : null}
-        {data.queue.length === 0 ? (
-          <p className="mt-3 text-ink-2 text-sm">
-            キューは空です。原文の動画から「あとで保存」を押してください。
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {data.queue.map((item) => {
-              const prog = progress[item.id];
-              const pct =
-                prog && prog.total > 0
-                  ? Math.min(
-                      100,
-                      Math.round((prog.received / prog.total) * 100),
-                    )
-                  : null;
-              return (
+
+        {queueOpen ? (
+          <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold">キュー</h2>
+              <button
+                type="button"
+                disabled={busy || !supported || !linked}
+                onClick={() => void startDownloads()}
+                className="rounded-full bg-ink px-3 py-1.5 text-paper text-sm disabled:opacity-50"
+              >
+                {busy ? "実行中…" : "ダウンロード開始"}
+              </button>
+            </div>
+            {eta ? <p className="mt-1 text-ink-2 text-xs">{eta}</p> : null}
+            {supported && !linked ? (
+              <p className="mt-2 text-ink-2 text-xs">
+                {folderName ? (
+                  <>
+                    「{folderName}」を{" "}
+                    <Link
+                      href="/settings"
+                      className="text-accent hover:underline"
+                    >
+                      Settings
+                    </Link>{" "}
+                    で再リンクすると開始できます。
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/settings"
+                      className="text-accent hover:underline"
+                    >
+                      Settings
+                    </Link>{" "}
+                    で保存フォルダを選ぶと開始できます。
+                  </>
+                )}
+              </p>
+            ) : null}
+            {offlineHint ? (
+              <p className="mt-2 text-warn text-xs">
+                回線が切れました。つながったら「ダウンロード開始」で再開できます。
+              </p>
+            ) : null}
+            {data.queue.length === 0 ? (
+              <p className="mt-3 text-ink-2 text-sm">
+                キューは空です。原文の動画から「あとで保存」を押してください。
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {data.queue.map((item) => {
+                  const prog = progress[item.id];
+                  const pct =
+                    prog && prog.total > 0
+                      ? Math.min(
+                          100,
+                          Math.round((prog.received / prog.total) * 100),
+                        )
+                      : null;
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex gap-3 rounded-xl border border-line bg-paper p-3"
+                    >
+                      <Image
+                        src={item.previewSrc}
+                        alt=""
+                        width={96}
+                        height={64}
+                        unoptimized
+                        className="h-16 w-24 rounded-lg object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm">
+                          {item.authorUsername
+                            ? `@${item.authorUsername} · `
+                            : ""}
+                          {item.excerpt || item.tweetId}
+                        </p>
+                        <p className="text-ink-2 text-xs">{item.status}</p>
+                        {pct != null ? (
+                          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-paper-2">
+                            <div
+                              className="h-full bg-accent"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        ) : null}
+                        {item.error ? (
+                          <p className="mt-1 text-danger text-xs">
+                            {item.error}
+                          </p>
+                        ) : null}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {item.status === "failed" ? (
+                            <button
+                              type="button"
+                              className="text-accent text-xs hover:underline"
+                              onClick={() => void retryItem(item.id)}
+                            >
+                              再試行
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-ink-2 text-xs hover:underline"
+                              onClick={() => void cancelItem(item.id)}
+                            >
+                              取消
+                            </button>
+                          )}
+                          {!supported ? (
+                            <a
+                              href={`/api/media/${item.mediaId}/file`}
+                              download
+                              className="text-accent text-xs hover:underline"
+                            >
+                              ファイルを保存
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </article>
+        ) : null}
+
+        <section>
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
+              label={`すべて · ${data.library.length}`}
+            />
+            <Chip
+              active={filter === "none"}
+              onClick={() => setFilter("none")}
+              label="未分類"
+            />
+            {data.folders.map((folder) => (
+              <Chip
+                key={folder.id}
+                active={filter === folder.id}
+                onClick={() => setFilter(folder.id)}
+                label={folder.name}
+                onRemove={() => void removeFolder(folder)}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => void createFolder()}
+              className="rounded-full border border-line px-3 py-1 text-xs hover:bg-paper-2"
+            >
+              ＋新規フォルダ
+            </button>
+          </div>
+          {visible.length === 0 ? (
+            <p className="mt-6 text-center text-ink-2 text-sm">
+              保存した動画はまだありません。
+            </p>
+          ) : (
+            <ul className="mt-4 grid grid-cols-2 gap-3 min-[48rem]:grid-cols-3">
+              {visible.map((item) => (
                 <li
                   key={item.id}
-                  className="flex gap-3 rounded-xl border border-line bg-paper p-3"
+                  className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2"
                 >
-                  <Image
-                    src={item.previewSrc}
-                    alt=""
-                    width={96}
-                    height={64}
-                    unoptimized
-                    className="h-16 w-24 rounded-lg object-cover"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm">
-                      {item.authorUsername ? `@${item.authorUsername} · ` : ""}
-                      {item.excerpt || item.tweetId}
+                  <button
+                    type="button"
+                    className="relative block w-full"
+                    onClick={() => void playItem(item)}
+                  >
+                    <Image
+                      src={item.previewSrc}
+                      alt=""
+                      width={480}
+                      height={270}
+                      unoptimized
+                      className="h-28 w-full object-cover"
+                    />
+                    {item.durationMs != null ? (
+                      <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
+                        {formatDuration(item.durationMs).label}
+                      </span>
+                    ) : null}
+                  </button>
+                  <div className="p-2">
+                    <p className="line-clamp-2 text-xs">
+                      {item.authorUsername ? `@${item.authorUsername} ` : ""}
+                      {item.excerpt}
                     </p>
-                    <p className="text-ink-2 text-xs">{item.status}</p>
-                    {pct != null ? (
-                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-paper-2">
-                        <div
-                          className="h-full bg-accent"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    ) : null}
-                    {item.error ? (
-                      <p className="mt-1 text-danger text-xs">{item.error}</p>
-                    ) : null}
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {item.status === "failed" ? (
-                        <button
-                          type="button"
-                          className="text-accent text-xs hover:underline"
-                          onClick={() => void retryItem(item.id)}
-                        >
-                          再試行
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-ink-2 text-xs hover:underline"
-                          onClick={() => void cancelItem(item.id)}
-                        >
-                          取消
-                        </button>
-                      )}
-                      {!supported ? (
-                        <a
-                          href={`/api/media/${item.mediaId}/file`}
-                          download
-                          className="text-accent text-xs hover:underline"
-                        >
-                          ファイルを保存
-                        </a>
-                      ) : null}
-                    </div>
+                    <p className="mt-1 text-[10px] text-ink-2">
+                      {item.downloadedAt?.slice(0, 10) ?? ""}
+                      {item.bytes ? ` · ${formatBytes(item.bytes)}` : ""}
+                    </p>
+                    <VideoCardMenu
+                      item={item}
+                      folders={data.folders}
+                      onMove={(folderId) => void moveItem(item, folderId)}
+                      onDelete={() => void removeItem(item)}
+                    />
                   </div>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </article>
+              ))}
+            </ul>
+          )}
+        </section>
 
-      <section>
-        <div className="flex flex-wrap items-center gap-2">
-          <Chip
-            active={filter === "all"}
-            onClick={() => setFilter("all")}
-            label={`すべて · ${data.library.length}`}
-          />
-          <Chip
-            active={filter === "none"}
-            onClick={() => setFilter("none")}
-            label="未分類"
-          />
-          {data.folders.map((folder) => (
-            <Chip
-              key={folder.id}
-              active={filter === folder.id}
-              onClick={() => setFilter(folder.id)}
-              label={folder.name}
-              onRemove={() => void removeFolder(folder)}
-            />
-          ))}
-          <button
-            type="button"
-            onClick={() => void createFolder()}
-            className="rounded-full border border-line px-3 py-1 text-xs hover:bg-paper-2"
-          >
-            ＋新規フォルダ
-          </button>
-        </div>
-        {visible.length === 0 ? (
-          <p className="mt-6 text-center text-ink-2 text-sm">
-            保存した動画はまだありません。
-          </p>
-        ) : (
-          <ul className="mt-4 grid grid-cols-2 gap-3 min-[48rem]:grid-cols-3">
-            {visible.map((item) => (
-              <li
-                key={item.id}
-                className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2"
-              >
-                <button
-                  type="button"
-                  className="relative block w-full"
-                  onClick={() => void playItem(item)}
-                >
-                  <Image
-                    src={item.previewSrc}
-                    alt=""
-                    width={480}
-                    height={270}
-                    unoptimized
-                    className="h-28 w-full object-cover"
-                  />
-                  {item.durationMs != null ? (
-                    <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
-                      {formatDuration(item.durationMs).label}
-                    </span>
-                  ) : null}
-                </button>
-                <div className="p-2">
-                  <p className="line-clamp-2 text-xs">
-                    {item.authorUsername ? `@${item.authorUsername} ` : ""}
-                    {item.excerpt}
-                  </p>
-                  <p className="mt-1 text-[10px] text-ink-2">
-                    {item.downloadedAt?.slice(0, 10) ?? ""}
-                    {item.bytes ? ` · ${formatBytes(item.bytes)}` : ""}
-                  </p>
-                  <VideoCardMenu
-                    item={item}
-                    folders={data.folders}
-                    onMove={(folderId) => void moveItem(item, folderId)}
-                    onDelete={() => void removeItem(item)}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+        {message ? <p className="text-ink-2 text-xs">{message}</p> : null}
 
-      {message ? <p className="text-ink-2 text-xs">{message}</p> : null}
-
-      {playing ? (
-        <VideoPlayer
-          url={playing.url}
-          title={
-            playing.item.authorUsername
-              ? `@${playing.item.authorUsername} ${playing.item.excerpt}`
-              : playing.item.excerpt
-          }
-          folderLabel={playing.item.folderName ?? "未分類"}
-          index={Math.max(0, playlistIndex(playlist, playing.item.id))}
-          total={playlist.length}
-          repeat={repeat}
-          onRepeatChange={changeRepeat}
-          onClose={closePlayer}
-          onPrev={() => stepPlaying(-1)}
-          onNext={() => stepPlaying(1)}
-          onEnded={() => {
-            if (repeat === "folder") {
-              stepPlaying(1);
+        {playing ? (
+          <VideoPlayer
+            url={playing.url}
+            title={
+              playing.item.authorUsername
+                ? `@${playing.item.authorUsername} ${playing.item.excerpt}`
+                : playing.item.excerpt
             }
-          }}
-        />
-      ) : null}
-    </div>
+            folderLabel={playing.item.folderName ?? "未分類"}
+            index={Math.max(0, playlistIndex(playlist, playing.item.id))}
+            total={playlist.length}
+            repeat={repeat}
+            onRepeatChange={changeRepeat}
+            onClose={closePlayer}
+            onPrev={() => stepPlaying(-1)}
+            onNext={() => stepPlaying(1)}
+            onEnded={() => {
+              if (repeat === "folder") {
+                stepPlaying(1);
+              }
+            }}
+          />
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -710,9 +722,9 @@ function VideoCardMenu({
         </a>
       ) : null}
       <label className="text-ink-2">
-        移動
         <select
-          className="ml-1 max-w-28 bg-transparent"
+          aria-label="フォルダ"
+          className="max-w-28 bg-transparent"
           value={item.folderId ?? ""}
           onChange={(event) => {
             const value = event.target.value;
