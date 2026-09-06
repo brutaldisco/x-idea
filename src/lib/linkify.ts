@@ -1,6 +1,7 @@
 export type TextPart = {
   text: string;
   href?: string;
+  offset: number;
 };
 
 const URL_RE = /https?:\/\/[^\s<>"'）)】]+/gi;
@@ -31,23 +32,23 @@ export function splitHttpUrls(text: string): TextPart[] {
     const raw = match[0];
     const start = match.index;
     if (start > last) {
-      parts.push({ text: text.slice(last, start) });
+      parts.push({ text: text.slice(last, start), offset: last });
     }
     const href = sanitizeHttpUrl(raw);
     if (href) {
       const trailing = raw.slice(href.length);
-      parts.push({ text: href, href });
+      parts.push({ text: href, href, offset: start });
       if (trailing) {
-        parts.push({ text: trailing });
+        parts.push({ text: trailing, offset: start + href.length });
       }
     } else {
-      parts.push({ text: raw });
+      parts.push({ text: raw, offset: start });
     }
     last = start + raw.length;
     match = re.exec(text);
   }
   if (last < text.length) {
-    parts.push({ text: text.slice(last) });
+    parts.push({ text: text.slice(last), offset: last });
   }
-  return parts.length > 0 ? parts : [{ text }];
+  return parts.length > 0 ? parts : [{ text, offset: 0 }];
 }

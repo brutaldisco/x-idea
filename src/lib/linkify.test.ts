@@ -19,16 +19,20 @@ describe("sanitizeHttpUrl", () => {
 describe("splitHttpUrls", () => {
   it("keeps plain text as one part", () => {
     expect(splitHttpUrls("リンクはありません")).toEqual([
-      { text: "リンクはありません" },
+      { text: "リンクはありません", offset: 0 },
     ]);
   });
 
   it("splits urls out of surrounding text", () => {
     expect(splitHttpUrls("see https://example.com/a, and more")).toEqual([
-      { text: "see " },
-      { text: "https://example.com/a", href: "https://example.com/a" },
-      { text: "," },
-      { text: " and more" },
+      { text: "see ", offset: 0 },
+      {
+        text: "https://example.com/a",
+        href: "https://example.com/a",
+        offset: 4,
+      },
+      { text: ",", offset: 25 },
+      { text: " and more", offset: 26 },
     ]);
   });
 

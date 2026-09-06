@@ -10,11 +10,12 @@ export function LinkedText({
 }) {
   return (
     <>
-      {splitHttpUrls(text).map((part, index) => {
+      {splitHttpUrls(text).map((part) => {
+        const key = `${part.offset}:${part.href ?? "t"}`;
         if (part.href) {
           return (
             <a
-              key={`u-${index}`}
+              key={key}
               href={part.href}
               target="_blank"
               rel="noreferrer"
@@ -28,9 +29,9 @@ export function LinkedText({
           return null;
         }
         if (renderPlain) {
-          return <span key={`t-${index}`}>{renderPlain(part.text)}</span>;
+          return <span key={key}>{renderPlain(part.text)}</span>;
         }
-        return <span key={`t-${index}`}>{part.text}</span>;
+        return <span key={key}>{part.text}</span>;
       })}
     </>
   );
