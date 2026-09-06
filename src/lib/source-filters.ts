@@ -32,7 +32,7 @@ function pick(
 }
 
 export function parseLibraryView(raw: string | undefined | null): LibraryView {
-  return raw === "grid" ? "grid" : "list";
+  return raw === "list" ? "list" : "grid";
 }
 
 export function parseLibraryFilters(params: {

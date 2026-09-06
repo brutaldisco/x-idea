@@ -6,9 +6,11 @@ import { useEffect, useId, useRef, useState } from "react";
 export function SourceCardMenu({
   sourceId,
   url,
+  compact = false,
 }: {
   sourceId: string;
   url: string | null;
+  compact?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -84,7 +86,9 @@ export function SourceCardMenu({
           });
           setOpen((value) => !value);
         }}
-        className="flex h-7 w-7 items-center justify-center rounded-full text-ink-2 hover:bg-paper"
+        className={`flex items-center justify-center rounded-full text-ink-2 hover:bg-paper ${
+          compact ? "h-5 w-5" : "h-7 w-7"
+        }`}
       >
         <span aria-hidden className="text-base leading-none">
           ⋮

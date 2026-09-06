@@ -1,4 +1,5 @@
 import { ChromeTranslate } from "@/components/ChromeTranslate";
+import { LinkedText } from "@/components/LinkedText";
 import { MediaGallery } from "@/components/MediaGallery";
 import { OpenInX } from "@/components/OpenInX";
 import { translatableProps } from "@/lib/chrome-translate";
@@ -64,14 +65,14 @@ export function PostBlock({
         className="mt-3 whitespace-pre-wrap text-[1.05rem] leading-7"
         {...attrs}
       >
-        {post.text}
+        <LinkedText text={post.text} />
       </p>
       {quote ? (
         <blockquote
           className="mt-3 rounded-xl border border-line bg-paper px-3 py-2 text-ink-2 text-sm"
           {...attrs}
         >
-          {quote}
+          <LinkedText text={quote} />
         </blockquote>
       ) : null}
       {long ? null : translate}

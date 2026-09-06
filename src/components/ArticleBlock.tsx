@@ -1,4 +1,5 @@
 import { ChromeTranslate } from "@/components/ChromeTranslate";
+import { LinkedText } from "@/components/LinkedText";
 import { translatableProps } from "@/lib/chrome-translate";
 import { scopeLabel } from "@/server/fetch/classify";
 
@@ -64,7 +65,9 @@ export function ArticleBlock({
           className="mt-3 whitespace-pre-wrap text-sm leading-7"
           {...attrs}
         >
-          {text.length > 12_000 ? `${text.slice(0, 12_000)}…` : text}
+          <LinkedText
+            text={text.length > 12_000 ? `${text.slice(0, 12_000)}…` : text}
+          />
         </p>
       ) : scope === "pending" ? (
         <p className="mt-3 text-ink-2 text-xs">記事を取得しています…</p>

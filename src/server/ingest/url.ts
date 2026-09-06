@@ -1,3 +1,5 @@
+import { splitHttpUrls } from "@/lib/linkify";
+
 const X_HOSTS = new Set([
   "x.com",
   "twitter.com",
@@ -72,12 +74,10 @@ export function shouldFetchArticle(url: string): boolean {
 }
 
 export function extractHttpUrls(text: string): string[] {
-  const matches = text.match(/https?:\/\/[^\s<>"'）)】]+/gi) ?? [];
   const out: string[] = [];
-  for (const raw of matches) {
-    const cleaned = raw.replace(/[.,;:!?]+$/u, "");
-    if (cleaned && !out.includes(cleaned)) {
-      out.push(cleaned);
+  for (const part of splitHttpUrls(text)) {
+    if (part.href && !out.includes(part.href)) {
+      out.push(part.href);
     }
   }
   return out.slice(0, 8);

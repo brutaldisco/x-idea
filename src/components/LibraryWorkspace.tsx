@@ -185,7 +185,7 @@ export function LibraryWorkspace({
 
   function setView(next: LibraryView) {
     const params = new URLSearchParams(searchParams.toString());
-    if (next === "list") {
+    if (next === "grid") {
       params.delete("view");
     } else {
       params.set("view", next);

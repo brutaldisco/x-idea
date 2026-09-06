@@ -23,8 +23,9 @@ describe("library filters", () => {
     expect(
       parseLibraryFilters(new URLSearchParams("kind=nope&read=evil")),
     ).toEqual({});
-    expect(parseLibraryView("grid")).toBe("grid");
-    expect(parseLibraryView("atlas")).toBe("list");
+    expect(parseLibraryView("list")).toBe("list");
+    expect(parseLibraryView(undefined)).toBe("grid");
+    expect(parseLibraryView("atlas")).toBe("grid");
   });
 
   it("builds bounded SQL", () => {

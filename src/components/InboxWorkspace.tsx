@@ -11,6 +11,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { LinkedText } from "@/components/LinkedText";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import { SwipeCard } from "@/components/SwipeCard";
 import { translatableProps } from "@/lib/chrome-translate";
@@ -349,7 +350,7 @@ export function InboxWorkspace({
                 </p>
               ) : null}
               <p className="mt-1 line-clamp-4 text-sm" {...textAttrs}>
-                {current.summary}
+                <LinkedText text={current.summary} />
               </p>
             </div>
           </div>
