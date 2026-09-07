@@ -61,8 +61,7 @@ export default function InboxPage({
 }) {
   return (
     <main className="px-4 pt-8">
-      <p className="text-ink-2 text-sm">Inbox</p>
-      <h1 className="font-semibold text-2xl">要確認</h1>
+      <h1 className="font-semibold text-2xl">Inbox</h1>
       <Suspense
         fallback={<p className="mt-16 text-ink-2 text-sm">読み込み中…</p>}
       >

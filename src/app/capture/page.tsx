@@ -16,8 +16,7 @@ async function CaptureBody({
 
   return (
     <section>
-      <p className="text-ink-2 text-sm">Capture</p>
-      <h1 className="font-semibold text-2xl">共有を受け取りました</h1>
+      <h1 className="font-semibold text-2xl">Capture</h1>
       {empty ? (
         <p className="mt-4 text-ink-2">
           Android の共有シートから Marginalia

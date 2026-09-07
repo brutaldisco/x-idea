@@ -109,11 +109,6 @@ export default async function SourcePage({
         <h1 className="mt-6 font-semibold text-2xl" lang="ja" translate="no">
           原文
         </h1>
-        <p className="mt-1 text-ink-2 text-sm" lang="ja" translate="no">
-          英語・中国語など、日本語以外の原文・記事は、「日本語に翻訳」か、「原文を選択」→
-          右クリック →
-          日本語に翻訳で読めます。長い記事は本文の上にボタンがあります。
-        </p>
 
         {source.post.isReply ? (
           source.parent ? (

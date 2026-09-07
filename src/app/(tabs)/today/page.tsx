@@ -186,8 +186,7 @@ export default function TodayPage() {
   return (
     <>
       <header className="px-4 pt-8">
-        <p className="text-ink-2 text-sm">Today</p>
-        <h1 className="font-semibold text-2xl">今日の余白</h1>
+        <h1 className="font-semibold text-2xl">Today</h1>
       </header>
       <Suspense
         fallback={<p className="px-4 pt-10 text-ink-2 text-sm">読み込み中…</p>}

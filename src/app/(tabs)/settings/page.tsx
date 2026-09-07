@@ -315,8 +315,7 @@ export default function SettingsPage({
 }) {
   return (
     <main className="px-4 pt-8">
-      <p className="text-ink-2 text-sm">Settings</p>
-      <h1 className="font-semibold text-2xl">設定</h1>
+      <h1 className="font-semibold text-2xl">Settings</h1>
       <p className="mt-2 mb-6 text-ink-2 text-sm">
         残量が減ったら追加する運用です。有料トグルは人間が切り替えます。
       </p>

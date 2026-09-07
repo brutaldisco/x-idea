@@ -80,8 +80,7 @@ export default function LibraryPage({
 }) {
   return (
     <main className="px-4 pt-8">
-      <p className="text-ink-2 text-sm">Library</p>
-      <h1 className="font-semibold text-2xl">ライブラリ</h1>
+      <h1 className="font-semibold text-2xl">Library</h1>
       <form action="/ask" className="mt-4">
         <input
           name="q"
