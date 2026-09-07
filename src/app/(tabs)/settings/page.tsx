@@ -10,6 +10,7 @@ import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { AccountTaxonomyCard } from "@/components/settings/AccountTaxonomyCard";
 import { SettingsAccountPicker } from "@/components/settings/SettingsAccountPicker";
+import { SettingsDefaultAccountCard } from "@/components/settings/SettingsDefaultAccountCard";
 import { UsageMeters } from "@/components/UsageMeters";
 import { VideoSaveFolderCard } from "@/components/videos/VideoSaveFolderCard";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
@@ -125,15 +126,9 @@ async function SettingsBody({
         </p>
       ) : null}
       <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
-        {current ? (
-          <p className="mb-4 text-ink-2 text-xs">
-            いまのアカウント · @{current.username}
-          </p>
-        ) : null}
         <SettingsAccountPicker
           accounts={accounts}
           currentId={current?.id ?? null}
-          defaultId={defaultXAccountId}
           maxAccounts={MAX_X_ACCOUNTS}
         />
         <section className="mt-7 border-line border-t pt-7">
@@ -185,6 +180,10 @@ async function SettingsBody({
           />
         </div>
       </article>
+      <SettingsDefaultAccountCard
+        accounts={accounts}
+        defaultId={defaultXAccountId}
+      />
       <MediaUsageCard blobs={blobUsage} videos={videoUsage} />
       <VideoSaveFolderCard
         accountLabel={contextLabel(ctx)}

@@ -19,6 +19,5 @@ export async function setDefaultXAccountAction(formData: FormData) {
     return;
   }
   await setDefaultXAccountId(id);
-  await setAccountContext(id);
-  revalidatePath("/", "layout");
+  revalidatePath("/settings");
 }

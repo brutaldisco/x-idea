@@ -7,7 +7,6 @@ import {
   setSyncLimits,
   setXApiEnabled,
 } from "@/server/settings";
-import { setAccountContext } from "@/server/x/context";
 
 export const instant = false;
 
@@ -30,7 +29,6 @@ export async function PATCH(request: Request) {
     };
     if (typeof body.default_x_account_id === "string") {
       await setDefaultXAccountId(body.default_x_account_id);
-      await setAccountContext(body.default_x_account_id);
       return Response.json({ ok: true });
     }
     if (typeof body.x_api_enabled === "boolean") {
