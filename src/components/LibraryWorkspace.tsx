@@ -93,7 +93,7 @@ function FilterSelect({
         const query = next.toString();
         router.push(query ? `${pathname}?${query}` : pathname);
       }}
-      className="max-w-[9.5rem] shrink-0 rounded-full border border-line bg-paper px-2 py-1.5 text-xs"
+      className="max-w-[9.5rem] shrink-0 rounded-full border border-line bg-paper px-2 py-1.5 text-xs outline-none focus:border-line focus:outline-none focus-visible:outline-none"
     >
       <option value="">{emptyLabel}</option>
       {options.map((item) => (
@@ -191,12 +191,14 @@ export function LibraryWorkspace({
       params.set("view", next);
     }
     const queryString = params.toString();
-    router.push(queryString ? `${pathname}?${queryString}` : pathname);
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
+      scroll: false,
+    });
   }
 
   return (
-    <div className="mt-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-ink-2 text-xs">
+    <div className="mt-4 min-w-0 max-w-full">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-ink-2 text-xs">
         <span>
           {label} · {total}件
         </span>
@@ -228,7 +230,7 @@ export function LibraryWorkspace({
         </div>
       </div>
 
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+      <div className="mt-3 flex min-w-0 max-w-full gap-2 overflow-x-auto pb-1">
         <FilterSelect
           name="category"
           value={filters.categoryId ?? ""}
@@ -274,8 +276,8 @@ export function LibraryWorkspace({
         <ul
           className={
             view === "grid"
-              ? "mt-4 grid grid-cols-2 gap-2 min-[48rem]:grid-cols-3"
-              : "mt-4 space-y-3"
+              ? "mt-4 grid min-w-0 grid-cols-2 gap-2 min-[48rem]:grid-cols-3"
+              : "mt-4 grid min-w-0 grid-cols-1 gap-3"
           }
         >
           {rows.map((item) => (

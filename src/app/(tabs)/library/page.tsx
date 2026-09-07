@@ -79,7 +79,7 @@ export default function LibraryPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   return (
-    <main className="px-4 pt-8">
+    <main className="min-w-0 overflow-x-clip px-4 pt-8">
       <p className="text-ink-2 text-sm">Library</p>
       <h1 className="font-semibold text-2xl">ライブラリ</h1>
       <form action="/ask" className="mt-4">

@@ -28,7 +28,7 @@ export function SourceSortSelect({ value }: { value: SourceSort }) {
           const query = next.toString();
           router.push(query ? `${pathname}?${query}` : pathname);
         }}
-        className="rounded-full border border-line bg-paper px-2 py-1 text-xs"
+        className="rounded-full border border-line bg-paper px-2 py-1 text-xs outline-none focus:border-line focus:outline-none focus-visible:outline-none"
       >
         {SOURCE_SORTS.map((item) => (
           <option key={item.id} value={item.id}>
