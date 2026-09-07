@@ -1,5 +1,6 @@
 import { getClient } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
+import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { clampSyncIntervalMin } from "@/lib/sync-policy";
 import { type Lane, parseLaneCaps, parseLaneModels } from "@/server/ai/lanes";
@@ -159,4 +160,40 @@ export async function setPaidFlag(
     args: [enabled ? 1 : 0],
   });
   logger.info({ column, enabled }, "settings paid flag updated");
+}
+
+export async function getDefaultXAccountId(): Promise<string | null> {
+  await ensureSchema();
+  const result = await getClient().execute(
+    "SELECT default_x_account_id FROM settings WHERE id = 1 LIMIT 1",
+  );
+  const raw = result.rows[0]?.default_x_account_id;
+  return raw ? String(raw) : null;
+}
+
+export async function setDefaultXAccountId(id: string): Promise<void> {
+  await ensureSchema();
+  const client = getClient();
+  const found = await client.execute({
+    sql: "SELECT id FROM x_account WHERE id = ? LIMIT 1",
+    args: [id],
+  });
+  if (!found.rows[0]) {
+    throw new AppError("VALIDATION", "アカウントが見つかりません");
+  }
+  await client.execute({
+    sql: `UPDATE settings SET default_x_account_id = ?, updated_at = datetime('now')
+          WHERE id = 1`,
+    args: [id],
+  });
+  logger.info({ id }, "settings.default_x_account_id updated");
+}
+
+export async function clearDefaultXAccountIf(id: string): Promise<void> {
+  await ensureSchema();
+  await getClient().execute({
+    sql: `UPDATE settings SET default_x_account_id = NULL, updated_at = datetime('now')
+          WHERE id = 1 AND default_x_account_id = ?`,
+    args: [id],
+  });
 }

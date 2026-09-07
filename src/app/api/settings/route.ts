@@ -1,7 +1,13 @@
 import { connection } from "next/server";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
-import { setPaidFlag, setSyncLimits, setXApiEnabled } from "@/server/settings";
+import {
+  setDefaultXAccountId,
+  setPaidFlag,
+  setSyncLimits,
+  setXApiEnabled,
+} from "@/server/settings";
+import { setAccountContext } from "@/server/x/context";
 
 export const instant = false;
 
@@ -20,7 +26,13 @@ export async function PATCH(request: Request) {
       reply_context_enabled?: boolean;
       sync_max_per_run?: number;
       media_download_per_tick?: number;
+      default_x_account_id?: string;
     };
+    if (typeof body.default_x_account_id === "string") {
+      await setDefaultXAccountId(body.default_x_account_id);
+      await setAccountContext(body.default_x_account_id);
+      return Response.json({ ok: true });
+    }
     if (typeof body.x_api_enabled === "boolean") {
       await setXApiEnabled(body.x_api_enabled);
       return Response.json({ ok: true });

@@ -8,16 +8,21 @@ import type { XAccountPublic } from "@/server/x/account";
 export function SettingsAccountPicker({
   accounts,
   currentId,
+  defaultId,
   maxAccounts,
 }: {
   accounts: XAccountPublic[];
   currentId: string | null;
+  defaultId: string | null;
   maxAccounts: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
   const canAdd = accounts.length < maxAccounts;
+  const defaultAccount = accounts.find((account) => account.id === defaultId);
+  const current = accounts.find((account) => account.id === currentId) ?? null;
+  const canSetDefault = Boolean(current && current.id !== defaultId);
 
   function select(id: string) {
     if (id === currentId || busy) {
@@ -28,6 +33,24 @@ export function SettingsAccountPicker({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ctx: id }),
+    })
+      .then((res) => {
+        if (res.ok) {
+          startTransition(() => router.refresh());
+        }
+      })
+      .finally(() => setBusy(false));
+  }
+
+  function setDefault() {
+    if (!current || busy) {
+      return;
+    }
+    setBusy(true);
+    void fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ default_x_account_id: current.id }),
     })
       .then((res) => {
         if (res.ok) {
@@ -53,6 +76,7 @@ export function SettingsAccountPicker({
         <div className="mt-3 flex flex-wrap gap-2">
           {[...accounts].toReversed().map((account) => {
             const selected = account.id === currentId;
+            const isDefault = account.id === defaultId;
             return (
               <button
                 key={account.id}
@@ -66,11 +90,41 @@ export function SettingsAccountPicker({
                 }`}
               >
                 @{account.username}
+                {isDefault ? (
+                  <span
+                    className={`ml-1.5 text-xs ${
+                      selected ? "text-paper/80" : "text-ink-2"
+                    }`}
+                  >
+                    既定
+                  </span>
+                ) : null}
               </button>
             );
           })}
         </div>
       )}
+      {accounts.length > 0 ? (
+        <div className="mt-4 space-y-2">
+          <p className="text-ink-2 text-xs">
+            既定は、Cookie
+            が無いとき（別のブラウザや初回）に開くアカウントです。
+            {defaultAccount
+              ? ` いまの既定は @${defaultAccount.username}。`
+              : " 未設定のときは先頭アカウントを開きます。"}
+          </p>
+          {canSetDefault && current ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={setDefault}
+              className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper"
+            >
+              @{current.username} を既定にする
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {canAdd ? (
         <Link
           href={

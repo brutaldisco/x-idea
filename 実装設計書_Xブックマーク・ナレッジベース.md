@@ -4,9 +4,9 @@
 | --- | --- |
 | ドキュメント種別 | 実装設計書（Implementation Design Document） |
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
-| 版 | **v3.5** |
+| 版 | **v3.6** |
 | 作成日 | 2026-07-12 |
-| 改訂日 | **2026-09-06** |
+| 改訂日 | **2026-09-07** |
 | ステータス | 実装着手可能 |
 | 外部サービス情報の確認日 | 2026-09-04（Next.js / Turso / Gemini / X API / Vercel / AI SDK / MCP の各公式ドキュメント） |
 | リポジトリ | `https://github.com/brutaldisco/x-idea.git`（空。本書のコミットから開始） |
@@ -28,7 +28,7 @@
 > 1. **X 連携を複数アカウント（最大 3）に変更**（ADR-002）。`x_account` は複数行になり、`sources` は `x_account_id` でどのアカウント由来かを保持する。同期カーソルはアカウント別に分離する。アプリのユーザー概念やログインは追加しない。
 
 > **v3.3 の要点（v3.2 からの変更）**
-> 1. **アカウントコンテキスト（ビュー切替）を追加**（ADR-003）。指向性の異なるアカウント同士を混ぜないため、Today / Inbox / Library / Ask は **選択中の 1 アカウントだけ** にスコープする。「すべて」は持たない。既定は先頭アカウント。画面左下に現在の `@name` を出し（タブバーには入れない）、タップで「アカウントを切り替える」と候補を開く。HttpOnly Cookie `x_ctx`。`user_id` は追加しない。
+> 1. **アカウントコンテキスト（ビュー切替）を追加**（ADR-003、ADR-014）。指向性の異なるアカウント同士を混ぜないため、Today / Inbox / Library / Ask は **選択中の 1 アカウントだけ** にスコープする。「すべて」は持たない。Cookie 未設定時は Settings の既定アカウント、それも無ければ先頭。画面左下に現在の `@name` を出し（タブバーには入れない）、タップで「アカウントを切り替える」と候補を開く。HttpOnly Cookie `x_ctx`。`user_id` は追加しない。
 > 2. **Settings 使用量メーター**（ADR-004）。X クレジットと Gemini 枠は「残量」を主表示し、なくなったら追加する。アカウント別の推定使用も出す。`x_api_enabled` は人間が ON にする。
 
 > **v3.4 の要点（v3.3 からの変更）**
@@ -38,6 +38,9 @@
 > **v3.5 の要点（v3.4 からの変更）**
 > 1. **動画は手動ダウンロードのみ、画像は DB 保存**（ADR-007、ADR-005 を一部改定）。容量破綻の主因である動画の全量保存をやめ、画像・動画サムネイルは WebP 化して **Turso の `media_blobs`** に保存（本番・ローカル同一挙動）。動画本体は Reader の「あとで保存」→ **キュー（最大 15 件）** → Videos タブから手動実行し、**File System Access API** でユーザー指定フォルダへ保存（ローカルサーバー不要）。`pnpm dev` 保存役は開発用途に限定。
 > 2. **Videos タブ（SC-15）追加** で下部タブは 6 項目に。ダウンロードキュー・動画ライブラリ（1 階層フォルダ分類）・ブラウザ標準プレーヤー。低速回線対策は 8MB チャンク＋レジューム。詳細は `docs/design/2026-09-05-video-library.md`。
+>
+> **v3.6 の要点（v3.5 からの変更）**
+> 1. **既定の X アカウントを Settings で選ぶ**（ADR-014）。Cookie `x_ctx` が無いときのフォールバックを「先頭アカウント」から「`settings.default_x_account_id`、未設定なら先頭」に変更する。
 
 ---
 
@@ -399,7 +402,7 @@ UI/UX の判断に迷ったら以下に従う。
   - 直近 7 日の返信取得：`reply_context_enabled`（追加課金、$0.005/投稿。既定 OFF。上限はスレッド展開と共用）
   - 代替 AI：Anthropic / OpenAI（`paid_providers_json`。キー未設定ならトグル無効）
   - 監視：Sentry / UptimeRobot（任意。未契約なら非表示）
-- **アカウント**：1 枚のカードにまとめる。上部で 1 件だけ選び、同じ枠内に X 連携と分類を項目として出す。同時に複数アカウントは表示しない。切替は既存の `x_ctx`（Library / Inbox と同じ）。「アカウントを追加」もここ（最大 3）。
+- **アカウント**：1 枚のカードにまとめる。上部で 1 件だけ選び、同じ枠内に X 連携と分類を項目として出す。同時に複数アカウントは表示しない。切替は既存の `x_ctx`（Library / Inbox と同じ）。選択中を **既定** にできる（ADR-014。`settings.default_x_account_id`。Cookie が無いときに開く）。「アカウントを追加」もここ（最大 3）。
 - **X 連携**：選んだアカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、個別解除。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
 - **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除）。初期値は seed カテゴリと既定の情報タイプ。Library の絞り込みと AI enrich がこの一覧を使う（`account_taxonomy`）。
 - **同期**：自動は最短 6 時間＋手動。返信を保存、除外ドメイン。
@@ -966,7 +969,7 @@ RETURNING *;
 
 - Source と Knowledge Card の分離。AI 出力とユーザー入力の分離（`ai_*` / `user_*`、`*_source`）。原文不変。
 - シングルテナント：`user_id` なし。設定はシングルトン。**X 連携は最大 3 アカウント**（v3.2、ADR-002）。`user_id` は追加しない。
-- **アカウントコンテキスト**（v3.3、ADR-003）：`sources.x_account_id` で物理的に帰属を分け、閲覧は **選択中の 1 アカウント**（`x_ctx` Cookie）だけに絞る。`NULL`（手動保存や解除済み由来）は表示しない。「すべて」は持たない。
+- **アカウントコンテキスト**（v3.3、ADR-003 / ADR-014）：`sources.x_account_id` で物理的に帰属を分け、閲覧は **選択中の 1 アカウント**（`x_ctx` Cookie）だけに絞る。Cookie 未設定・無効値は Settings の既定、それも無ければ先頭アカウント。`NULL`（手動保存や解除済み由来）は表示しない。「すべて」は持たない。
 - SQLite 型：ID は TEXT（ULID）、真偽は INTEGER 0/1、時刻は ISO8601 TEXT（UTC）、JSON は TEXT、ベクトルは `F32_BLOB(768)`。
 - rows read 抑制：一覧はカーソルページネーション必須、フィルタ用インデックスを最初から張る、ベクトルは索引経由のみ。
 
@@ -1032,6 +1035,7 @@ CREATE TABLE settings (
   onboarding_done INTEGER NOT NULL DEFAULT 0,
   x_usage_cache_json TEXT,                       -- X usage/credits の短時間キャッシュ
   video_save_folder_name TEXT,                   -- 動画保存フォルダ名。ハンドルはブラウザごと
+  default_x_account_id TEXT,                     -- 既定の X アカウント。Cookie 未設定時。0010 / ADR-014
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1620,7 +1624,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | DELETE | `/api/x/connection` | 連携解除 | 同一オリジン | P1 |
 | POST | `/api/x/credits` | クレジット追加/残量合わせ/再取得 | 同一オリジン | P1 |
 | POST | `/api/sync` | 手動同期（60秒スロットル、最大 3 ジョブ消化） | 同一オリジン | P1 |
-| PATCH | `/api/settings` | `x_api_enabled` のみ。人間が切り替える | 同一オリジン | P1 |
+| PATCH | `/api/settings` | `x_api_enabled` / 同期上限 / 既定アカウント（`default_x_account_id`）など。人間が切り替える | 同一オリジン | P1 |
 | GET/POST | `/api/settings/video-folder` | 動画保存フォルダ名の共有。ハンドルはブラウザごと | 同一オリジン | P1 |
 | GET/POST/PATCH/DELETE | `/api/settings/taxonomy` | アカウント別カテゴリ／情報タイプ | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
@@ -1944,7 +1948,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | --- | --- | --- | --- | --- |
 | T-101 | X OAuth PKCE（start/callback/解除）、`x_account` 保存、Onboarding ステップ 2 | `src/app/api/x/oauth/*`, `src/server/x/oauth.ts` | T-003, T-005 | 実アカウントで連携・解除 |
 | T-101b | X 複数アカウント（最大 3、v3.2）：`x_account` 複数行化、`sources.x_account_id`、`sync_runs.x_account_id`、アカウント別カーソル、Settings の一覧/追加/個別解除 | `drizzle/0001_multi_account.sql`, `src/server/x/*`, Settings UI | T-101 | 2 つ目のアカウントを追加・解除できる。既存データは最初の 1 件に帰属 |
-| T-101c | アカウントコンテキスト切替（v3.3、ADR-003）：`x_ctx` Cookie、画面左下に現在アカウント（タブバー外）、タップで切替メニュー、Today/Inbox/Library/Ask のスコープリング | `src/server/x/context.ts`, `src/components/AccountSwitcher.tsx`, 各タブ | T-101b | 左下の `@name` をタップすると「アカウントを切り替える」と候補が出る。切替で Today / Inbox が変わる。既定は先頭アカウント |
+| T-101c | アカウントコンテキスト切替（v3.3、ADR-003 / ADR-014）：`x_ctx` Cookie、画面左下に現在アカウント（タブバー外）、タップで切替メニュー、Today/Inbox/Library/Ask のスコープリング、Settings で既定アカウント | `src/server/x/context.ts`, `src/components/AccountSwitcher.tsx`, Settings、`settings.default_x_account_id` | T-101b | 左下の `@name` をタップすると「アカウントを切り替える」と候補が出る。切替で Today / Inbox が変わる。Cookie 未設定時は Settings の既定、未設定なら先頭 |
 | T-102 | トークンリフレッシュ、`reauth_required` 遷移（E-02） | `src/server/x/token.ts` | T-101 | 失効 5 分前に refresh。失敗で `reauth_required` |
 | T-103 | X API クライアント（fields/expansions、レート制限記録、`withRetry`、ページ解析） | `src/server/x/client.ts`, `fixtures/x/*.json` | T-009 | fixtures で note_tweet / 既知 ID 打ち切り |
 | T-104 | `sync_bookmarks`（差分は 10 件ページ、初回は 100、上限 `sync_max_per_run`、自動は 6 時間ガード） | `src/server/jobs/handlers/syncBookmarks.ts` | T-007, T-103 | `x_api_enabled` かつ `sync_enabled`。既知 ID で打ち切り。手動は間隔無視 |
@@ -2118,7 +2122,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | P-13 | 引用 | 1 階層スナップショット | ノイズ抑制 |
 | P-14 | アプリ認証 | なし | 個人用途 |
 | P-26 | X 連携アカウント数 | 最大 3（v3.2） | ユーザー要望。アプリのユーザー概念は追加しない |
-| P-27 | アカウントコンテキスト | 既定は先頭アカウント。画面左下で切替（タブバー外）。「すべて」なし（v3.3） | 指向性の異なるアカウントを混ぜない |
+| P-27 | アカウントコンテキスト | Cookie → Settings の既定 → 先頭。画面左下で切替（タブバー外）。「すべて」なし（v3.3 / ADR-014） | 指向性の異なるアカウントを混ぜない |
 | P-28 | クレジット残量 | 公式残量 API → スナップショット → 追加記録の順。不足は $2 以下で警告 | なくなったら追加する運用 |
 | P-15 | 初期カテゴリ | 社会学/AI/組織/デザイン/筋力トレーニング/健康/仕事/思想 | 要件例示 |
 | P-16 | Cron | cron-job.org 1 分 | Hobby 制約回避 |
