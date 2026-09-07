@@ -199,7 +199,6 @@ export default async function SourcePage({
                 description={article.description}
                 contentText={article.contentText}
                 contentHtml={article.contentHtml}
-                lang={source.post.lang}
               />
             ))}
           </div>

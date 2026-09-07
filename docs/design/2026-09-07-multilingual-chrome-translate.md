@@ -1,7 +1,7 @@
 # 設計書：多言語の原文検出と「日本語に翻訳」ボタン
 
 - 日付: 2026-09-07
-- 状態: **提案（実装前。承認後に T-613 として着手）**
+- 状態: **採用（T-613 実装）**
 - 関連: ADR-006、実装設計書 8.5（SC-06 Reader）、`src/lib/chrome-translate.ts`、`src/components/ChromeTranslate.tsx`、`src/components/ArticleBlock.tsx`
 - 外部情報の確認日: 2026-09-07（[Chrome Translator API](https://developer.chrome.com/docs/ai/translator-api)、[MDN Translator / Language Detector](https://developer.mozilla.org/en-US/docs/Web/API/Translator_and_Language_Detector_APIs/Using)）
 
@@ -21,7 +21,7 @@ ArticleBlock / PostBlock
 ```
 
 - 翻訳結果は画面の一時表示のみ。DB / AI カラムには書かない（ADR-006。維持）。
-- 記事の `articles` テーブルに言語カラムは無い。`ArticleBlock` は `lang={source.post.lang}` を渡している。
+- 記事の `articles` テーブルに言語カラムは無い。`ArticleBlock` は投稿 `lang` を渡さない。
 - `sources.language` は enrich 用で、未設定時は `"ja"` に落ちる。記事言語の正本には使えない。
 
 ## 3. 原因
@@ -203,14 +203,14 @@ Phase 2（必要なら）: `article_fetch` で `html lang` / `Content-Language` 
 
 DoD:
 
-- [ ] `looksMostlyJapanese` が中国語サンプルで `false`、日本語かな交じりで `true`
-- [ ] `shouldOfferTranslate` が中・英・韓・その他で `true`、日本語本文で `false`
-- [ ] `ArticleBlock` が投稿 `lang` を翻訳 hint に渡さない
-- [ ] `translatorLanguage("zh-Hant") === "zh-Hant"`、`translatorLanguage("zh-CN") === "zh"`
-- [ ] クリック時、hint=`ja` でも Detector が中国語なら翻訳に進む
-- [ ] 翻訳結果を DB に書かない（回帰）
-- [ ] ADR-006 に「漢字≠日本語」「記事は投稿 lang を使わない」を追記
-- [ ] 設計書 8.5 の Chrome 翻訳一文を同じ内容に更新
+- [x] `looksMostlyJapanese` が中国語サンプルで `false`、日本語かな交じりで `true`
+- [x] `shouldOfferTranslate` が中・英・韓・その他で `true`、日本語本文で `false`
+- [x] `ArticleBlock` が投稿 `lang` を翻訳 hint に渡さない
+- [x] `translatorLanguage("zh-Hant") === "zh-Hant"`、`translatorLanguage("zh-CN") === "zh"`
+- [x] クリック時、hint=`ja` でも Detector が中国語なら翻訳に進む
+- [x] 翻訳結果を DB に書かない（回帰）
+- [x] ADR-006 に「漢字≠日本語」「記事は投稿 lang を使わない」を追記
+- [x] 設計書 8.5 の Chrome 翻訳一文を同じ内容に更新
 
 受け入れ条件: 既存 A-04（Reader 目視）の延長。中国語記事でボタンが見え、Desktop Chrome で対訳が出る。日本語記事ではボタンが出ない。
 
