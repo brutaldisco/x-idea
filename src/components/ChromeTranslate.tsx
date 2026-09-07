@@ -2,40 +2,13 @@
 
 import { useState } from "react";
 import {
-  getLanguageDetectorCtor,
+  detectSourceLanguage,
   getTranslatorCtor,
-  primaryLanguage,
   selectElementText,
   shouldOfferTranslate,
 } from "@/lib/chrome-translate";
 
 const TARGET = "ja";
-
-async function detectSourceLanguage(
-  text: string,
-  hinted: string | null,
-): Promise<string | null> {
-  if (hinted) {
-    return hinted;
-  }
-  const Detector = getLanguageDetectorCtor();
-  if (!Detector) {
-    return null;
-  }
-  try {
-    if (typeof Detector.availability === "function") {
-      const ready = await Detector.availability();
-      if (ready === "unavailable") {
-        return null;
-      }
-    }
-    const detector = await Detector.create();
-    const results = await detector.detect(text);
-    return primaryLanguage(results[0]?.detectedLanguage);
-  } catch {
-    return null;
-  }
-}
 
 export function ChromeTranslate({
   text,
@@ -77,7 +50,7 @@ export function ChromeTranslate({
         );
         return;
       }
-      const source = await detectSourceLanguage(text, primaryLanguage(lang));
+      const source = await detectSourceLanguage(text, lang);
       if (!source || source === TARGET) {
         selectOriginal();
         setHint(

@@ -13,7 +13,6 @@ export function ArticleBlock({
   description,
   contentText,
   contentHtml,
-  lang,
 }: {
   id: string;
   title: string | null;
@@ -22,7 +21,6 @@ export function ArticleBlock({
   description: string | null;
   contentText: string | null;
   contentHtml?: string | null;
-  lang?: string | null;
 }) {
   const html = contentHtml?.trim() ?? "";
   const text = contentText?.trim() || description?.trim() || "";
@@ -31,12 +29,12 @@ export function ArticleBlock({
   const bodyId = `article-text-${id}`;
   const translateText = [title?.trim(), text].filter(Boolean).join("\n\n");
   const long = translateText.length >= LONG_ARTICLE;
-  const attrs = translatableProps(lang, false);
+  const attrs = translatableProps(null, false);
   const translate =
     fetched && translateText ? (
       <ChromeTranslate
         text={translateText.slice(0, 12_000)}
-        lang={lang ?? null}
+        lang={null}
         targetId={bodyId}
         className={long ? "mb-3" : "mt-3"}
       />

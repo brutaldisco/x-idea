@@ -110,8 +110,9 @@ export default async function SourcePage({
           原文
         </h1>
         <p className="mt-1 text-ink-2 text-sm" lang="ja" translate="no">
-          英語などの原文・記事は、「日本語に翻訳」か、「原文を選択」→ 右クリック
-          → 日本語に翻訳で読めます。長い記事は本文の上にボタンがあります。
+          英語・中国語など、日本語以外の原文・記事は、「日本語に翻訳」か、「原文を選択」→
+          右クリック →
+          日本語に翻訳で読めます。長い記事は本文の上にボタンがあります。
         </p>
 
         {source.post.isReply ? (
@@ -199,7 +200,6 @@ export default async function SourcePage({
                 description={article.description}
                 contentText={article.contentText}
                 contentHtml={article.contentHtml}
-                lang={source.post.lang}
               />
             ))}
           </div>
