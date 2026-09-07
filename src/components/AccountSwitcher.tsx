@@ -63,7 +63,7 @@ export function AccountSwitcher({
   return (
     <div
       ref={rootRef}
-      className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-3 z-30 min-[48rem]:bottom-[max(0.5rem,env(safe-area-inset-bottom))]"
+      className="fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-3 z-30 hidden min-[48rem]:block"
     >
       {open ? (
         <div

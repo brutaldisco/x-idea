@@ -27,7 +27,7 @@ export function SourceStatusBar({
 
   return (
     <div
-      className="notranslate fixed inset-x-0 z-20 border-line border-t bg-paper/95 px-4 py-2 backdrop-blur bottom-[calc(7.25rem+env(safe-area-inset-bottom))] min-[48rem]:bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"
+      className="notranslate fixed inset-x-0 z-20 border-line border-t bg-paper/95 px-4 py-2 backdrop-blur bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"
       lang="ja"
       translate="no"
     >

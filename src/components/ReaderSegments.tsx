@@ -7,7 +7,7 @@ export function ReaderSegments({ hasArticle }: { hasArticle: boolean }) {
   ];
   return (
     <nav
-      className="notranslate sticky top-0 z-10 -mx-6 mt-5 border-line border-b bg-paper/90 px-6 py-2 backdrop-blur"
+      className="notranslate sticky top-0 z-10 -mx-3 mt-5 border-line border-b bg-paper/90 px-3 py-2 backdrop-blur min-[48rem]:-mx-6 min-[48rem]:px-6"
       lang="ja"
       translate="no"
     >

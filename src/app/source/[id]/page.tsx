@@ -78,7 +78,7 @@ export default async function SourcePage({
     : null;
 
   return (
-    <main className="scroll-smooth px-6 pt-8 pb-8">
+    <main className="scroll-smooth px-3 pt-8 pb-8 min-[48rem]:px-6">
       <div className="flex items-center justify-between gap-3">
         <Link
           href="/library"
