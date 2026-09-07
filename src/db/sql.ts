@@ -28,6 +28,7 @@ const MIGRATION_FILES = [
   "0007_video_save_folder.sql",
   "0008_account_taxonomy.sql",
   "0009_dismissed_bookmarks.sql",
+  "0010_default_x_account.sql",
 ];
 
 export function loadInitSql(): string {

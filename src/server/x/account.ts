@@ -2,6 +2,7 @@ import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
+import { clearDefaultXAccountIf } from "@/server/settings";
 import type { TokenResponse, XMe } from "@/server/x/oauth";
 import { hasOauthScope, X_SCOPES } from "@/server/x/pkce";
 
@@ -129,6 +130,7 @@ export async function deleteXAccount(id: string): Promise<void> {
     sql: "DELETE FROM x_account WHERE id = ?",
     args: [id],
   });
+  await clearDefaultXAccountIf(id);
   logger.info({ id }, "x_account deleted");
 }
 

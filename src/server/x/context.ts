@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { getDefaultXAccountId } from "@/server/settings";
 import { listXAccounts, type XAccountPublic } from "@/server/x/account";
 import { X_CTX_COOKIE } from "@/server/x/context-const";
 
@@ -8,15 +9,34 @@ export type AccountContext =
   | { kind: "none" }
   | { kind: "account"; account: XAccountPublic };
 
-export async function getAccountContext(): Promise<AccountContext> {
-  const accounts = await listXAccounts();
+export function pickAccount(
+  accounts: XAccountPublic[],
+  cookieId: string | undefined,
+  defaultId: string | null,
+): AccountContext {
   if (accounts.length === 0) {
     return { kind: "none" };
   }
+  const fromCookie = cookieId
+    ? accounts.find((account) => account.id === cookieId)
+    : undefined;
+  if (fromCookie) {
+    return { kind: "account", account: fromCookie };
+  }
+  const fromDefault = defaultId
+    ? accounts.find((account) => account.id === defaultId)
+    : undefined;
+  if (fromDefault) {
+    return { kind: "account", account: fromDefault };
+  }
+  return { kind: "account", account: accounts[0] };
+}
+
+export async function getAccountContext(): Promise<AccountContext> {
+  const accounts = await listXAccounts();
   const jar = await cookies();
-  const raw = jar.get(X_CTX_COOKIE)?.value;
-  const found = accounts.find((account) => account.id === raw);
-  return { kind: "account", account: found ?? accounts[0] };
+  const defaultId = await getDefaultXAccountId();
+  return pickAccount(accounts, jar.get(X_CTX_COOKIE)?.value, defaultId);
 }
 
 export async function setAccountContext(value: string): Promise<void> {

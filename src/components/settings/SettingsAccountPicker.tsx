@@ -1,41 +1,23 @@
-"use client";
-
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import {
+  setAccountContextAction,
+  setDefaultXAccountAction,
+} from "@/app/(tabs)/settings/actions";
 import type { XAccountPublic } from "@/server/x/account";
 
 export function SettingsAccountPicker({
   accounts,
   currentId,
+  defaultId,
   maxAccounts,
 }: {
   accounts: XAccountPublic[];
   currentId: string | null;
+  defaultId: string | null;
   maxAccounts: number;
 }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [, startTransition] = useTransition();
   const canAdd = accounts.length < maxAccounts;
-
-  function select(id: string) {
-    if (id === currentId || busy) {
-      return;
-    }
-    setBusy(true);
-    void fetch("/api/x/context", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ctx: id }),
-    })
-      .then((res) => {
-        if (res.ok) {
-          startTransition(() => router.refresh());
-        }
-      })
-      .finally(() => setBusy(false));
-  }
+  const defaultAccount = accounts.find((account) => account.id === defaultId);
 
   return (
     <div>
@@ -50,27 +32,61 @@ export function SettingsAccountPicker({
           ブックマークの取り込みに X 連携が必要です。
         </p>
       ) : (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <ul className="mt-3 space-y-2">
           {[...accounts].toReversed().map((account) => {
             const selected = account.id === currentId;
+            const isDefault = account.id === defaultId;
             return (
-              <button
+              <li
                 key={account.id}
-                type="button"
-                disabled={busy || selected}
-                onClick={() => select(account.id)}
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  selected
-                    ? "bg-ink text-paper"
-                    : "border border-line hover:bg-paper"
-                }`}
+                className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-paper px-3 py-2"
               >
-                @{account.username}
-              </button>
+                {selected ? (
+                  <span className="rounded-full bg-ink px-3 py-1.5 text-paper text-sm">
+                    @{account.username}
+                  </span>
+                ) : (
+                  <form action={setAccountContextAction}>
+                    <input type="hidden" name="id" value={account.id} />
+                    <button
+                      type="submit"
+                      className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper-2"
+                    >
+                      @{account.username}
+                    </button>
+                  </form>
+                )}
+                {selected ? (
+                  <span className="text-ink-2 text-xs">表示中</span>
+                ) : null}
+                {isDefault ? (
+                  <span className="rounded-full bg-paper-2 px-2 py-0.5 text-ink-2 text-xs">
+                    既定
+                  </span>
+                ) : (
+                  <form action={setDefaultXAccountAction}>
+                    <input type="hidden" name="id" value={account.id} />
+                    <button
+                      type="submit"
+                      className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper-2"
+                    >
+                      既定にする
+                    </button>
+                  </form>
+                )}
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
+      {accounts.length > 0 ? (
+        <p className="mt-3 text-ink-2 text-xs">
+          既定は、Cookie が無いとき（別のブラウザや初回）に開くアカウントです。
+          {defaultAccount
+            ? ` いまの既定は @${defaultAccount.username}。`
+            : " 未設定のときは先頭アカウントを開きます。"}
+        </p>
+      ) : null}
       {canAdd ? (
         <Link
           href={

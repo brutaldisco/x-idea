@@ -46,6 +46,7 @@ export const settings = sqliteTable("settings", {
   onboardingDone: integer("onboarding_done").notNull().default(0),
   xUsageCacheJson: text("x_usage_cache_json"),
   videoSaveFolderName: text("video_save_folder_name"),
+  defaultXAccountId: text("default_x_account_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

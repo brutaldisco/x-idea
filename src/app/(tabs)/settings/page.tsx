@@ -23,6 +23,7 @@ import {
 } from "@/server/media/paths";
 import {
   getContextSettings,
+  getDefaultXAccountId,
   getSyncSettings,
   getVideoSaveFolderName,
 } from "@/server/settings";
@@ -53,6 +54,7 @@ async function SettingsBody({
     videoUsage,
     ctx,
     videoFolderName,
+    defaultXAccountId,
   ] = await Promise.all([
     getHealth(),
     listXAccounts(),
@@ -64,6 +66,7 @@ async function SettingsBody({
     getVideoLibraryUsage(),
     getAccountContext(),
     getVideoSaveFolderName(),
+    getDefaultXAccountId(),
   ]);
   const current = ctx.kind === "account" ? ctx.account : null;
   const taxonomy = current ? await getAccountTaxonomy(current.id) : null;
@@ -130,6 +133,7 @@ async function SettingsBody({
         <SettingsAccountPicker
           accounts={accounts}
           currentId={current?.id ?? null}
+          defaultId={defaultXAccountId}
           maxAccounts={MAX_X_ACCOUNTS}
         />
         <section className="mt-7 border-line border-t pt-7">
