@@ -125,65 +125,68 @@ async function SettingsBody({
           Callback にこの環境の URL があるかも確認してください。
         </p>
       ) : null}
-      <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
-        <SettingsAccountPicker
-          accounts={accounts}
-          currentId={current?.id ?? null}
-          maxAccounts={MAX_X_ACCOUNTS}
-        />
-        <section className="mt-7 border-line border-t pt-7">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">X 連携</h3>
-            {current ? (
-              <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
-                {current.status}
-              </span>
-            ) : null}
-          </div>
-          {current ? (
-            <>
-              <p className="mt-2 text-ink-2 text-xs">
-                OFF のあいだ、このアカウントのブックマーク同期は走りません。
-              </p>
-              <p className="mt-2 text-ink-2 text-xs">
-                {canUnbookmark
-                  ? "アプリで削除した投稿は同期で戻りません。権限があるときは X のブックマークからも外します。"
-                  : "アプリで削除した投稿は同期で戻りません。X からも外すには、下の「連携を更新」で許可を取り直してください。"}
-              </p>
-              <AccountSyncToggle
-                id={current.id}
-                enabled={current.syncEnabled}
-              />
-              <a
-                href={`/api/x/oauth/start?next=/settings&reauth=1&hint=${encodeURIComponent(current.username)}`}
-                className="mt-3 inline-block rounded-full border border-line px-4 py-2 text-sm"
-              >
-                @{current.username} の連携を更新
-              </a>
-              <p className="mt-2 text-ink-2 text-xs">
-                押すと、いまの X
-                ログインを一度切ってから、選んだアカウントの許可画面を開きます。
-              </p>
-              <DisconnectX id={current.id} />
-            </>
-          ) : (
-            <p className="mt-2 text-ink-2 text-sm">
-              上でアカウントを選ぶか、X と連携してください。
-            </p>
-          )}
-        </section>
-        <div className="mt-7 border-line border-t pt-7">
-          <AccountTaxonomyCard
-            key={current?.id ?? "none"}
-            accountId={current?.id ?? null}
-            initial={taxonomy}
+      <section className="space-y-3">
+        <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
+          <SettingsAccountPicker
+            accounts={accounts}
+            currentId={current?.id ?? null}
+            maxAccounts={MAX_X_ACCOUNTS}
           />
-        </div>
-      </article>
-      <SettingsDefaultAccountCard
-        accounts={accounts}
-        defaultId={defaultXAccountId}
-      />
+          <section className="mt-7 border-line border-t pt-7">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">X 連携</h3>
+              {current ? (
+                <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
+                  {current.status}
+                </span>
+              ) : null}
+            </div>
+            {current ? (
+              <>
+                <p className="mt-2 text-ink-2 text-xs">
+                  OFF のあいだ、このアカウントのブックマーク同期は走りません。
+                </p>
+                <p className="mt-2 text-ink-2 text-xs">
+                  {canUnbookmark
+                    ? "アプリで削除した投稿は同期で戻りません。権限があるときは X のブックマークからも外します。"
+                    : "アプリで削除した投稿は同期で戻りません。X からも外すには、下の「連携を更新」で許可を取り直してください。"}
+                </p>
+                <AccountSyncToggle
+                  id={current.id}
+                  enabled={current.syncEnabled}
+                />
+                <a
+                  href={`/api/x/oauth/start?next=/settings&reauth=1&hint=${encodeURIComponent(current.username)}`}
+                  className="mt-3 inline-block rounded-full border border-line px-4 py-2 text-sm"
+                >
+                  @{current.username} の連携を更新
+                </a>
+                <p className="mt-2 text-ink-2 text-xs">
+                  押すと、いまの X
+                  ログインを一度切ってから、選んだアカウントの許可画面を開きます。
+                </p>
+                <DisconnectX id={current.id} />
+              </>
+            ) : (
+              <p className="mt-2 text-ink-2 text-sm">
+                上でアカウントを選ぶか、X と連携してください。
+              </p>
+            )}
+          </section>
+          <div className="mt-7 border-line border-t pt-7">
+            <AccountTaxonomyCard
+              key={current?.id ?? "none"}
+              accountId={current?.id ?? null}
+              initial={taxonomy}
+            />
+          </div>
+        </article>
+        <SettingsDefaultAccountCard
+          accounts={accounts}
+          defaultId={defaultXAccountId}
+          viewingId={current?.id ?? null}
+        />
+      </section>
       <MediaUsageCard blobs={blobUsage} videos={videoUsage} />
       <VideoSaveFolderCard
         accountLabel={contextLabel(ctx)}
