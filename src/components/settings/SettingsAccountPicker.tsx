@@ -21,8 +21,12 @@ export function SettingsAccountPicker({
   const [, startTransition] = useTransition();
   const canAdd = accounts.length < maxAccounts;
   const defaultAccount = accounts.find((account) => account.id === defaultId);
-  const current = accounts.find((account) => account.id === currentId) ?? null;
-  const canSetDefault = Boolean(current && current.id !== defaultId);
+
+  function afterOk(res: Response) {
+    if (res.ok) {
+      startTransition(() => router.refresh());
+    }
+  }
 
   function select(id: string) {
     if (id === currentId || busy) {
@@ -34,29 +38,21 @@ export function SettingsAccountPicker({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ctx: id }),
     })
-      .then((res) => {
-        if (res.ok) {
-          startTransition(() => router.refresh());
-        }
-      })
+      .then(afterOk)
       .finally(() => setBusy(false));
   }
 
-  function setDefault() {
-    if (!current || busy) {
+  function setDefault(id: string) {
+    if (id === defaultId || busy) {
       return;
     }
     setBusy(true);
     void fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ default_x_account_id: current.id }),
+      body: JSON.stringify({ default_x_account_id: id }),
     })
-      .then((res) => {
-        if (res.ok) {
-          startTransition(() => router.refresh());
-        }
-      })
+      .then(afterOk)
       .finally(() => setBusy(false));
   }
 
@@ -73,57 +69,56 @@ export function SettingsAccountPicker({
           ブックマークの取り込みに X 連携が必要です。
         </p>
       ) : (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <ul className="mt-3 space-y-2">
           {[...accounts].toReversed().map((account) => {
             const selected = account.id === currentId;
             const isDefault = account.id === defaultId;
             return (
-              <button
+              <li
                 key={account.id}
-                type="button"
-                disabled={busy || selected}
-                onClick={() => select(account.id)}
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  selected
-                    ? "bg-ink text-paper"
-                    : "border border-line hover:bg-paper"
-                }`}
+                className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-paper px-3 py-2"
               >
-                @{account.username}
+                <button
+                  type="button"
+                  disabled={busy || selected}
+                  onClick={() => select(account.id)}
+                  className={`rounded-full px-3 py-1.5 text-sm ${
+                    selected
+                      ? "bg-ink text-paper"
+                      : "border border-line hover:bg-paper-2"
+                  }`}
+                >
+                  @{account.username}
+                </button>
+                {selected ? (
+                  <span className="text-ink-2 text-xs">表示中</span>
+                ) : null}
                 {isDefault ? (
-                  <span
-                    className={`ml-1.5 text-xs ${
-                      selected ? "text-paper/80" : "text-ink-2"
-                    }`}
-                  >
+                  <span className="rounded-full bg-paper-2 px-2 py-0.5 text-ink-2 text-xs">
                     既定
                   </span>
-                ) : null}
-              </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setDefault(account.id)}
+                    className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper-2"
+                  >
+                    既定にする
+                  </button>
+                )}
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
       {accounts.length > 0 ? (
-        <div className="mt-4 space-y-2">
-          <p className="text-ink-2 text-xs">
-            既定は、Cookie
-            が無いとき（別のブラウザや初回）に開くアカウントです。
-            {defaultAccount
-              ? ` いまの既定は @${defaultAccount.username}。`
-              : " 未設定のときは先頭アカウントを開きます。"}
-          </p>
-          {canSetDefault && current ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={setDefault}
-              className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper"
-            >
-              @{current.username} を既定にする
-            </button>
-          ) : null}
-        </div>
+        <p className="mt-3 text-ink-2 text-xs">
+          既定は、Cookie が無いとき（別のブラウザや初回）に開くアカウントです。
+          {defaultAccount
+            ? ` いまの既定は @${defaultAccount.username}。`
+            : " 未設定のときは先頭アカウントを開きます。"}
+        </p>
       ) : null}
       {canAdd ? (
         <Link
