@@ -3,6 +3,7 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef } from "react";
+import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import {
@@ -80,28 +81,21 @@ function FilterSelect({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   return (
-    <select
+    <PlainMenuSelect
       value={value}
-      aria-label={emptyLabel}
-      onChange={(event) => {
+      ariaLabel={emptyLabel}
+      options={[{ id: "", label: emptyLabel }, ...options]}
+      onChange={(nextValue) => {
         const next = new URLSearchParams(searchParams.toString());
-        if (event.target.value) {
-          next.set(name, event.target.value);
+        if (nextValue) {
+          next.set(name, nextValue);
         } else {
           next.delete(name);
         }
         const query = next.toString();
         router.push(query ? `${pathname}?${query}` : pathname);
       }}
-      className="max-w-[9.5rem] shrink-0 rounded-full border border-line bg-paper px-2 py-1.5 text-xs outline-none focus:border-line focus:outline-none focus-visible:outline-none"
-    >
-      <option value="">{emptyLabel}</option>
-      {options.map((item) => (
-        <option key={item.id} value={item.id}>
-          {item.label}
-        </option>
-      ))}
-    </select>
+    />
   );
 }
 
