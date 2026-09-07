@@ -70,7 +70,7 @@ export function SourceCard({
                 width={448}
                 height={224}
                 unoptimized
-                className={`${variant === "grid" ? "h-20" : "h-28"} w-full rounded-lg object-cover`}
+                className={`${variant === "grid" ? "h-28 min-[48rem]:h-20" : "h-28"} w-full rounded-lg object-cover`}
               />
               {mediaType && mediaType !== "photo" ? (
                 <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
@@ -80,7 +80,7 @@ export function SourceCard({
             </>
           ) : (
             <ThumbPlaceholder
-              className={`${variant === "grid" ? "h-20" : "h-28"} w-full rounded-lg`}
+              className={`${variant === "grid" ? "h-28 min-[48rem]:h-20" : "h-28"} w-full rounded-lg`}
             />
           )}
         </Link>

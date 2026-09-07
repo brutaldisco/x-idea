@@ -273,7 +273,9 @@ export function LibraryWorkspace({
       ) : (
         <ul
           className={
-            view === "grid" ? "mt-4 grid grid-cols-3 gap-2" : "mt-4 space-y-3"
+            view === "grid"
+              ? "mt-4 grid grid-cols-2 gap-2 min-[48rem]:grid-cols-3"
+              : "mt-4 space-y-3"
           }
         >
           {rows.map((item) => (
