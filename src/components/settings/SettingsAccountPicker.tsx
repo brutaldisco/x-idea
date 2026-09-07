@@ -1,8 +1,8 @@
-"use client";
-
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import {
+  setAccountContextAction,
+  setDefaultXAccountAction,
+} from "@/app/(tabs)/settings/actions";
 import type { XAccountPublic } from "@/server/x/account";
 
 export function SettingsAccountPicker({
@@ -16,45 +16,8 @@ export function SettingsAccountPicker({
   defaultId: string | null;
   maxAccounts: number;
 }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [, startTransition] = useTransition();
   const canAdd = accounts.length < maxAccounts;
   const defaultAccount = accounts.find((account) => account.id === defaultId);
-
-  function afterOk(res: Response) {
-    if (res.ok) {
-      startTransition(() => router.refresh());
-    }
-  }
-
-  function select(id: string) {
-    if (id === currentId || busy) {
-      return;
-    }
-    setBusy(true);
-    void fetch("/api/x/context", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ctx: id }),
-    })
-      .then(afterOk)
-      .finally(() => setBusy(false));
-  }
-
-  function setDefault(id: string) {
-    if (id === defaultId || busy) {
-      return;
-    }
-    setBusy(true);
-    void fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ default_x_account_id: id }),
-    })
-      .then(afterOk)
-      .finally(() => setBusy(false));
-  }
 
   return (
     <div>
@@ -78,18 +41,21 @@ export function SettingsAccountPicker({
                 key={account.id}
                 className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-paper px-3 py-2"
               >
-                <button
-                  type="button"
-                  disabled={busy || selected}
-                  onClick={() => select(account.id)}
-                  className={`rounded-full px-3 py-1.5 text-sm ${
-                    selected
-                      ? "bg-ink text-paper"
-                      : "border border-line hover:bg-paper-2"
-                  }`}
-                >
-                  @{account.username}
-                </button>
+                {selected ? (
+                  <span className="rounded-full bg-ink px-3 py-1.5 text-paper text-sm">
+                    @{account.username}
+                  </span>
+                ) : (
+                  <form action={setAccountContextAction}>
+                    <input type="hidden" name="id" value={account.id} />
+                    <button
+                      type="submit"
+                      className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper-2"
+                    >
+                      @{account.username}
+                    </button>
+                  </form>
+                )}
                 {selected ? (
                   <span className="text-ink-2 text-xs">表示中</span>
                 ) : null}
@@ -98,14 +64,15 @@ export function SettingsAccountPicker({
                     既定
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setDefault(account.id)}
-                    className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper-2"
-                  >
-                    既定にする
-                  </button>
+                  <form action={setDefaultXAccountAction}>
+                    <input type="hidden" name="id" value={account.id} />
+                    <button
+                      type="submit"
+                      className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper-2"
+                    >
+                      既定にする
+                    </button>
+                  </form>
                 )}
               </li>
             );
