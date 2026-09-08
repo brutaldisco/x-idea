@@ -121,7 +121,7 @@ export function VideoPlayer({
   return (
     <div
       ref={shellRef}
-      className="fixed inset-0 z-50 flex flex-col bg-black text-white [color-scheme:dark]"
+      className="video-player-shell fixed inset-0 z-50 flex flex-col bg-black text-white [color-scheme:dark]"
     >
       <div className="flex shrink-0 items-start justify-between gap-3 p-3">
         <div className="min-w-0">
@@ -141,8 +141,11 @@ export function VideoPlayer({
           </IconButton>
           <button
             type="button"
-            className="shrink-0 rounded-full px-3 py-1 text-sm text-white hover:bg-white/10"
-            onClick={onClose}
+            className="shrink-0 rounded-full px-3 py-1 text-sm text-white outline-none hover:bg-white/10"
+            onClick={(event) => {
+              event.currentTarget.blur();
+              onClose();
+            }}
           >
             閉じる
           </button>
@@ -156,7 +159,7 @@ export function VideoPlayer({
         controlsList="nofullscreen"
         loop={repeat === "one"}
         src={url}
-        className="min-h-0 w-full flex-1 bg-black object-contain"
+        className="min-h-0 w-full flex-1 bg-black object-contain outline-none"
         onDoubleClick={() => void toggleFullscreen()}
         onLoadedData={(event) => {
           void event.currentTarget.play().catch(() => undefined);
@@ -225,8 +228,11 @@ function IconButton({
       aria-label={label}
       aria-pressed={pressed}
       disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex size-8 items-center justify-center rounded-full disabled:opacity-40 ${
+      onClick={(event) => {
+        event.currentTarget.blur();
+        onClick();
+      }}
+      className={`inline-flex size-8 items-center justify-center rounded-full outline-none disabled:opacity-40 ${
         pressed
           ? "bg-white text-black"
           : "border border-white/25 text-white hover:bg-white/10"

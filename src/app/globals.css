@@ -44,6 +44,31 @@ select:active {
   -webkit-tap-highlight-color: transparent;
 }
 
+.video-player-shell,
+.video-player-shell *:focus,
+.video-player-shell *:focus-visible,
+.video-player-shell *:active {
+  outline: none;
+  box-shadow: none;
+}
+
+.video-player-shell,
+.video-player-shell * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.video-player-shell video:focus,
+.video-player-shell video:focus-visible {
+  outline: none;
+}
+
+.video-player-shell video::-webkit-media-controls-enclosure,
+.video-player-shell video::-webkit-media-controls-panel,
+.video-player-shell video::-webkit-media-controls-play-button,
+.video-player-shell video::-webkit-media-controls-timeline {
+  outline: none;
+}
+
 body {
   background: var(--color-paper);
   color: var(--color-ink);

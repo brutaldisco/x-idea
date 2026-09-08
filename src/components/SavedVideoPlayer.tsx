@@ -50,7 +50,7 @@ export function SavedVideoPlayer({
         className="absolute inset-0"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-3xl overflow-hidden rounded-lg border border-line bg-paper">
+      <div className="video-player-shell relative w-full max-w-3xl overflow-hidden rounded-lg border border-line bg-paper">
         <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
           <p className="min-w-0 truncate text-sm">{title}</p>
           <div className="flex shrink-0 items-center gap-1">
@@ -59,8 +59,11 @@ export function SavedVideoPlayer({
               aria-pressed={repeat}
               aria-label="1本リピート"
               title="1本リピート"
-              onClick={() => setRepeat((value) => !value)}
-              className={`inline-flex size-8 items-center justify-center rounded-full ${
+              onClick={(event) => {
+                event.currentTarget.blur();
+                setRepeat((value) => !value);
+              }}
+              className={`inline-flex size-8 items-center justify-center rounded-full outline-none ${
                 repeat
                   ? "bg-accent text-paper"
                   : "border border-line text-ink-2 hover:bg-line"
@@ -70,8 +73,11 @@ export function SavedVideoPlayer({
             </button>
             <button
               type="button"
-              onClick={onClose}
-              className="rounded px-2 py-1 text-sm text-ink-2 hover:bg-line"
+              onClick={(event) => {
+                event.currentTarget.blur();
+                onClose();
+              }}
+              className="rounded px-2 py-1 text-sm text-ink-2 outline-none hover:bg-line"
             >
               閉じる
             </button>
@@ -83,7 +89,7 @@ export function SavedVideoPlayer({
           autoPlay
           playsInline
           loop={repeat}
-          className="max-h-[70vh] w-full bg-ink"
+          className="max-h-[70vh] w-full bg-ink outline-none"
           onLoadedData={(event) => {
             void event.currentTarget.play().catch(() => undefined);
           }}
