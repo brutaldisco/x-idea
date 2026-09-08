@@ -1,7 +1,10 @@
 "use client";
 
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { QueryClient } from "@tanstack/react-query";
+import {
+  defaultShouldDehydrateQuery,
+  QueryClient,
+} from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { type ReactNode, useState } from "react";
 
@@ -14,7 +17,7 @@ const persister =
       }
     : createSyncStoragePersister({
         storage: window.localStorage,
-        key: "marginalia.library.v3",
+        key: "marginalia.library.v5",
       });
 
 export function LibraryQueryProvider({ children }: { children: ReactNode }) {
@@ -38,7 +41,9 @@ export function LibraryQueryProvider({ children }: { children: ReactNode }) {
         persister,
         maxAge: 1000 * 60 * 60 * 24,
         dehydrateOptions: {
-          shouldDehydrateQuery: (query) => query.queryKey[0] === "sources",
+          shouldDehydrateQuery: (query) =>
+            query.queryKey[0] === "sources" &&
+            defaultShouldDehydrateQuery(query),
         },
       }}
     >

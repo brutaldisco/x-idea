@@ -1,6 +1,6 @@
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useIsRestoring } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { PlainMenuSelect } from "@/components/PlainMenuSelect";
@@ -137,6 +137,7 @@ export function LibraryWorkspace({
     restored.current = false;
   }
 
+  const restoring = useIsRestoring();
   const query = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam }) =>
@@ -147,9 +148,26 @@ export function LibraryWorkspace({
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchOnMount: false,
+    refetchOnMount: (entry) => entry.state.data == null,
     staleTime: 5 * 60_000,
   });
+
+  useEffect(() => {
+    if (query.data || query.isFetching || query.isError) {
+      return;
+    }
+    const wait = restoring ? 400 : 0;
+    const timer = window.setTimeout(() => {
+      void query.refetch();
+    }, wait);
+    return () => window.clearTimeout(timer);
+  }, [
+    query.data,
+    query.isError,
+    query.isFetching,
+    query.refetch,
+    restoring,
+  ]);
 
   const rows = query.data?.pages.flatMap((page) => page.items) ?? [];
   const first = query.data?.pages[0];
@@ -267,6 +285,23 @@ export function LibraryWorkspace({
     });
   }
 
+  if (query.isError && rows.length === 0) {
+    return (
+      <p className="mt-16 text-ink-2 text-sm">
+        一覧を読めませんでした。
+        <button
+          type="button"
+          className="ml-2 underline"
+          onClick={() => {
+            void query.refetch();
+          }}
+        >
+          再試行
+        </button>
+      </p>
+    );
+  }
+
   if (query.isPending && rows.length === 0) {
     return <p className="mt-16 text-ink-2 text-sm">読み込み中…</p>;
   }
@@ -369,6 +404,7 @@ export function LibraryWorkspace({
               mediaId={item.mediaId}
               mediaType={item.mediaType}
               videoSaveStatus={item.videoSaveStatus}
+              videoRelPath={item.videoRelPath}
               lang={item.lang}
               summaryFromAi={item.summaryFromAi}
               postedAt={item.postedAt}

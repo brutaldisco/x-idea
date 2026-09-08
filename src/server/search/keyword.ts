@@ -64,6 +64,7 @@ function mapRow(row: Record<string, unknown>): SourceListItem {
     videoSaveStatus: row.video_save_status
       ? String(row.video_save_status)
       : null,
+    videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
   };
 }
 

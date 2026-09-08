@@ -65,7 +65,11 @@ export async function GET(
     const proxied = await proxyRemoteMedia(url, range, "video/mp4");
     const headers = new Headers(proxied.headers);
     const filename = `${row?.tweet_id ?? "video"}_${row?.media_key ?? "media"}.mp4`;
-    headers.set("Content-Disposition", `attachment; filename="${filename}"`);
+    const inline = new URL(request.url).searchParams.get("inline") === "1";
+    headers.set(
+      "Content-Disposition",
+      inline ? "inline" : `attachment; filename="${filename}"`,
+    );
     return new Response(proxied.body, {
       status: proxied.status,
       headers,

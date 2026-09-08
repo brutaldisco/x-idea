@@ -13,7 +13,7 @@
 ## 決定
 
 1. **画像と動画サムネイルは WebP に変換して DB（Turso）の `media_blobs` に保存**する。本番・ローカルで同一の挙動とし、コンパニオン／`MEDIA_ROOT` への保存は開発用途に限定する（Settings の案内と自動同期は撤去）。
-2. **動画本体は自動保存しない**。Reader の動画はサムネイル＋「X で見る」。残したい動画は「あとで保存」でキュー（`video_downloads`、**queued は最大 15 件**）に入れる。
+2. **動画本体は自動保存しない**。未保存の Reader 動画はサムネイル＋「X で見る」。残したい動画は「あとで保存」でキュー（`video_downloads`、**queued は最大 15 件**）に入れる。保存済み（`ready`）は Library / Reader のサムネタップでローカルファイルを再生する（プレーヤーは 1本リピートのみ。Videos タブの off / one / folder は使わない）。
 3. ダウンロードは **Videos タブ（SC-15）から手動実行**し、File System Access API でユーザーが選んだルート配下に `{x_account_id}/{フォルダ}/{tweet_id}_{media_key}.mp4` として書く。分類フォルダは 1 階層のみ（作成・移動・削除可）。引っ越しはアカウントフォルダ単位のコピー＋ルート再リンク。
 4. 画質は `variants` の **最大 `bit_rate` の mp4**。低速回線対策として **8MB チャンクの Range 取得＋IndexedDB レジューム**（`GET /api/media/[id]/file`、Vercel Hobby の 300 秒上限を考慮）。
 5. プレーヤーはブラウザ標準 `<video controls>`（object URL）。Safari/Firefox はフォルダ保存非対応のため通常ダウンロードにフォールバック。

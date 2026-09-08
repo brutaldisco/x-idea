@@ -3,6 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { QueueBadge } from "@/components/QueueBadge";
+import { SavedBadge } from "@/components/SavedBadge";
+import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import type { MediaItem } from "@/server/sources/detail";
 
 export function MediaGallery({
@@ -68,40 +71,57 @@ function MediaTile({
   const failed = item.downloadStatus === "failed";
   const showImage = !imageFailed;
   const isVideo = item.type !== "photo";
+  const playable = isVideo && item.videoSaveStatus === "ready";
+  const preview = (
+    <>
+      <Image
+        src={isVideo ? item.previewSrc : item.src}
+        alt={item.altText ?? (isVideo ? "動画プレビュー" : "画像")}
+        width={item.width ?? 1200}
+        height={item.height ?? 800}
+        unoptimized
+        className="max-h-[32rem] w-full object-contain"
+        onError={() => {
+          setImageFailed(true);
+        }}
+      />
+      {isVideo ? (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-ink/70 text-paper text-xl">
+            ▶
+          </span>
+        </span>
+      ) : null}
+    </>
+  );
 
   return (
     <figure className="overflow-hidden rounded-xl border border-line bg-paper">
       {showImage ? (
-        <button
-          type="button"
-          onClick={() => {
-            if (isVideo) {
-              return;
-            }
-            onOpen();
-          }}
-          className="relative block w-full"
-          aria-label={isVideo ? "動画は X で見る" : "画像を拡大"}
-        >
-          <Image
-            src={isVideo ? item.previewSrc : item.src}
-            alt={item.altText ?? (isVideo ? "動画プレビュー" : "画像")}
-            width={item.width ?? 1200}
-            height={item.height ?? 800}
-            unoptimized
-            className="max-h-[32rem] w-full object-contain"
-            onError={() => {
-              setImageFailed(true);
+        playable ? (
+          <SavedVideoThumbButton
+            mediaId={item.id}
+            videoRelPath={item.videoRelPath}
+            title={item.altText ?? "動画"}
+            className="relative block w-full"
+          >
+            {preview}
+          </SavedVideoThumbButton>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (isVideo) {
+                return;
+              }
+              onOpen();
             }}
-          />
-          {isVideo ? (
-            <span className="absolute inset-0 flex items-center justify-center">
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-ink/70 text-paper text-xl">
-                ▶
-              </span>
-            </span>
-          ) : null}
-        </button>
+            className="relative block w-full"
+            aria-label={isVideo ? "動画は X で見る" : "画像を拡大"}
+          >
+            {preview}
+          </button>
+        )
       ) : (
         <div className="flex min-h-40 items-center justify-center bg-paper-2 px-3 py-6 text-center text-ink-2 text-sm">
           読み込めませんでした。X で開いて確認してください。
@@ -154,9 +174,7 @@ function VideoSaveControl({ item }: { item: MediaItem }) {
   if (status === "ready") {
     return (
       <span className="flex items-center gap-2 text-xs">
-        <span className="rounded-full bg-ok/15 px-2 py-0.5 text-ok">
-          保存済み
-        </span>
+        <SavedBadge compact={false} />
         <Link href="/videos" className="text-accent hover:underline">
           Videos で開く
         </Link>
@@ -165,9 +183,12 @@ function VideoSaveControl({ item }: { item: MediaItem }) {
   }
   if (status === "queued" || status === "downloading") {
     return (
-      <Link href="/videos" className="text-accent text-xs hover:underline">
-        キューに追加済み
-      </Link>
+      <span className="flex items-center gap-2 text-xs">
+        <QueueBadge compact={false} />
+        <Link href="/videos" className="text-accent hover:underline">
+          Videos で開く
+        </Link>
+      </span>
     );
   }
 

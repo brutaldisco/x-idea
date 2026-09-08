@@ -19,6 +19,7 @@ export type MediaItem = {
   src: string;
   previewSrc: string;
   videoSaveStatus: string | null;
+  videoRelPath: string | null;
 };
 
 export type PostCard = {
@@ -92,6 +93,7 @@ function asMedia(row: Record<string, unknown>): MediaItem {
     videoSaveStatus: row.video_save_status
       ? String(row.video_save_status)
       : null,
+    videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
   };
 }
 
@@ -141,7 +143,9 @@ async function loadMedia(postId: string): Promise<MediaItem[]> {
     sql: `SELECT m.id, m.type, m.alt_text, m.preview_url, m.media_url,
                  m.download_status, m.download_error, m.duration_ms, m.width, m.height,
                  (SELECT vd.status FROM video_downloads vd
-                  WHERE vd.media_id = m.id LIMIT 1) AS video_save_status
+                  WHERE vd.media_id = m.id LIMIT 1) AS video_save_status,
+                 (SELECT vd.rel_path FROM video_downloads vd
+                  WHERE vd.media_id = m.id LIMIT 1) AS video_rel_path
           FROM media_assets m WHERE m.x_post_id = ? ORDER BY m.created_at LIMIT 8`,
     args: [postId],
   });

@@ -1,4 +1,4 @@
-export const PWA_CACHE_VERSION = "marginalia-v1";
+export const PWA_CACHE_VERSION = "marginalia-v2";
 export const PWA_READER_CACHE_LIMIT = 100;
 export const PWA_SOURCES_CACHE_LIMIT = 200;
 export const PWA_SOURCES_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;

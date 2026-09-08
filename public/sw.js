@@ -1,4 +1,4 @@
-const VERSION = "marginalia-v1";
+const VERSION = "marginalia-v2";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const SOURCES = `${VERSION}-sources`;
@@ -130,6 +130,9 @@ async function handle(request, url) {
     return cacheFirst(request, RUNTIME);
   }
   if (path.startsWith("/api/sources")) {
+    if (isDevHost()) {
+      return fetch(request);
+    }
     return staleWhileRevalidate(request, SOURCES, SOURCES_LIMIT);
   }
   if (request.mode === "navigate") {

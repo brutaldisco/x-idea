@@ -18,7 +18,7 @@ export function videoBadgeCopy(
   }
   if (saveStatus === "queued" || saveStatus === "downloading") {
     return {
-      label: "保存中",
+      label: "キュー",
       title: "ダウンロード待ち、または実行中",
       tone: "pending",
     };

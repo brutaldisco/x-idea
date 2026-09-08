@@ -1,11 +1,10 @@
-import Image from "next/image";
 import Link from "next/link";
 import { LinkedText } from "@/components/LinkedText";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
+import { SourceCardThumb } from "@/components/SourceCardThumb";
 import { VideoBadge } from "@/components/VideoBadge";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
-import { sourceTransitionStyle } from "@/lib/view-transition";
 
 function thumbSrc(mediaId: string, mediaType: string | null): string {
   return mediaType === "photo"
@@ -25,6 +24,7 @@ export function SourceCard({
   mediaId,
   mediaType,
   videoSaveStatus,
+  videoRelPath,
   lang,
   summaryFromAi = false,
   postedAt,
@@ -37,6 +37,7 @@ export function SourceCard({
   mediaId?: string | null;
   mediaType?: string | null;
   videoSaveStatus?: string | null;
+  videoRelPath?: string | null;
   lang?: string | null;
   summaryFromAi?: boolean;
   postedAt?: string | null;
@@ -57,61 +58,75 @@ export function SourceCard({
       }
     >
       {stacked ? (
-        <Link
-          href={`/source/${id}`}
-          transitionTypes={["nav-forward"]}
-          className={
-            variant === "grid" ? "relative mb-1.5 block" : "relative mb-2 block"
-          }
-          style={sourceTransitionStyle(id)}
-        >
-          {mediaId ? (
-            <>
-              <Image
-                src={thumbSrc(mediaId, mediaType ?? null)}
-                alt=""
-                width={448}
-                height={224}
-                unoptimized
-                className={`${variant === "grid" ? "h-28 min-[48rem]:h-20" : "h-28"} w-full rounded-lg object-cover`}
-              />
-              {mediaType && mediaType !== "photo" ? (
-                <VideoBadge saveStatus={videoSaveStatus} />
-              ) : null}
-            </>
-          ) : (
-            <ThumbPlaceholder
-              className={`${variant === "grid" ? "h-28 min-[48rem]:h-20" : "h-28"} w-full rounded-lg`}
-            />
-          )}
-        </Link>
-      ) : null}
-      <div className={stacked ? "min-w-0" : "flex min-w-0 gap-3"}>
-        {!stacked ? (
+        mediaId ? (
+          <SourceCardThumb
+            sourceId={id}
+            href={`/source/${id}`}
+            title={summary}
+            thumbUrl={thumbSrc(mediaId, mediaType ?? null)}
+            imageWidth={448}
+            imageHeight={224}
+            wrapperClassName={
+              variant === "grid"
+                ? "relative mb-1.5 block w-full"
+                : "relative mb-2 block w-full"
+            }
+            imageClassName={`${variant === "grid" ? "h-[112px]" : "h-28"} w-full rounded-lg object-cover`}
+            mediaId={mediaId}
+            mediaType={mediaType}
+            videoSaveStatus={videoSaveStatus}
+            videoRelPath={videoRelPath}
+          >
+            {mediaType && mediaType !== "photo" ? (
+              <VideoBadge saveStatus={videoSaveStatus} />
+            ) : null}
+          </SourceCardThumb>
+        ) : (
           <Link
             href={`/source/${id}`}
             transitionTypes={["nav-forward"]}
-            className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper"
-            style={sourceTransitionStyle(id)}
+            className={
+              variant === "grid"
+                ? "relative mb-1.5 block w-full"
+                : "relative mb-2 block w-full"
+            }
           >
-            {mediaId ? (
-              <>
-                <Image
-                  src={thumbSrc(mediaId, mediaType ?? null)}
-                  alt=""
-                  width={160}
-                  height={160}
-                  unoptimized
-                  className="h-full w-full object-cover"
-                />
-                {mediaType && mediaType !== "photo" ? (
-                  <VideoBadge saveStatus={videoSaveStatus} />
-                ) : null}
-              </>
-            ) : (
-              <ThumbPlaceholder className="h-full w-full" />
-            )}
+            <ThumbPlaceholder
+              className={`${variant === "grid" ? "h-[112px]" : "h-28"} w-full rounded-lg`}
+            />
           </Link>
+        )
+      ) : null}
+      <div className={stacked ? "min-w-0" : "flex min-w-0 gap-3"}>
+        {!stacked ? (
+          mediaId ? (
+            <SourceCardThumb
+              sourceId={id}
+              href={`/source/${id}`}
+              title={summary}
+              thumbUrl={thumbSrc(mediaId, mediaType ?? null)}
+              imageWidth={160}
+              imageHeight={160}
+              wrapperClassName="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper"
+              imageClassName="h-full w-full object-cover"
+              mediaId={mediaId}
+              mediaType={mediaType}
+              videoSaveStatus={videoSaveStatus}
+              videoRelPath={videoRelPath}
+            >
+              {mediaType && mediaType !== "photo" ? (
+                <VideoBadge saveStatus={videoSaveStatus} />
+              ) : null}
+            </SourceCardThumb>
+          ) : (
+            <Link
+              href={`/source/${id}`}
+              transitionTypes={["nav-forward"]}
+              className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper"
+            >
+              <ThumbPlaceholder className="h-full w-full" />
+            </Link>
+          )
         ) : null}
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2 leading-none">

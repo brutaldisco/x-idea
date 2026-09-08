@@ -45,6 +45,7 @@ export type SourceListItem = {
   mediaId: string | null;
   mediaType: string | null;
   videoSaveStatus: string | null;
+  videoRelPath: string | null;
 };
 
 export const LIST_MEDIA_SQL = `(SELECT m.id FROM media_assets m
@@ -56,7 +57,11 @@ export const LIST_MEDIA_SQL = `(SELECT m.id FROM media_assets m
                  (SELECT vd.status FROM media_assets m
                   JOIN video_downloads vd ON vd.media_id = m.id
                   WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS video_save_status`;
+                  ORDER BY m.created_at ASC LIMIT 1) AS video_save_status,
+                 (SELECT vd.rel_path FROM media_assets m
+                  JOIN video_downloads vd ON vd.media_id = m.id
+                  WHERE m.x_post_id = p.id
+                  ORDER BY m.created_at ASC LIMIT 1) AS video_rel_path`;
 
 export type InboxListItem = SourceListItem & {
   uncertaintyReason: string | null;
@@ -96,6 +101,7 @@ function mapSourceRow(row: Record<string, unknown>): SourceListItem {
     videoSaveStatus: row.video_save_status
       ? String(row.video_save_status)
       : null,
+    videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
   };
 }
 
@@ -248,6 +254,7 @@ export async function listInbox(input: {
       videoSaveStatus: row.video_save_status
         ? String(row.video_save_status)
         : null,
+      videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
       uncertaintyReason: row.ai_uncertainty_reason
         ? String(row.ai_uncertainty_reason)
         : null,

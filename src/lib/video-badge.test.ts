@@ -10,9 +10,13 @@ describe("videoBadgeCopy", () => {
     });
   });
 
-  it("marks queue and download as pending", () => {
-    expect(videoBadgeCopy("queued").tone).toBe("pending");
-    expect(videoBadgeCopy("downloading").label).toBe("保存中");
+  it("marks queue and download as キュー", () => {
+    expect(videoBadgeCopy("queued")).toEqual({
+      label: "キュー",
+      title: "ダウンロード待ち、または実行中",
+      tone: "pending",
+    });
+    expect(videoBadgeCopy("downloading").label).toBe("キュー");
   });
 
   it("keeps unsaved videos as 動画", () => {

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { OpenInX } from "@/components/OpenInX";
+import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { VideoBadge } from "@/components/VideoBadge";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 import type { MediaItem } from "@/server/sources/detail";
@@ -70,22 +71,49 @@ export function SourceHero({
         </span>
       </div>
       {heroSrc ? (
-        <div
-          className="relative mt-4 overflow-hidden rounded-[var(--radius-card)] bg-paper-2"
-          style={sourceTransitionStyle(sourceId)}
-        >
-          <Image
-            src={heroSrc}
-            alt={hero?.altText ?? ""}
-            width={hero?.width ?? 1200}
-            height={hero?.height ?? 800}
-            unoptimized
-            className="max-h-80 w-full object-cover"
-          />
-          {hero && hero.type !== "photo" ? (
-            <VideoBadge saveStatus={hero.videoSaveStatus} compact={false} />
-          ) : null}
-        </div>
+        hero && hero.type !== "photo" && hero.videoSaveStatus === "ready" ? (
+          <SavedVideoThumbButton
+            mediaId={hero.id}
+            videoRelPath={hero.videoRelPath}
+            title={hero.altText ?? "動画"}
+            className="relative mt-4 block w-full overflow-hidden rounded-[var(--radius-card)] bg-paper-2"
+          >
+            <Image
+              src={heroSrc}
+              alt={hero.altText ?? ""}
+              width={hero.width ?? 1200}
+              height={hero.height ?? 800}
+              unoptimized
+              className="max-h-80 w-full object-cover"
+            />
+            <VideoBadge
+              saveStatus={hero.videoSaveStatus}
+              compact={false}
+              className="right-3 bottom-3"
+            />
+          </SavedVideoThumbButton>
+        ) : (
+          <div
+            className="relative mt-4 overflow-hidden rounded-[var(--radius-card)] bg-paper-2"
+            style={sourceTransitionStyle(sourceId)}
+          >
+            <Image
+              src={heroSrc}
+              alt={hero?.altText ?? ""}
+              width={hero?.width ?? 1200}
+              height={hero?.height ?? 800}
+              unoptimized
+              className="max-h-80 w-full object-cover"
+            />
+            {hero && hero.type !== "photo" ? (
+              <VideoBadge
+                saveStatus={hero.videoSaveStatus}
+                compact={false}
+                className="right-3 bottom-3"
+              />
+            ) : null}
+          </div>
+        )
       ) : null}
     </header>
   );

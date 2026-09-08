@@ -143,6 +143,7 @@ export function AskSearch({
               mediaId={item.mediaId}
               mediaType={item.mediaType}
               videoSaveStatus={item.videoSaveStatus}
+              videoRelPath={item.videoRelPath}
               lang={item.lang}
               summaryFromAi={item.summaryFromAi}
               postedAt={item.postedAt}
