@@ -1,8 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { moveTaxonomyItem } from "@/lib/taxonomy-order";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
+import {
+  dragTargetIndex,
+  moveTaxonomyItem,
+  moveTaxonomyItemToIndex,
+} from "@/lib/taxonomy-order";
 import type { AccountTaxonomy, TaxonomyKind } from "@/server/taxonomy";
 
 export function AccountTaxonomyCard({
@@ -189,7 +199,7 @@ export function AccountTaxonomyCard({
       </div>
       <p className="mt-2 text-ink-2 text-sm">
         @{accountUsername ?? "このアカウント"} の Library 絞り込みと AI
-        分類に使います。左のハンドルで並べ替えできます。
+        分類に使います。左のハンドルを押したまま上下に動かすと、項目が指について入れ替わります。
       </p>
       <div className="mt-4 grid gap-4 min-[48rem]:grid-cols-2">
         <TaxonomyList
@@ -226,6 +236,20 @@ export function AccountTaxonomyCard({
   );
 }
 
+type TaxonomyItem = { id: string; name: string };
+
+const PREVIEW_LIFT_PX = 40;
+
+type DragSession = {
+  id: string;
+  startItems: TaxonomyItem[];
+  grabOffsetY: number;
+  listLeft: number;
+  listWidth: number;
+  rowHeight: number;
+  initialTop: number;
+};
+
 function TaxonomyList({
   accountId,
   title,
@@ -240,7 +264,7 @@ function TaxonomyList({
 }: {
   accountId: string;
   title: string;
-  items: { id: string; name: string }[];
+  items: TaxonomyItem[];
   draft: string;
   disabled: boolean;
   onDraftChange: (value: string) => void;
@@ -250,152 +274,301 @@ function TaxonomyList({
   onReorder: (itemIds: string[]) => void;
 }) {
   const listRef = useRef<HTMLUListElement>(null);
-  const overRef = useRef<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLElement>());
+  const previewRef = useRef<HTMLDivElement>(null);
+  const lastYRef = useRef<number | null>(null);
+  const dragRef = useRef<DragSession | null>(null);
+  const itemsRef = useRef(items);
   const onReorderRef = useRef(onReorder);
+  const [ordered, setOrdered] = useState(items);
+  const [drag, setDrag] = useState<DragSession | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const draggingId = drag?.id ?? null;
   onReorderRef.current = onReorder;
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
-  const canReorder = items.length > 1 && !disabled;
+  itemsRef.current = ordered;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!draggingId) {
+      setOrdered(items);
+    }
+  }, [items, draggingId]);
+
+  useEffect(() => {
+    if (!drag) {
       return;
     }
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.userSelect = "none";
-    function onMove(event: PointerEvent) {
-      event.preventDefault();
-      const id = itemIdAtPoint(listRef.current, event.clientY);
-      if (id) {
-        overRef.current = id;
-        setOverId(id);
+
+    let cancelTimer = 0;
+
+    function applyPreviewTop(clientY: number) {
+      const session = dragRef.current;
+      const node = previewRef.current;
+      if (!session || !node) {
+        return;
       }
+      node.style.top = `${clientY - session.grabOffsetY - PREVIEW_LIFT_PX}px`;
     }
-    function finish(commit: boolean) {
-      const sourceId = draggingId;
-      const targetId = overRef.current;
-      overRef.current = null;
-      setDraggingId(null);
-      setOverId(null);
-      document.body.style.userSelect = previousUserSelect;
-      if (commit && sourceId && targetId && sourceId !== targetId) {
-        const next = moveTaxonomyItem(items, sourceId, targetId);
-        if (next !== items) {
-          onReorderRef.current(next.map((row) => row.id));
+
+    function applyFromClientY(clientY: number) {
+      const session = dragRef.current;
+      if (!session) {
+        return;
+      }
+      if (cancelTimer) {
+        window.clearTimeout(cancelTimer);
+        cancelTimer = 0;
+      }
+      lastYRef.current = clientY;
+      applyPreviewTop(clientY);
+      const remaining = itemsRef.current.filter(
+        (item) => item.id !== session.id,
+      );
+      const mids = remaining.map((item) => {
+        const el = rowRefs.current.get(item.id);
+        if (!el) {
+          return Number.POSITIVE_INFINITY;
         }
+        const rect = el.getBoundingClientRect();
+        return rect.top + rect.height / 2;
+      });
+      const target = dragTargetIndex(clientY, mids);
+      const current = itemsRef.current.findIndex(
+        (row) => row.id === session.id,
+      );
+      if (target === current || current < 0) {
+        return;
       }
+      const next = moveTaxonomyItemToIndex(
+        itemsRef.current,
+        session.id,
+        target,
+      );
+      if (next === itemsRef.current) {
+        return;
+      }
+      itemsRef.current = next;
+      setOrdered(next);
+      vibrate(8);
     }
+
+    function onMove(event: PointerEvent) {
+      if (!dragRef.current) {
+        return;
+      }
+      event.preventDefault();
+      applyFromClientY(event.clientY);
+    }
+
+    function finish(commit: boolean) {
+      if (cancelTimer) {
+        window.clearTimeout(cancelTimer);
+        cancelTimer = 0;
+      }
+      const session = dragRef.current;
+      dragRef.current = null;
+      lastYRef.current = null;
+      setDrag(null);
+      document.body.style.userSelect = previousUserSelect;
+      if (!session) {
+        return;
+      }
+      const nextIds = itemsRef.current.map((row) => row.id);
+      const unchanged = session.startItems.every(
+        (row, index) => row.id === nextIds[index],
+      );
+      if (!commit || unchanged) {
+        itemsRef.current = session.startItems;
+        setOrdered(session.startItems);
+        return;
+      }
+      onReorderRef.current(nextIds);
+    }
+
     function onUp() {
       finish(true);
     }
     function onCancel() {
-      finish(false);
+      if (cancelTimer) {
+        window.clearTimeout(cancelTimer);
+      }
+      cancelTimer = window.setTimeout(() => finish(false), 80);
     }
+
+    function onTouchMove(event: TouchEvent) {
+      const touch = event.touches[0];
+      if (!touch || !dragRef.current) {
+        return;
+      }
+      event.preventDefault();
+      applyFromClientY(touch.clientY);
+    }
+
     window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onUp);
     return () => {
+      if (cancelTimer) {
+        window.clearTimeout(cancelTimer);
+      }
       document.body.style.userSelect = previousUserSelect;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onUp);
     };
-  }, [draggingId, items]);
+  }, [drag]);
+
+  function beginDrag(
+    item: TaxonomyItem,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    if (ordered.length <= 1 || disabled || event.button !== 0) {
+      return;
+    }
+    const row = rowRefs.current.get(item.id);
+    const list = listRef.current;
+    if (!row || !list) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    window.getSelection()?.removeAllRanges();
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    const rowRect = row.getBoundingClientRect();
+    const listRect = list.getBoundingClientRect();
+    const session: DragSession = {
+      id: item.id,
+      startItems: ordered,
+      grabOffsetY: event.clientY - rowRect.top,
+      listLeft: listRect.left,
+      listWidth: listRect.width,
+      rowHeight: rowRect.height,
+      initialTop: rowRect.top,
+    };
+    lastYRef.current = event.clientY;
+    dragRef.current = session;
+    setDrag(session);
+    vibrate(12);
+  }
 
   function moveByKey(itemId: string, direction: -1 | 1) {
-    const index = items.findIndex((row) => row.id === itemId);
-    const target = items[index + direction];
+    const index = ordered.findIndex((row) => row.id === itemId);
+    const target = ordered[index + direction];
     if (!target) {
       return;
     }
-    onReorder(moveTaxonomyItem(items, itemId, target.id).map((row) => row.id));
+    onReorder(
+      moveTaxonomyItem(ordered, itemId, target.id).map((row) => row.id),
+    );
   }
+
+  const draggingItem = ordered.find((row) => row.id === draggingId) ?? null;
 
   return (
     <section>
       <h3 className="text-sm">{title}</h3>
       <ul
         ref={listRef}
-        className={`mt-2 space-y-2 select-none ${draggingId ? "touch-none" : ""}`}
+        className={`mt-2 space-y-2 select-none ${draggingId ? "touch-none overscroll-none" : ""}`}
       >
-        {items.map((item) => (
-          <li
-            key={`${accountId}-${item.id}`}
-            data-item-id={item.id}
-            className={`flex items-center gap-1 ${
-              draggingId === item.id
-                ? "opacity-60"
-                : overId === item.id && draggingId
-                  ? "rounded-lg ring-1 ring-ink"
-                  : ""
-            }`}
-          >
-            <button
-              type="button"
-              disabled={!canReorder}
-              aria-label={`${item.name}を並べ替え`}
-              title="ドラッグ、または矢印キーで並べ替え"
-              onPointerDown={(event) => {
-                if (!canReorder || event.button !== 0) {
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                window.getSelection()?.removeAllRanges();
-                if (document.activeElement instanceof HTMLElement) {
-                  document.activeElement.blur();
-                }
-                event.currentTarget.setPointerCapture(event.pointerId);
-                overRef.current = item.id;
-                setDraggingId(item.id);
-                setOverId(item.id);
-              }}
-              onTouchStart={(event) => {
-                if (!canReorder) {
-                  return;
-                }
-                event.preventDefault();
-              }}
-              onContextMenu={(event) => event.preventDefault()}
-              onKeyDown={(event) => {
-                if (!canReorder) {
-                  return;
-                }
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  moveByKey(item.id, -1);
-                }
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  moveByKey(item.id, 1);
+        {ordered.map((item) => {
+          const isSource = draggingId === item.id;
+          return (
+            <li
+              key={`${accountId}-${item.id}`}
+              ref={(node) => {
+                if (node) {
+                  rowRefs.current.set(item.id, node);
+                } else {
+                  rowRefs.current.delete(item.id);
                 }
               }}
-              className="grid h-11 w-9 shrink-0 cursor-grab touch-none select-none place-items-center text-ink-2 outline-none [-webkit-touch-callout:none] [-webkit-user-select:none] active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+              data-item-id={item.id}
+              className="relative"
+              style={isSource ? { height: drag?.rowHeight } : undefined}
             >
-              <GripIcon />
-            </button>
-            <input
-              defaultValue={item.name}
-              disabled={disabled || Boolean(draggingId)}
-              maxLength={40}
-              aria-label={title}
-              onBlur={(event) => onRename(item.id, event.target.value)}
-              className={`min-w-0 flex-1 select-none rounded-lg border border-line bg-paper px-2 py-1.5 text-sm focus:select-text ${
-                draggingId ? "pointer-events-none" : ""
-              }`}
-            />
-            <button
-              type="button"
-              disabled={disabled || items.length <= 1}
-              aria-label={`${item.name}を削除`}
-              onClick={() => onRemove(item.id)}
-              className="shrink-0 rounded-full border border-line px-2 text-ink-2 text-xs disabled:opacity-40"
-            >
-              削除
-            </button>
-          </li>
-        ))}
+              <div className={isSource ? "invisible" : undefined}>
+                <TaxonomyRow
+                  item={item}
+                  title={title}
+                  canReorder={ordered.length > 1 && !disabled}
+                  disabled={disabled || Boolean(draggingId)}
+                  canRemove={ordered.length > 1 && !disabled && !draggingId}
+                  onPointerDown={(event) => beginDrag(item, event)}
+                  onRename={onRename}
+                  onRemove={onRemove}
+                  onMoveByKey={moveByKey}
+                />
+              </div>
+              {isSource ? (
+                <div
+                  aria-hidden
+                  className="absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-ink bg-marker/70"
+                >
+                  <span className="text-ink text-xs">ここに置く</span>
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
+      {draggingId ? (
+        <p
+          className="mt-2 rounded-lg bg-marker px-3 py-1.5 text-center text-ink text-xs"
+          aria-live="polite"
+        >
+          移動中 · 指を離すと保存
+        </p>
+      ) : null}
+      {mounted && drag && draggingItem
+        ? createPortal(
+            <div
+              ref={previewRef}
+              className="pointer-events-none fixed z-50"
+              style={{
+                left: drag.listLeft,
+                width: drag.listWidth,
+                top:
+                  lastYRef.current == null
+                    ? drag.initialTop - PREVIEW_LIFT_PX
+                    : lastYRef.current - drag.grabOffsetY - PREVIEW_LIFT_PX,
+                transform: "scale(1.04)",
+              }}
+            >
+              <div className="rounded-[var(--radius-card)] border-2 border-ink bg-paper shadow-[var(--shadow-card)]">
+                <p className="rounded-t-[calc(var(--radius-card)-2px)] bg-marker px-3 py-1 text-center text-ink text-xs">
+                  移動中 · 指を離すと保存
+                </p>
+                <div className="px-1 pb-1 pt-1">
+                  <TaxonomyRow
+                    item={draggingItem}
+                    title={title}
+                    canReorder
+                    disabled
+                    canRemove={false}
+                    preview
+                    onPointerDown={() => undefined}
+                    onRename={() => undefined}
+                    onRemove={() => undefined}
+                    onMoveByKey={() => undefined}
+                  />
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
       <form
         className="mt-2 flex gap-2"
         onSubmit={(event) => {
@@ -405,7 +578,7 @@ function TaxonomyList({
       >
         <input
           value={draft}
-          disabled={disabled}
+          disabled={disabled || Boolean(draggingId)}
           maxLength={40}
           placeholder="追加"
           aria-label={`${title}を追加`}
@@ -414,7 +587,7 @@ function TaxonomyList({
         />
         <button
           type="submit"
-          disabled={disabled || !draft.trim()}
+          disabled={disabled || Boolean(draggingId) || !draft.trim()}
           className="shrink-0 rounded-full bg-ink px-3 py-1.5 text-paper text-xs disabled:opacity-40"
         >
           追加
@@ -424,27 +597,113 @@ function TaxonomyList({
   );
 }
 
-function itemIdAtPoint(
-  list: HTMLUListElement | null,
-  clientY: number,
-): string | null {
-  if (!list) {
-    return null;
-  }
-  const rows = [...list.querySelectorAll<HTMLElement>("[data-item-id]")];
-  if (rows.length === 0) {
-    return null;
-  }
-  for (const row of rows) {
-    const rect = row.getBoundingClientRect();
-    if (clientY <= rect.top + rect.height / 2) {
-      return row.dataset.itemId ?? null;
+function TaxonomyRow({
+  item,
+  title,
+  canReorder,
+  disabled,
+  canRemove,
+  preview = false,
+  onPointerDown,
+  onRename,
+  onRemove,
+  onMoveByKey,
+}: {
+  item: TaxonomyItem;
+  title: string;
+  canReorder: boolean;
+  disabled: boolean;
+  canRemove: boolean;
+  preview?: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onRename: (id: string, name: string) => void;
+  onRemove: (id: string) => void;
+  onMoveByKey: (itemId: string, direction: -1 | 1) => void;
+}) {
+  const handleRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const node = handleRef.current;
+    if (!node || preview || !canReorder) {
+      return;
     }
-  }
-  return rows.at(-1)?.dataset.itemId ?? null;
+    function onTouchStart(event: TouchEvent) {
+      event.preventDefault();
+    }
+    node.addEventListener("touchstart", onTouchStart, { passive: false });
+    return () => node.removeEventListener("touchstart", onTouchStart);
+  }, [canReorder, preview]);
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        ref={handleRef}
+        type="button"
+        disabled={!canReorder}
+        tabIndex={preview ? -1 : 0}
+        aria-hidden={preview}
+        aria-label={preview ? undefined : `${item.name}を並べ替え`}
+        title={preview ? undefined : "ドラッグ、または矢印キーで並べ替え"}
+        onPointerDown={preview ? undefined : onPointerDown}
+        onContextMenu={preview ? undefined : (event) => event.preventDefault()}
+        onKeyDown={
+          preview || !canReorder
+            ? undefined
+            : (event) => {
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  onMoveByKey(item.id, -1);
+                }
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  onMoveByKey(item.id, 1);
+                }
+              }
+        }
+        className="grid h-11 w-9 shrink-0 cursor-grab touch-none select-none place-items-center text-ink-2 outline-none [-webkit-touch-callout:none] [-webkit-user-select:none] active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+      >
+        <TaxonomyGripIcon />
+      </button>
+      {preview ? (
+        <span className="min-w-0 flex-1 truncate rounded-lg border border-line bg-paper px-2 py-1.5 text-sm">
+          {item.name}
+        </span>
+      ) : (
+        <input
+          defaultValue={item.name}
+          disabled={disabled}
+          maxLength={40}
+          aria-label={title}
+          onBlur={(event) => onRename(item.id, event.target.value)}
+          className={`min-w-0 flex-1 select-none rounded-lg border border-line bg-paper px-2 py-1.5 text-sm focus:select-text ${
+            disabled ? "pointer-events-none" : ""
+          }`}
+        />
+      )}
+      <button
+        type="button"
+        tabIndex={preview ? -1 : 0}
+        disabled={!canRemove}
+        aria-hidden={preview}
+        aria-label={preview ? undefined : `${item.name}を削除`}
+        onClick={preview ? undefined : () => onRemove(item.id)}
+        className="shrink-0 rounded-full border border-line px-2 text-ink-2 text-xs disabled:opacity-40"
+      >
+        削除
+      </button>
+    </div>
+  );
 }
 
-function GripIcon() {
+function vibrate(ms: number) {
+  try {
+    navigator.vibrate?.(ms);
+  } catch {
+    // Some browsers expose vibrate but reject it.
+  }
+}
+
+function TaxonomyGripIcon() {
   return (
     <span aria-hidden className="grid grid-cols-2 gap-0.5">
       <span className="h-1 w-1 rounded-full bg-current" />
