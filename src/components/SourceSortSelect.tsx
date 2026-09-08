@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SOURCE_SORTS, type SourceSort } from "@/lib/source-sort";
 
 export function SourceSortSelect({ value }: { value: SourceSort }) {
@@ -9,17 +10,21 @@ export function SourceSortSelect({ value }: { value: SourceSort }) {
   const searchParams = useSearchParams();
 
   return (
-    <label
+    <div
       className="notranslate inline-flex items-center gap-1.5 text-ink-2"
       lang="ja"
       translate="no"
     >
       <span>並び</span>
-      <select
+      <PlainMenuSelect
         value={value}
-        onChange={(event) => {
+        ariaLabel="並び"
+        options={SOURCE_SORTS.map((item) => ({
+          id: item.id,
+          label: item.label,
+        }))}
+        onChange={(sort) => {
           const next = new URLSearchParams(searchParams.toString());
-          const sort = event.target.value;
           if (sort === "posted_desc") {
             next.delete("sort");
           } else {
@@ -28,14 +33,7 @@ export function SourceSortSelect({ value }: { value: SourceSort }) {
           const query = next.toString();
           router.push(query ? `${pathname}?${query}` : pathname);
         }}
-        className="rounded-full border border-line bg-paper px-2 py-1 text-xs"
-      >
-        {SOURCE_SORTS.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.label}
-          </option>
-        ))}
-      </select>
-    </label>
+      />
+    </div>
   );
 }

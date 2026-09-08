@@ -49,8 +49,8 @@ export function SourceCard({
         variant === "rail"
           ? "w-56 shrink-0 rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"
           : variant === "grid"
-            ? "w-full rounded-[var(--radius-card)] border border-line bg-paper-2 p-2"
-            : "rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
+            ? "min-w-0 w-full overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2 p-2"
+            : "min-w-0 w-full overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
       }
     >
       {stacked ? (
@@ -85,7 +85,7 @@ export function SourceCard({
           )}
         </Link>
       ) : null}
-      <div className={stacked ? "" : "flex gap-3"}>
+      <div className={stacked ? "min-w-0" : "flex min-w-0 gap-3"}>
         {!stacked ? (
           <Link
             href={`/source/${id}`}
@@ -139,7 +139,7 @@ export function SourceCard({
             />
           </div>
           <div
-            className={`mt-1 text-sm ${
+            className={`mt-1 break-words text-sm ${
               variant === "grid"
                 ? "line-clamp-3"
                 : stacked

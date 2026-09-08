@@ -3,6 +3,7 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef } from "react";
+import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import {
@@ -80,28 +81,21 @@ function FilterSelect({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   return (
-    <select
+    <PlainMenuSelect
       value={value}
-      aria-label={emptyLabel}
-      onChange={(event) => {
+      ariaLabel={emptyLabel}
+      options={[{ id: "", label: emptyLabel }, ...options]}
+      onChange={(nextValue) => {
         const next = new URLSearchParams(searchParams.toString());
-        if (event.target.value) {
-          next.set(name, event.target.value);
+        if (nextValue) {
+          next.set(name, nextValue);
         } else {
           next.delete(name);
         }
         const query = next.toString();
         router.push(query ? `${pathname}?${query}` : pathname);
       }}
-      className="max-w-[9.5rem] shrink-0 rounded-full border border-line bg-paper px-2 py-1.5 text-xs"
-    >
-      <option value="">{emptyLabel}</option>
-      {options.map((item) => (
-        <option key={item.id} value={item.id}>
-          {item.label}
-        </option>
-      ))}
-    </select>
+    />
   );
 }
 
@@ -191,12 +185,14 @@ export function LibraryWorkspace({
       params.set("view", next);
     }
     const queryString = params.toString();
-    router.push(queryString ? `${pathname}?${queryString}` : pathname);
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
+      scroll: false,
+    });
   }
 
   return (
-    <div className="mt-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-ink-2 text-xs">
+    <div className="mt-4 min-w-0 max-w-full">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-ink-2 text-xs">
         <span>
           {label} · {total}件
         </span>
@@ -228,7 +224,7 @@ export function LibraryWorkspace({
         </div>
       </div>
 
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+      <div className="mt-3 flex min-w-0 max-w-full gap-2 overflow-x-auto pb-1">
         <FilterSelect
           name="category"
           value={filters.categoryId ?? ""}
@@ -274,8 +270,8 @@ export function LibraryWorkspace({
         <ul
           className={
             view === "grid"
-              ? "mt-4 grid grid-cols-2 gap-2 min-[48rem]:grid-cols-3"
-              : "mt-4 space-y-3"
+              ? "mt-4 grid min-w-0 grid-cols-2 gap-2 min-[48rem]:grid-cols-3"
+              : "mt-4 grid min-w-0 grid-cols-1 gap-3"
           }
         >
           {rows.map((item) => (

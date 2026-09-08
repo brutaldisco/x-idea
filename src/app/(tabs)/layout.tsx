@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
+import { BottomDock, DockProvider } from "@/components/BottomDock";
 import { InstallHint } from "@/components/pwa/InstallHint";
 import { TabBar } from "@/components/TabBar";
 import { TickOnMount } from "@/components/TickOnMount";
@@ -22,14 +23,18 @@ async function AccountChrome() {
 
 export default function TabsLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto min-h-dvh max-w-3xl pb-32 min-[48rem]:pb-24">
-      <TickOnMount />
-      {children}
-      <Suspense fallback={null}>
-        <AccountChrome />
-      </Suspense>
-      <InstallHint />
-      <TabBar />
-    </div>
+    <DockProvider>
+      <div className="mx-auto min-h-dvh max-w-3xl pb-32 min-[48rem]:pb-24">
+        <TickOnMount />
+        {children}
+        <Suspense fallback={null}>
+          <AccountChrome />
+        </Suspense>
+        <InstallHint />
+        <BottomDock>
+          <TabBar />
+        </BottomDock>
+      </div>
+    </DockProvider>
   );
 }

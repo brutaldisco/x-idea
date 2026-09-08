@@ -24,7 +24,7 @@ export function TabBar() {
 
   return (
     <nav
-      className="notranslate fixed inset-x-0 bottom-0 z-20 border-line border-t bg-paper/90 backdrop-blur"
+      className="notranslate border-line border-t bg-paper/90 backdrop-blur"
       lang="ja"
       translate="no"
     >
