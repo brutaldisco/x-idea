@@ -238,6 +238,8 @@ export function AccountTaxonomyCard({
 
 type TaxonomyItem = { id: string; name: string };
 
+const PREVIEW_LIFT_PX = 40;
+
 type DragSession = {
   id: string;
   pointerId: number;
@@ -309,7 +311,7 @@ function TaxonomyList({
       if (!session || !node) {
         return;
       }
-      node.style.top = `${clientY - session.grabOffsetY}px`;
+      node.style.top = `${clientY - session.grabOffsetY - PREVIEW_LIFT_PX}px`;
     }
 
     function onMove(event: PointerEvent) {
@@ -385,14 +387,21 @@ function TaxonomyList({
       finish(false);
     }
 
+    function preventTouchScroll(event: TouchEvent) {
+      event.preventDefault();
+    }
     window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("touchmove", preventTouchScroll, {
+      passive: false,
+    });
     return () => {
       document.body.style.userSelect = previousUserSelect;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("touchmove", preventTouchScroll);
     };
   }, [drag]);
 
@@ -484,15 +493,20 @@ function TaxonomyList({
               {isSource ? (
                 <div
                   aria-hidden
-                  className="absolute inset-0 rounded-lg border border-dashed border-ink/35 bg-ink/5"
-                />
+                  className="absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-ink bg-marker/70"
+                >
+                  <span className="text-ink text-xs">ここに置く</span>
+                </div>
               ) : null}
             </li>
           );
         })}
       </ul>
       {draggingId ? (
-        <p className="mt-2 text-ink-2 text-xs" aria-live="polite">
+        <p
+          className="mt-2 rounded-lg bg-marker px-3 py-1.5 text-center text-ink text-xs"
+          aria-live="polite"
+        >
           移動中 · 指を離すと保存
         </p>
       ) : null}
@@ -506,27 +520,29 @@ function TaxonomyList({
                 width: drag.listWidth,
                 top:
                   lastYRef.current == null
-                    ? drag.initialTop
-                    : lastYRef.current - drag.grabOffsetY,
-                transform: "scale(1.03)",
+                    ? drag.initialTop - PREVIEW_LIFT_PX
+                    : lastYRef.current - drag.grabOffsetY - PREVIEW_LIFT_PX,
+                transform: "scale(1.04)",
               }}
             >
-              <div className="rounded-[var(--radius-card)] border border-ink bg-paper px-1 py-1 shadow-[var(--shadow-card)]">
-                <TaxonomyRow
-                  item={draggingItem}
-                  title={title}
-                  canReorder
-                  disabled
-                  canRemove={false}
-                  preview
-                  onPointerDown={() => undefined}
-                  onRename={() => undefined}
-                  onRemove={() => undefined}
-                  onMoveByKey={() => undefined}
-                />
-                <p className="px-3 pb-1 text-[11px] text-ink-2">
+              <div className="rounded-[var(--radius-card)] border-2 border-ink bg-paper shadow-[var(--shadow-card)]">
+                <p className="rounded-t-[calc(var(--radius-card)-2px)] bg-marker px-3 py-1 text-center text-ink text-xs">
                   移動中 · 指を離すと保存
                 </p>
+                <div className="px-1 pb-1 pt-1">
+                  <TaxonomyRow
+                    item={draggingItem}
+                    title={title}
+                    canReorder
+                    disabled
+                    canRemove={false}
+                    preview
+                    onPointerDown={() => undefined}
+                    onRename={() => undefined}
+                    onRemove={() => undefined}
+                    onMoveByKey={() => undefined}
+                  />
+                </div>
               </div>
             </div>,
             document.body,
@@ -583,9 +599,24 @@ function TaxonomyRow({
   onRemove: (id: string) => void;
   onMoveByKey: (itemId: string, direction: -1 | 1) => void;
 }) {
+  const handleRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const node = handleRef.current;
+    if (!node || preview || !canReorder) {
+      return;
+    }
+    function onTouchStart(event: TouchEvent) {
+      event.preventDefault();
+    }
+    node.addEventListener("touchstart", onTouchStart, { passive: false });
+    return () => node.removeEventListener("touchstart", onTouchStart);
+  }, [canReorder, preview]);
+
   return (
     <div className="flex items-center gap-1">
       <button
+        ref={handleRef}
         type="button"
         disabled={!canReorder}
         tabIndex={preview ? -1 : 0}
@@ -593,13 +624,6 @@ function TaxonomyRow({
         aria-label={preview ? undefined : `${item.name}を並べ替え`}
         title={preview ? undefined : "ドラッグ、または矢印キーで並べ替え"}
         onPointerDown={preview ? undefined : onPointerDown}
-        onTouchStart={
-          preview || !canReorder
-            ? undefined
-            : (event) => {
-                event.preventDefault();
-              }
-        }
         onContextMenu={preview ? undefined : (event) => event.preventDefault()}
         onKeyDown={
           preview || !canReorder
