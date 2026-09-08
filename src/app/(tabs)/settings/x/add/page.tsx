@@ -84,8 +84,7 @@ export default function AddXAccountPage({
 }) {
   return (
     <main className="px-4 pt-8">
-      <p className="text-ink-2 text-sm">Settings</p>
-      <h1 className="font-semibold text-2xl">アカウントを追加</h1>
+      <h1 className="font-semibold text-2xl">Add account</h1>
       <p className="mt-2 mb-6 text-ink-2 text-sm">
         追加したい X のユーザー名またはメールアドレスを入力してください。
       </p>

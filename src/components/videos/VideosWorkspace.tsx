@@ -386,9 +386,8 @@ export function VideosWorkspace({
 
   return (
     <>
-      <p className="text-ink-2 text-sm">Videos</p>
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-semibold text-2xl">動画</h1>
+        <h1 className="font-semibold text-2xl">Videos</h1>
         <button
           type="button"
           aria-expanded={queueOpen}
