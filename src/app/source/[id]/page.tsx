@@ -82,6 +82,7 @@ export default async function SourcePage({
       <div className="flex items-center justify-between gap-3">
         <Link
           href="/library"
+          scroll={false}
           transitionTypes={["nav-back"]}
           className="text-ink-2 text-sm hover:underline"
         >

@@ -1,11 +1,18 @@
 "use client";
 
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
+import { LIBRARY_SOURCES_KEY } from "@/lib/library-cache";
+import {
+  canRestoreLibraryScroll,
+  libraryScrollKey,
+  readLibraryScroll,
+  writeLibraryScroll,
+} from "@/lib/library-scroll";
 import {
   hasLibraryFilters,
   type LibraryFilters,
@@ -28,6 +35,9 @@ type Page = {
   items: SourceListItem[];
   nextCursor: string | null;
   count: number | null;
+  label?: string;
+  categories?: { id: string; name: string }[];
+  infoTypes?: { id: string; name: string }[];
 };
 
 async function fetchPage(input: {
@@ -71,71 +81,61 @@ function FilterSelect({
   value,
   emptyLabel,
   options,
+  search,
 }: {
   name: string;
   value: string;
   emptyLabel: string;
   options: { id: string; label: string }[];
+  search: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   return (
     <PlainMenuSelect
       value={value}
       ariaLabel={emptyLabel}
       options={[{ id: "", label: emptyLabel }, ...options]}
       onChange={(nextValue) => {
-        const next = new URLSearchParams(searchParams.toString());
+        const next = new URLSearchParams(search);
         if (nextValue) {
           next.set(name, nextValue);
         } else {
           next.delete(name);
         }
-        const query = next.toString();
-        router.push(query ? `${pathname}?${query}` : pathname);
+        const href = next.toString();
+        router.push(href ? `${pathname}?${href}` : pathname);
       }}
     />
   );
 }
 
 export function LibraryWorkspace({
-  items,
-  nextCursor,
-  count,
-  label,
   sort,
   view,
   filters,
-  categories,
-  infoTypes,
+  search,
 }: {
-  items: SourceListItem[];
-  nextCursor: string | null;
-  count: number;
-  label: string;
   sort: SourceSort;
   view: LibraryView;
   filters: LibraryFilters;
-  categories: { id: string; name: string }[];
-  infoTypes: { id: string; name: string }[];
+  search: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const sentinel = useRef<HTMLDivElement>(null);
-  const queryClient = useQueryClient();
+  const restored = useRef(false);
   const filterKey = JSON.stringify(filters);
   const queryKey = useMemo(
-    () => ["sources", sort, filterKey] as const,
+    () => [LIBRARY_SOURCES_KEY, sort, filterKey] as const,
     [filterKey, sort],
   );
-  useEffect(() => {
-    queryClient.setQueryData(queryKey, {
-      pages: [{ items, nextCursor, count }],
-      pageParams: [undefined],
-    });
-  }, [count, items, nextCursor, queryClient, queryKey]);
+  const scrollKey = libraryScrollKey({ sort, filters: filterKey, view });
+  const prevScrollKey = useRef(scrollKey);
+  if (prevScrollKey.current !== scrollKey) {
+    prevScrollKey.current = scrollKey;
+    restored.current = false;
+  }
 
   const query = useInfiniteQuery({
     queryKey,
@@ -147,14 +147,91 @@ export function LibraryWorkspace({
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    initialData: {
-      pages: [{ items, nextCursor, count }],
-      pageParams: [undefined],
-    },
+    refetchOnMount: false,
+    staleTime: 5 * 60_000,
   });
 
-  const rows = query.data?.pages.flatMap((page) => page.items) ?? items;
-  const total = query.data?.pages[0]?.count ?? count;
+  const rows = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const first = query.data?.pages[0];
+  const total = first?.count ?? rows.length;
+  const label = first?.label ?? "ライブラリ";
+  const categories = first?.categories ?? [];
+  const infoTypes = first?.infoTypes ?? [];
+
+  useLayoutEffect(() => {
+    const y = readLibraryScroll(scrollKey);
+    if (y == null) {
+      restored.current = true;
+      return;
+    }
+    if (rows.length === 0) {
+      return;
+    }
+    if (
+      canRestoreLibraryScroll(
+        y,
+        document.documentElement.scrollHeight,
+        window.innerHeight,
+      ) ||
+      !query.hasNextPage
+    ) {
+      window.scrollTo(0, y);
+      restored.current = true;
+    }
+  }, [query.hasNextPage, rows.length, scrollKey]);
+
+  useEffect(() => {
+    if (restored.current || query.isFetchingNextPage) {
+      return;
+    }
+    const y = readLibraryScroll(scrollKey);
+    if (y == null) {
+      restored.current = true;
+      return;
+    }
+    if (rows.length === 0) {
+      return;
+    }
+    if (
+      query.hasNextPage &&
+      !canRestoreLibraryScroll(
+        y,
+        document.documentElement.scrollHeight,
+        window.innerHeight,
+      )
+    ) {
+      void query.fetchNextPage();
+    }
+  }, [
+    query.fetchNextPage,
+    query.hasNextPage,
+    query.isFetchingNextPage,
+    rows.length,
+    scrollKey,
+  ]);
+
+  useEffect(() => {
+    const previous = history.scrollRestoration;
+    history.scrollRestoration = "manual";
+    let frame = 0;
+    function persist() {
+      if (!restored.current) {
+        return;
+      }
+      writeLibraryScroll(scrollKey, window.scrollY);
+    }
+    function onScroll() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(persist);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+      persist();
+      history.scrollRestoration = previous;
+    };
+  }, [scrollKey]);
 
   useEffect(() => {
     const node = sentinel.current;
@@ -178,7 +255,7 @@ export function LibraryWorkspace({
   }, [query.fetchNextPage, query.hasNextPage, query.isFetchingNextPage]);
 
   function setView(next: LibraryView) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(search);
     if (next === "grid") {
       params.delete("view");
     } else {
@@ -190,6 +267,10 @@ export function LibraryWorkspace({
     });
   }
 
+  if (query.isPending && rows.length === 0) {
+    return <p className="mt-16 text-ink-2 text-sm">読み込み中…</p>;
+  }
+
   return (
     <div className="mt-4 min-w-0 max-w-full">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-ink-2 text-xs">
@@ -197,7 +278,7 @@ export function LibraryWorkspace({
           {label} · {total}件
         </span>
         <div className="flex items-center gap-2">
-          <SourceSortSelect value={sort} />
+          <SourceSortSelect value={sort} search={search} />
           <fieldset className="m-0 flex min-w-0 rounded-full border border-line p-0.5">
             <legend className="sr-only">表示</legend>
             <button
@@ -229,6 +310,7 @@ export function LibraryWorkspace({
           name="category"
           value={filters.categoryId ?? ""}
           emptyLabel="カテゴリ"
+          search={search}
           options={categories.map((item) => ({
             id: item.id,
             label: item.name,
@@ -238,6 +320,7 @@ export function LibraryWorkspace({
           name="info_type"
           value={filters.infoType ?? ""}
           emptyLabel="情報タイプ"
+          search={search}
           options={infoTypes.map((item) => ({
             id: item.id,
             label: item.name,
@@ -247,6 +330,7 @@ export function LibraryWorkspace({
           name="read"
           value={filters.readStatus ?? ""}
           emptyLabel="状態"
+          search={search}
           options={READ_STATUSES.map((id) => ({
             id,
             label: READ_LABELS[id],
@@ -256,6 +340,7 @@ export function LibraryWorkspace({
           name="kind"
           value={filters.kind ?? ""}
           emptyLabel="種類"
+          search={search}
           options={[...SOURCE_KINDS]}
         />
       </div>
@@ -283,6 +368,7 @@ export function LibraryWorkspace({
               url={item.url}
               mediaId={item.mediaId}
               mediaType={item.mediaType}
+              videoSaveStatus={item.videoSaveStatus}
               lang={item.lang}
               summaryFromAi={item.summaryFromAi}
               postedAt={item.postedAt}

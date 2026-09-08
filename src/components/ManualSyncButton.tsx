@@ -1,7 +1,9 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { resetLibraryQueries } from "@/lib/library-cache";
 
 export function ManualSyncButton({
   disabled,
@@ -15,6 +17,7 @@ export function ManualSyncButton({
   className?: string;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -41,6 +44,7 @@ export function ManualSyncButton({
                 return;
               }
               setMessage("同期を実行しました。");
+              resetLibraryQueries(queryClient);
               router.refresh();
             })
             .finally(() => setBusy(false));

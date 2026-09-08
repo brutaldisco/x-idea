@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { LinkedText } from "@/components/LinkedText";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
+import { VideoBadge } from "@/components/VideoBadge";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
 import { sourceTransitionStyle } from "@/lib/view-transition";
@@ -23,6 +24,7 @@ export function SourceCard({
   url,
   mediaId,
   mediaType,
+  videoSaveStatus,
   lang,
   summaryFromAi = false,
   postedAt,
@@ -34,6 +36,7 @@ export function SourceCard({
   url: string | null;
   mediaId?: string | null;
   mediaType?: string | null;
+  videoSaveStatus?: string | null;
   lang?: string | null;
   summaryFromAi?: boolean;
   postedAt?: string | null;
@@ -73,9 +76,7 @@ export function SourceCard({
                 className={`${variant === "grid" ? "h-28 min-[48rem]:h-20" : "h-28"} w-full rounded-lg object-cover`}
               />
               {mediaType && mediaType !== "photo" ? (
-                <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
-                  動画
-                </span>
+                <VideoBadge saveStatus={videoSaveStatus} />
               ) : null}
             </>
           ) : (
@@ -104,9 +105,7 @@ export function SourceCard({
                   className="h-full w-full object-cover"
                 />
                 {mediaType && mediaType !== "photo" ? (
-                  <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
-                    動画
-                  </span>
+                  <VideoBadge saveStatus={videoSaveStatus} />
                 ) : null}
               </>
             ) : (

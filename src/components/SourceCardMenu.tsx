@@ -1,7 +1,9 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import { removeSourceFromLibraryQueries } from "@/lib/library-cache";
 
 export function SourceCardMenu({
   sourceId,
@@ -14,6 +16,7 @@ export function SourceCardMenu({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -52,12 +55,14 @@ export function SourceCardMenu({
         return;
       }
       setOpen(false);
+      removeSourceFromLibraryQueries(queryClient, sourceId);
       if (pathname.startsWith("/source/")) {
-        router.push("/library");
-        router.refresh();
+        router.push("/library", { scroll: false });
         return;
       }
-      router.refresh();
+      if (!pathname.startsWith("/library")) {
+        router.refresh();
+      }
     } finally {
       setBusy(false);
     }

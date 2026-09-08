@@ -1,13 +1,18 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SOURCE_SORTS, type SourceSort } from "@/lib/source-sort";
 
-export function SourceSortSelect({ value }: { value: SourceSort }) {
+export function SourceSortSelect({
+  value,
+  search,
+}: {
+  value: SourceSort;
+  search: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   return (
     <div
@@ -24,14 +29,14 @@ export function SourceSortSelect({ value }: { value: SourceSort }) {
           label: item.label,
         }))}
         onChange={(sort) => {
-          const next = new URLSearchParams(searchParams.toString());
+          const next = new URLSearchParams(search);
           if (sort === "posted_desc") {
             next.delete("sort");
           } else {
             next.set("sort", sort);
           }
-          const query = next.toString();
-          router.push(query ? `${pathname}?${query}` : pathname);
+          const href = next.toString();
+          router.push(href ? `${pathname}?${href}` : pathname);
         }}
       />
     </div>

@@ -11,19 +11,14 @@ import {
   type SearchFilters,
 } from "@/lib/search-query";
 import { ARTICLE_EXCERPT_SQL, cardSummary } from "@/lib/source-summary";
-import type { SourceListItem } from "@/server/sources/query";
+import { LIST_MEDIA_SQL, type SourceListItem } from "@/server/sources/query";
 import { sourceScopeSql } from "@/server/sources/scope";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 const SELECT_COLS = `s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
   s.triage_status, p.posted_at, p.author_username, p.text, p.lang, p.url,
   ${ARTICLE_EXCERPT_SQL},
-  (SELECT m.id FROM media_assets m
-   WHERE m.x_post_id = p.id
-   ORDER BY m.created_at ASC LIMIT 1) AS media_id,
-  (SELECT m.type FROM media_assets m
-   WHERE m.x_post_id = p.id
-   ORDER BY m.created_at ASC LIMIT 1) AS media_type`;
+  ${LIST_MEDIA_SQL}`;
 
 let ftsReady: boolean | null = null;
 
@@ -66,6 +61,9 @@ function mapRow(row: Record<string, unknown>): SourceListItem {
     summaryFromAi: fromAi,
     mediaId: row.media_id ? String(row.media_id) : null,
     mediaType: row.media_type ? String(row.media_type) : null,
+    videoSaveStatus: row.video_save_status
+      ? String(row.video_save_status)
+      : null,
   };
 }
 

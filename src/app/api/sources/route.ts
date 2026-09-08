@@ -4,8 +4,17 @@ import { isSameOrigin } from "@/lib/origin";
 import { clampSourceLimit } from "@/lib/source-cursor";
 import { parseLibraryFilters } from "@/lib/source-filters";
 import { parseSourceSort } from "@/lib/source-sort";
-import { countSources, listSourcesPage } from "@/server/sources/query";
-import { getAccountContext } from "@/server/x/context";
+import {
+  countSources,
+  listCategories,
+  listSourcesPage,
+} from "@/server/sources/query";
+import { taxonomyForAccount } from "@/server/taxonomy";
+import {
+  contextAccountId,
+  contextLabel,
+  getAccountContext,
+} from "@/server/x/context";
 
 export const instant = false;
 
@@ -24,7 +33,8 @@ export async function GET(request: Request) {
     const filters = parseLibraryFilters(url.searchParams);
     const limit = clampSourceLimit(url.searchParams.get("limit"));
     const cursor = url.searchParams.get("cursor");
-    const [page, count] = await Promise.all([
+    const accountId = contextAccountId(ctx);
+    const [page, count, categories, taxonomy] = await Promise.all([
       listSourcesPage({
         ctx,
         limit,
@@ -33,12 +43,21 @@ export async function GET(request: Request) {
         filters,
       }),
       cursor ? Promise.resolve(null) : countSources({ ctx, filters }),
+      cursor ? Promise.resolve([]) : listCategories(accountId),
+      cursor ? Promise.resolve(null) : taxonomyForAccount(accountId),
     ]);
     return Response.json({
       ok: true,
       items: page.items,
       nextCursor: page.nextCursor,
       count,
+      ...(taxonomy
+        ? {
+            label: contextLabel(ctx),
+            categories,
+            infoTypes: taxonomy.infoTypes,
+          }
+        : {}),
     });
   } catch (error) {
     return Response.json(toErrorBody(error), { status: 500 });

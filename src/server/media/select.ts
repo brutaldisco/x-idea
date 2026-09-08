@@ -134,13 +134,14 @@ export function formatDuration(durationMs: number): {
   minutes: number;
   label: string;
 } {
-  const totalMin = Math.max(0, Math.round(durationMs / 60_000));
-  const hours = Math.floor(totalMin / 60);
-  const minutes = totalMin % 60;
+  const totalSec = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
+  const hours = Math.floor(minutes / 60);
   return {
     hours,
-    minutes,
-    label: hours > 0 ? `${hours}時間 ${minutes}分` : `${minutes}分`,
+    minutes: minutes % 60,
+    label: `${minutes}:${seconds.toString().padStart(2, "0")}`,
   };
 }
 

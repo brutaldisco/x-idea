@@ -14,7 +14,7 @@ const persister =
       }
     : createSyncStoragePersister({
         storage: window.localStorage,
-        key: "marginalia.library",
+        key: "marginalia.library.v3",
       });
 
 export function LibraryQueryProvider({ children }: { children: ReactNode }) {

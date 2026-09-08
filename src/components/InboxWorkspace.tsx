@@ -14,6 +14,7 @@ import {
 import { LinkedText } from "@/components/LinkedText";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import { SwipeCard } from "@/components/SwipeCard";
+import { VideoBadge } from "@/components/VideoBadge";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
 import type { SourceSort } from "@/lib/source-sort";
@@ -253,7 +254,10 @@ export function InboxWorkspace({
         <span>
           {label} · 残り{remaining}件
         </span>
-        <SourceSortSelect value={sort} />
+        <SourceSortSelect
+          value={sort}
+          search={sort === "posted_desc" ? "" : `sort=${sort}`}
+        />
       </div>
       {bulkCount > 0 ? (
         <button
@@ -329,9 +333,7 @@ export function InboxWorkspace({
                   className="h-full w-full object-cover"
                 />
                 {current.mediaType && current.mediaType !== "photo" ? (
-                  <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
-                    動画
-                  </span>
+                  <VideoBadge saveStatus={current.videoSaveStatus} />
                 ) : null}
               </div>
             ) : null}

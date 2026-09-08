@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { OpenInX } from "@/components/OpenInX";
+import { VideoBadge } from "@/components/VideoBadge";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 import type { MediaItem } from "@/server/sources/detail";
 
@@ -82,9 +83,7 @@ export function SourceHero({
             className="max-h-80 w-full object-cover"
           />
           {hero && hero.type !== "photo" ? (
-            <span className="absolute right-2 bottom-2 rounded bg-ink/80 px-2 py-0.5 text-paper text-xs">
-              動画
-            </span>
+            <VideoBadge saveStatus={hero.videoSaveStatus} compact={false} />
           ) : null}
         </div>
       ) : null}

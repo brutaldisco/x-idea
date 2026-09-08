@@ -155,9 +155,8 @@ describe("isLongVideo / formatDuration", () => {
     expect(isLongVideo("video", LONG_VIDEO_MS)).toBe(false);
     expect(isLongVideo("video", LONG_VIDEO_MS + 1)).toBe(true);
     expect(isLongVideo("photo", LONG_VIDEO_MS + 1)).toBe(false);
-    expect(formatDuration(5 * 3_600_000 + 12 * 60_000).label).toBe(
-      "5時間 12分",
-    );
+    expect(formatDuration(5 * 3_600_000 + 12 * 60_000).label).toBe("312:00");
+    expect(formatDuration(3 * 60_000 + 5_000).label).toBe("3:05");
   });
 });
 

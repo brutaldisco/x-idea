@@ -1,7 +1,9 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { resetLibraryQueries } from "@/lib/library-cache";
 import type { XAccountPublic } from "@/server/x/account";
 
 function SyncBullet({
@@ -35,6 +37,7 @@ export function AccountSwitcher({
   currentId: string | null;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -93,6 +96,7 @@ export function AccountSwitcher({
                         .then((res) => {
                           if (res.ok) {
                             setOpen(false);
+                            resetLibraryQueries(queryClient);
                             startTransition(() => router.refresh());
                           }
                         })

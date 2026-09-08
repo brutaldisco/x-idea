@@ -44,7 +44,19 @@ export type SourceListItem = {
   summaryFromAi: boolean;
   mediaId: string | null;
   mediaType: string | null;
+  videoSaveStatus: string | null;
 };
+
+export const LIST_MEDIA_SQL = `(SELECT m.id FROM media_assets m
+                  WHERE m.x_post_id = p.id
+                  ORDER BY m.created_at ASC LIMIT 1) AS media_id,
+                 (SELECT m.type FROM media_assets m
+                  WHERE m.x_post_id = p.id
+                  ORDER BY m.created_at ASC LIMIT 1) AS media_type,
+                 (SELECT vd.status FROM media_assets m
+                  JOIN video_downloads vd ON vd.media_id = m.id
+                  WHERE m.x_post_id = p.id
+                  ORDER BY m.created_at ASC LIMIT 1) AS video_save_status`;
 
 export type InboxListItem = SourceListItem & {
   uncertaintyReason: string | null;
@@ -81,6 +93,9 @@ function mapSourceRow(row: Record<string, unknown>): SourceListItem {
     summaryFromAi: fromAi,
     mediaId: row.media_id ? String(row.media_id) : null,
     mediaType: row.media_type ? String(row.media_type) : null,
+    videoSaveStatus: row.video_save_status
+      ? String(row.video_save_status)
+      : null,
   };
 }
 
@@ -131,12 +146,7 @@ export async function listSourcesPage(input: {
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
                  s.triage_status, p.posted_at, p.author_username, p.text, p.lang,
                  p.url, ${ARTICLE_EXCERPT_SQL},
-                 (SELECT m.id FROM media_assets m
-                  WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS media_id,
-                 (SELECT m.type FROM media_assets m
-                  WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS media_type
+                 ${LIST_MEDIA_SQL}
           FROM sources s
           LEFT JOIN x_posts p ON p.id = s.x_post_id
           WHERE ${where.join(" AND ")}
@@ -188,12 +198,7 @@ export async function listInbox(input: {
                  s.category_confidence, s.category_candidates_json,
                  p.posted_at, p.author_username, p.text, p.lang, p.url,
                  ${ARTICLE_EXCERPT_SQL},
-                 (SELECT m.id FROM media_assets m
-                  WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS media_id,
-                 (SELECT m.type FROM media_assets m
-                  WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS media_type
+                 ${LIST_MEDIA_SQL}
           FROM sources s
           LEFT JOIN x_posts p ON p.id = s.x_post_id
           WHERE ${scope.clause}
@@ -240,6 +245,9 @@ export async function listInbox(input: {
       summaryFromAi: fromAi,
       mediaId: row.media_id ? String(row.media_id) : null,
       mediaType: row.media_type ? String(row.media_type) : null,
+      videoSaveStatus: row.video_save_status
+        ? String(row.video_save_status)
+        : null,
       uncertaintyReason: row.ai_uncertainty_reason
         ? String(row.ai_uncertainty_reason)
         : null,

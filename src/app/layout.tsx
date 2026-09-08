@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Noto_Sans_JP } from "next/font/google";
 import type { ReactNode } from "react";
+import { LibraryQueryProvider } from "@/components/LibraryQueryProvider";
 import { OfflineBanner } from "@/components/pwa/OfflineBanner";
 import { PwaRuntime } from "@/components/pwa/PwaRuntime";
 import {
@@ -58,7 +59,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="min-h-dvh bg-paper font-sans text-ink antialiased">
         <PwaRuntime />
         <OfflineBanner />
-        {children}
+        <LibraryQueryProvider>{children}</LibraryQueryProvider>
       </body>
     </html>
   );

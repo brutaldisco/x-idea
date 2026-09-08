@@ -171,6 +171,7 @@ async function RecentSources({
             url={item.url}
             mediaId={item.mediaId}
             mediaType={item.mediaType}
+            videoSaveStatus={item.videoSaveStatus}
             lang={item.lang}
             summaryFromAi={item.summaryFromAi}
             postedAt={item.postedAt}
