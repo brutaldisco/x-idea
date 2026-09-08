@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   loadRepeatMode,
   saveRepeatMode,
@@ -17,6 +17,10 @@ import {
   type RepeatMode,
   stepPlaylist,
 } from "@/lib/video-playlist";
+import {
+  videoDownloadPercent,
+  videoQueueStatusLabel,
+} from "@/lib/video-progress";
 import {
   deleteVideoFile,
   downloadVideoFile,
@@ -157,6 +161,16 @@ export function VideosWorkspace({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "start" }),
         });
+        setData((prev) => ({
+          ...prev,
+          queue: prev.queue.map((entry) =>
+            entry.id === item.id ? { ...entry, status: "downloading" } : entry,
+          ),
+        }));
+        setProgress((prev) => ({
+          ...prev,
+          [item.id]: { received: 0, total: 0 },
+        }));
         try {
           const result = await downloadVideoFile({
             downloadId: item.id,
@@ -466,13 +480,18 @@ export function VideosWorkspace({
               <ul className="mt-3 space-y-2">
                 {data.queue.map((item) => {
                   const prog = progress[item.id];
-                  const pct =
-                    prog && prog.total > 0
-                      ? Math.min(
-                          100,
-                          Math.round((prog.received / prog.total) * 100),
-                        )
-                      : null;
+                  const pct = videoDownloadPercent(
+                    prog?.received ?? 0,
+                    prog?.total ?? 0,
+                  );
+                  const downloading =
+                    Boolean(prog) || item.status === "downloading";
+                  const statusLabel = videoQueueStatusLabel(
+                    downloading && item.status !== "failed"
+                      ? "downloading"
+                      : item.status,
+                    pct,
+                  );
                   return (
                     <li
                       key={item.id}
@@ -493,13 +512,18 @@ export function VideosWorkspace({
                             : ""}
                           {item.excerpt || item.tweetId}
                         </p>
-                        <p className="text-ink-2 text-xs">{item.status}</p>
-                        {pct != null ? (
-                          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-paper-2">
-                            <div
-                              className="h-full bg-accent"
-                              style={{ width: `${pct}%` }}
-                            />
+                        <p className="text-ink-2 text-xs">{statusLabel}</p>
+                        {downloading || pct != null ? (
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-paper-2">
+                              <div
+                                className="h-full bg-accent transition-[width]"
+                                style={{ width: `${pct ?? 0}%` }}
+                              />
+                            </div>
+                            <span className="tabular-nums text-ink-2 text-xs">
+                              {pct != null ? `${pct}%` : "…"}
+                            </span>
                           </div>
                         ) : null}
                         {item.error ? (
@@ -700,47 +724,114 @@ function VideoCardMenu({
   onMove: (folderId: string | null) => void;
   onDelete: () => void;
 }) {
+  const panelId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onPointer = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [open]);
+
   return (
-    <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[11px]">
-      {item.sourceId ? (
-        <Link
-          href={`/source/${item.sourceId}`}
-          className="text-accent hover:underline"
-        >
-          Source
-        </Link>
-      ) : null}
-      {item.postUrl ? (
-        <a
-          href={item.postUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-accent hover:underline"
-        >
-          X
-        </a>
-      ) : null}
-      <label className="text-ink-2">
-        <select
-          aria-label="フォルダ"
-          className="max-w-28 bg-transparent"
-          value={item.folderId ?? ""}
-          onChange={(event) => {
-            const value = event.target.value;
-            onMove(value.length > 0 ? value : null);
+    <div className="mt-2 flex items-end justify-between gap-2 text-[11px]">
+      <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1">
+        {item.sourceId ? (
+          <Link
+            href={`/source/${item.sourceId}`}
+            className="text-accent hover:underline"
+          >
+            Source
+          </Link>
+        ) : null}
+        {item.postUrl ? (
+          <a
+            href={item.postUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent hover:underline"
+          >
+            X
+          </a>
+        ) : null}
+        <label className="text-ink-2">
+          <select
+            aria-label="フォルダ"
+            className="max-w-28 bg-transparent"
+            value={item.folderId ?? ""}
+            onChange={(event) => {
+              const value = event.target.value;
+              onMove(value.length > 0 ? value : null);
+            }}
+          >
+            <option value="">未分類</option>
+            {folders.map((folder) => (
+              <option key={folder.id} value={folder.id}>
+                {folder.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div
+        ref={rootRef}
+        className="relative notranslate shrink-0"
+        lang="ja"
+        translate="no"
+      >
+        <button
+          type="button"
+          aria-label="操作"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            setCoords({
+              top: rect.bottom + 4,
+              right: window.innerWidth - rect.right,
+            });
+            setOpen((value) => !value);
           }}
+          className="flex h-7 w-7 items-center justify-center rounded-full text-ink-2 hover:bg-paper"
         >
-          <option value="">未分類</option>
-          {folders.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {folder.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button type="button" className="text-danger" onClick={onDelete}>
-        削除
-      </button>
+          <span aria-hidden className="text-base leading-none">
+            ⋮
+          </span>
+        </button>
+        {open && coords ? (
+          <div
+            id={panelId}
+            role="menu"
+            className="fixed z-50 min-w-36 rounded-xl border border-line bg-paper/95 py-1 shadow-card backdrop-blur"
+            style={{ top: coords.top, right: coords.right }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onDelete();
+              }}
+              className="block w-full px-3 py-2 text-left text-danger text-sm hover:bg-paper-2"
+            >
+              削除
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

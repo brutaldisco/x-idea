@@ -65,6 +65,8 @@ export const xAccount = sqliteTable("x_account", {
   syncEnabled: integer("sync_enabled").notNull().default(0),
   lastSyncHeadTweetId: text("last_sync_head_tweet_id"),
   lastSyncedAt: text("last_synced_at"),
+  backfillPaginationToken: text("backfill_pagination_token"),
+  backfillExhausted: integer("backfill_exhausted").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

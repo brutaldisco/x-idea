@@ -1,7 +1,12 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
-import { bookmarkPageSize, isAutoSyncDue } from "@/lib/sync-policy";
+import { nextBackfillCursor } from "@/lib/sync-backfill";
+import {
+  bookmarkPageSize,
+  INITIAL_BOOKMARK_PAGE,
+  isAutoSyncDue,
+} from "@/lib/sync-policy";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
 import { ingestBookmark, markUnavailable } from "@/server/ingest/bookmark";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
@@ -10,6 +15,7 @@ import { estimateCostUsd } from "@/server/usage/estimate";
 import {
   getXAccountSecret,
   listSyncableAccounts,
+  markXAccountBackfill,
   markXAccountReauth,
   markXAccountSynced,
   type XAccountSecret,
@@ -21,6 +27,7 @@ import { ensureValidToken, TokenRefreshError } from "@/server/x/token";
 export async function syncBookmarks(payload?: {
   x_account_id?: string;
   trigger?: "schedule" | "manual";
+  mode?: "backfill";
 }): Promise<void> {
   const settings = await getSyncSettings();
   if (!settings.xApiEnabled) {
@@ -34,8 +41,18 @@ export async function syncBookmarks(payload?: {
       )
     : await listSyncableAccounts();
   const trigger = payload?.trigger ?? "schedule";
+  const backfill = payload?.mode === "backfill";
 
   for (const account of accounts) {
+    if (backfill) {
+      await syncOneAccountBackfill(
+        account,
+        settings.saveReplies,
+        trigger,
+        settings.syncMaxPerRun,
+      );
+      continue;
+    }
     if (
       trigger === "schedule" &&
       !isAutoSyncDue(account.lastSyncedAt, settings.syncIntervalMin)
@@ -156,6 +173,120 @@ async function syncOneAccount(
       accountId: account.id,
       trigger,
       mode,
+      status: "error",
+      created,
+      pages,
+      resources,
+      remaining,
+      reset,
+      started,
+      error: message.slice(0, 400),
+    });
+    throw error;
+  }
+}
+
+async function syncOneAccountBackfill(
+  account: XAccountSecret,
+  saveReplies: boolean,
+  trigger: "schedule" | "manual",
+  syncMaxPerRun: number,
+): Promise<void> {
+  const runId = newId();
+  const pageSize = INITIAL_BOOKMARK_PAGE;
+  const maxPages = Math.max(1, Math.ceil(syncMaxPerRun / pageSize));
+  const started = new Date().toISOString();
+  let pages = 0;
+  let resources = 0;
+  let created = 0;
+  let pagination = account.backfillPaginationToken;
+  let remaining: number | null = null;
+  let reset: string | null = null;
+
+  if (account.backfillExhausted) {
+    logger.info({ accountId: account.id }, "bookmark backfill already done");
+    return;
+  }
+
+  try {
+    const token = await ensureValidToken(account);
+
+    for (let i = 0; i < maxPages; i += 1) {
+      const page = await fetchBookmarksPage(
+        token,
+        account.xUserId,
+        pagination,
+        pageSize,
+      );
+      pages += 1;
+      resources += page.resourcesRead;
+      remaining = page.rateLimit.remaining;
+      reset = page.rateLimit.reset;
+
+      for (const tweet of page.tweets) {
+        const result = await ingestBookmark({
+          accountId: account.id,
+          tweet,
+          page,
+          saveReplies,
+        });
+        if (result.created) {
+          created += 1;
+        }
+      }
+      for (const error of page.errors) {
+        if (error.resource_type === "tweet" && error.resource_id) {
+          await markUnavailable(error.resource_id);
+        }
+      }
+
+      const cursor = nextBackfillCursor(page.nextToken);
+      pagination = cursor.token;
+      await markXAccountBackfill(account.id, cursor.token, cursor.exhausted);
+      if (cursor.exhausted) {
+        break;
+      }
+    }
+
+    const settings = await getSyncSettings();
+    await enqueuePendingMediaDownloads(
+      account.id,
+      settings.mediaDownloadPerTick,
+    );
+    await enqueuePendingArticleFetches(8);
+    await writeRun({
+      runId,
+      accountId: account.id,
+      trigger,
+      mode: "backfill",
+      status: "ok",
+      created,
+      pages,
+      resources,
+      remaining,
+      reset,
+      started,
+      error: null,
+    });
+    logger.info(
+      { accountId: account.id, created, pages, resources },
+      "bookmark backfill done",
+    );
+  } catch (error) {
+    if (
+      (error instanceof XApiError &&
+        (error.status === 401 || error.status === 403)) ||
+      (error instanceof TokenRefreshError &&
+        (error.status === 400 || error.status === 401))
+    ) {
+      await markXAccountReauth(account.id);
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    await writeRun({
+      runId,
+      accountId: account.id,
+      trigger,
+      mode: "backfill",
       status: "error",
       created,
       pages,

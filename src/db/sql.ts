@@ -29,6 +29,7 @@ const MIGRATION_FILES = [
   "0008_account_taxonomy.sql",
   "0009_dismissed_bookmarks.sql",
   "0010_default_x_account.sql",
+  "0011_bookmark_backfill.sql",
 ];
 
 export function loadInitSql(): string {

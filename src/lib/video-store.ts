@@ -274,7 +274,7 @@ export async function downloadVideoFile(input: {
       await writable.write(bytes);
       offset += bytes.byteLength;
       await saveProgress(input.downloadId, offset);
-      input.onProgress?.(offset, total || offset);
+      input.onProgress?.(offset, total);
       if (res.status === 200 || (total > 0 && offset >= total)) {
         break;
       }

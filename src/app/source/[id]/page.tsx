@@ -5,6 +5,7 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
 import { LibraryBackLink } from "@/components/LibraryBackLink";
 import { PostBlock } from "@/components/PostBlock";
+import { ReaderNeighbors } from "@/components/ReaderNeighbors";
 import { ReaderSegments } from "@/components/ReaderSegments";
 import { SourceActions } from "@/components/SourceActions";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
@@ -86,6 +87,7 @@ export default async function SourcePage({
           <SourceCardMenu sourceId={source.id} url={source.post.url} />
         </div>
       </div>
+      <ReaderNeighbors sourceId={source.id} />
 
       <SourceHero
         sourceId={source.id}
@@ -255,6 +257,7 @@ export default async function SourcePage({
       />
 
       <SourceNote id={source.id} userNote={source.userNote} />
+      <ReaderNeighbors sourceId={source.id} label="前後の記事（末尾）" />
       <SourceStatusBar id={source.id} readStatus={source.readStatus} />
     </main>
   );

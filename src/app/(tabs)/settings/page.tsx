@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { AccountSyncToggle } from "@/components/AccountSyncToggle";
+import { BackfillBookmarksButton } from "@/components/BackfillBookmarksButton";
 import { DisconnectX } from "@/components/DisconnectX";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { MediaFolderLink } from "@/components/MediaFolderLink";
@@ -208,13 +209,20 @@ async function SettingsBody({
         <p className="mt-2 text-ink-2 text-sm">
           全体トグルと、選んだアカウントの「同期（課金）」が両方 ON
           のときだけブックマークを取り込みます。自動は最短 6 時間。差分確認は 10
-          件ずつです。急ぐときは「今すぐ同期」。
+          件ずつです。新着は「今すぐ同期」。昔の分は「過去のブックマークを取り込む」。
         </p>
         <XApiEnabledToggle enabled={health.x_api_enabled} />
         <ManualSyncButton
           disabled={!health.x_api_enabled || !current?.syncEnabled}
           hint="上で選んだアカウントの「同期（課金）」も ON にしてください。"
         />
+        {current ? (
+          <BackfillBookmarksButton
+            accountId={current.id}
+            disabled={!health.x_api_enabled || !current.syncEnabled}
+            exhausted={current.backfillExhausted}
+          />
+        ) : null}
         <SyncLimitsForm
           syncMaxPerRun={sync.syncMaxPerRun}
           mediaDownloadPerTick={sync.mediaDownloadPerTick}

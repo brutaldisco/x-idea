@@ -40,6 +40,7 @@ export async function runHandler(job: JobRow): Promise<void> {
 function parsePayload(raw: string): {
   x_account_id?: string;
   trigger?: "schedule" | "manual";
+  mode?: "backfill";
   media_id?: string;
   account_id?: string;
   tweet_id?: string;
@@ -61,6 +62,7 @@ function parsePayload(raw: string): {
         value.trigger === "manual" || value.trigger === "schedule"
           ? value.trigger
           : undefined,
+      mode: value.mode === "backfill" ? "backfill" : undefined,
       media_id: typeof value.media_id === "string" ? value.media_id : undefined,
       account_id:
         typeof value.account_id === "string" ? value.account_id : undefined,

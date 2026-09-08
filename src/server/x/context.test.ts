@@ -10,6 +10,7 @@ function account(id: string, username: string): XAccountPublic {
     status: "active",
     syncEnabled: false,
     lastSyncedAt: null,
+    backfillExhausted: false,
   };
 }
 

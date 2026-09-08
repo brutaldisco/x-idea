@@ -59,7 +59,7 @@ Library の query オプション:
 - `(tabs)/layout` と `source/[id]/layout` が別。どちらも TabBar / Dock / AccountSwitcher を持つ。
 - Library → Reader で **tabs レイアウトごとアンマウント**。QueryClient だけ残る。
 - 戻るリンクは長らく `href="/library"` 固定。2026-09-09 に直近 URL を sessionStorage から読むようにした。
-- 戻ったあとのスクロールは、Y=0 上書き防止・遅延リトライ・`pageCount` 追加取得・開いたカードの offset を足した。**一覧が残っていれば不要な複雑さ**。
+- 戻ったあとのスクロールは 1 回だけ戻す（高さが足りなければ追加ページを待つ）。読み込み中にユーザーがスクロールしたら打ち切る。遅延タイマーの `scrollTo` 連打はしない。
 - タブの `<Activity>`（T-213）は未実装。View Transition（`source-{id}`）だけ入っている。
 
 ### 2.4 Service Worker（ADR-008 / `marginalia-v2`）

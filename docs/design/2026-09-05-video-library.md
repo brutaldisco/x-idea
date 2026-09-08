@@ -159,7 +159,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 3. 1 件の処理：
    - ルート → `{x_account_id}` →（あれば）フォルダ、の順にディレクトリハンドルを `getDirectoryHandle(..., { create: true })` で解決。
    - ファイル `{tweet_id}_{media_key}.mp4` を `getFileHandle({ create: true })` → `createWritable({ keepExistingData: true })`。
-   - **8MB チャンク**で `Range: bytes=offset-` を `GET /api/media/[id]/file` に投げ、返ってきた分を `writable.seek(offset)` → `write()`。最初の応答の `Content-Range` から総サイズを得て進捗バーに反映。
+   - **8MB チャンク**で `Range: bytes=offset-` を `GET /api/media/[id]/file` に投げ、返ってきた分を `writable.seek(offset)` → `write()`。最初の応答の `Content-Range` から総サイズを得て進捗バーとパーセントに反映。総サイズが無い間は「ダウンロード中」だけ出す（100% 扱いにしない）。
    - 失敗（タイムアウト・ネットワーク断）したら **チャンクサイズを半減**（最小 1MB）して同じオフセットから再試行。3 連続失敗で `failed`。
    - 進捗（`received` バイト数）は IndexedDB に保存し、**ページを閉じても途中再開**できる。
 4. 完了したら `writable.close()` → `complete` API で `ready` 化。
@@ -184,9 +184,9 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 構成（上から）：
 
-1. **ダウンロードキュー**：件数（`N / 15`）＋「ダウンロード開始」ボタン。各アイテムはサムネイル・投稿抜粋・`@username`・状態・進捗バー・取消。`failed` は理由と「再試行」。未リンク時は Settings への案内。
+1. **ダウンロードキュー**：件数（`N / 15`）＋「ダウンロード開始」ボタン。各アイテムはサムネイル・投稿抜粋・`@username`・状態（日本語。ダウンロード中は `42%` など）・進捗バー・取消。`failed` は理由と「再試行」。未リンク時は Settings への案内。
 2. **ライブラリ**：フォルダチップ（`すべて / 未分類 / {フォルダ}… / ＋新規フォルダ`）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日。操作メニューに「フォルダ移動」「削除」「X で開く」「Source を開く」。
-3. **プレーヤー**：カードをタップで **モーダル**（PC は中央大きめ、モバイルは全画面）。`<video controls playsInline>` に `handle.getFile()` → `URL.createObjectURL()` を渡す（ブラウザ標準 UI。閉じたら `revokeObjectURL`）。シーク・音量・全画面はブラウザ標準に任せる。
+3. **プレーヤー**：カードをタップで **黒ベースのモーダル**（ライト／ダークどちらでも `bg-black`。テーマの paper/ink は使わない）。`<video controls playsInline>` に `handle.getFile()` → `URL.createObjectURL()` を渡す（閉じたら `revokeObjectURL`）。シーク・音量はブラウザ標準。全画面はプレーヤー枠（シェル）に対して行い、動画が終わって次へ進んでも、左右キーで前後しても維持する。左右キーはシークせず前後の動画へ。
 
 ### 5.2 Reader（SC-06）の変更
 

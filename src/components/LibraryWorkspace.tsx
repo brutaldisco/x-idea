@@ -23,12 +23,15 @@ import {
   writeLibraryAccountId,
 } from "@/lib/library-account";
 import { LIBRARY_SOURCES_KEY } from "@/lib/library-cache";
+import { writeLibraryNeighbors } from "@/lib/library-neighbors";
 import {
   applyLibraryVisit,
   beginLibraryLeave,
   beginLibraryRestore,
   canApplyLibraryVisit,
+  cancelLibraryRestore,
   captureLibraryScroll,
+  clearLibraryRestoreCancel,
   consumeLibraryReturn,
   libraryHref,
   libraryScrollKey,
@@ -161,6 +164,8 @@ export function LibraryWorkspace({
   );
   const sentinel = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
+  const userMoved = useRef(false);
+  const programmaticScroll = useRef(false);
   const filterKey = JSON.stringify(filters);
   const queryKey = useMemo(
     () => [LIBRARY_SOURCES_KEY, accountId || "anon", sort, filterKey] as const,
@@ -172,6 +177,7 @@ export function LibraryWorkspace({
   if (prevScrollKey.current !== scrollKey) {
     prevScrollKey.current = scrollKey;
     restored.current = false;
+    userMoved.current = false;
   }
 
   const restoring = useIsRestoring();
@@ -203,6 +209,16 @@ export function LibraryWorkspace({
   }, [query.data, query.isError, query.isFetching, query.refetch, restoring]);
 
   const rows = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const neighborIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    const ids =
+      query.data?.pages.flatMap((page) => page.items.map((item) => item.id)) ??
+      [];
+    neighborIdsRef.current = ids;
+    if (ids.length > 0) {
+      writeLibraryNeighbors(ids);
+    }
+  }, [query.data]);
   const first = query.data?.pages[0];
   const total = first?.count ?? rows.length;
   const label = first?.label ?? "ライブラリ";
@@ -211,6 +227,16 @@ export function LibraryWorkspace({
 
   useLayoutEffect(() => {
     lockBrowserScrollRestoration();
+    if (!pathname.startsWith("/library")) {
+      restored.current = false;
+      userMoved.current = false;
+      clearLibraryRestoreCancel();
+      return;
+    }
+    if (userMoved.current) {
+      restored.current = true;
+      return;
+    }
     const saved = readLibraryVisit();
     if (peekLibraryReturn()) {
       consumeLibraryReturn();
@@ -223,10 +249,10 @@ export function LibraryWorkspace({
       restored.current = true;
       return;
     }
-    beginLibraryRestore();
     if (rows.length === 0) {
       return;
     }
+    beginLibraryRestore();
     if (
       canApplyLibraryVisit(
         saved,
@@ -235,29 +261,26 @@ export function LibraryWorkspace({
       ) ||
       !query.hasNextPage
     ) {
+      programmaticScroll.current = true;
       if (applyLibraryVisit(saved)) {
         restored.current = true;
       }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          programmaticScroll.current = false;
+        });
+      });
     }
-  }, [query.hasNextPage, returnHref, router, rows.length, scrollKey]);
-
-  useLayoutEffect(() => {
-    if (!pathname.startsWith("/library")) {
-      return;
-    }
-    const saved = readLibraryVisit();
-    if (!saved || (saved.key !== scrollKey && saved.href !== returnHref)) {
-      return;
-    }
-    if (rows.length === 0) {
-      return;
-    }
-    beginLibraryRestore();
-    applyLibraryVisit(saved);
-  }, [pathname, returnHref, rows.length, scrollKey]);
+  }, [pathname, query.hasNextPage, returnHref, router, rows.length, scrollKey]);
 
   useEffect(() => {
-    if (restored.current || query.isFetchingNextPage || restoring) {
+    if (
+      !pathname.startsWith("/library") ||
+      restored.current ||
+      userMoved.current ||
+      query.isFetchingNextPage ||
+      restoring
+    ) {
       return;
     }
     const saved = readLibraryVisit();
@@ -277,6 +300,7 @@ export function LibraryWorkspace({
       void query.fetchNextPage();
     }
   }, [
+    pathname,
     query.data?.pages.length,
     query.fetchNextPage,
     query.hasNextPage,
@@ -287,69 +311,58 @@ export function LibraryWorkspace({
   ]);
 
   useEffect(() => {
-    beginLibraryRestore();
-    lockBrowserScrollRestoration();
-    const delays = [0, 50, 100, 200, 400, 800, 1600, 2800];
-    function restore() {
-      const saved = readLibraryVisit();
-      if (!saved || (saved.key !== scrollKey && saved.href !== returnHref)) {
-        return;
-      }
-      if (rows.length === 0) {
-        return;
-      }
-      if (
-        canApplyLibraryVisit(
-          saved,
-          document.documentElement.scrollHeight,
-          window.innerHeight,
-        ) ||
-        !query.hasNextPage
-      ) {
-        if (applyLibraryVisit(saved)) {
-          restored.current = true;
-        }
-      }
-    }
-    const timers = delays.map((ms) => window.setTimeout(restore, ms));
-    function onReveal(event: Event) {
-      const transition = (
-        event as { viewTransition?: { finished?: Promise<void> } }
-      ).viewTransition;
-      if (transition?.finished) {
-        void transition.finished.then(restore);
-        return;
-      }
-      restore();
-    }
-    window.addEventListener("pagereveal", onReveal);
-    window.addEventListener("pageshow", onReveal);
-    return () => {
-      for (const timer of timers) {
-        window.clearTimeout(timer);
-      }
-      window.removeEventListener("pagereveal", onReveal);
-      window.removeEventListener("pageshow", onReveal);
-    };
-  }, [query.hasNextPage, returnHref, rows.length, scrollKey]);
-
-  useEffect(() => {
     lockBrowserScrollRestoration();
     let frame = 0;
     const pageCount = query.data?.pages.length;
     function persist(leaving: boolean) {
+      if (!pathname.startsWith("/library")) {
+        return;
+      }
       if (leaving) {
         beginLibraryLeave();
       }
       const y = window.scrollY;
-      if (!restored.current && y < 8) {
+      if (!restored.current && !userMoved.current && y < 8) {
         return;
       }
       writeLibraryScroll(scrollKey, y, returnHref, { pageCount });
     }
+    function markUserMoved() {
+      if (!pathname.startsWith("/library") || restored.current) {
+        return;
+      }
+      userMoved.current = true;
+      cancelLibraryRestore();
+    }
     function onScroll() {
+      if (
+        !programmaticScroll.current &&
+        !restored.current &&
+        window.scrollY > 8
+      ) {
+        markUserMoved();
+      }
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => persist(false));
+    }
+    function onWheel() {
+      markUserMoved();
+    }
+    function onTouchMove() {
+      markUserMoved();
+    }
+    function onKey(event: KeyboardEvent) {
+      if (
+        event.key === "ArrowDown" ||
+        event.key === "ArrowUp" ||
+        event.key === "PageDown" ||
+        event.key === "PageUp" ||
+        event.key === "Home" ||
+        event.key === "End" ||
+        event.key === " "
+      ) {
+        markUserMoved();
+      }
     }
     function onHide() {
       if (document.visibilityState && document.visibilityState !== "hidden") {
@@ -377,14 +390,23 @@ export function LibraryWorkspace({
           sourceIdFromHref(link.getAttribute("href") ?? link.href) ?? undefined,
         pageCount,
       });
+      if (neighborIdsRef.current.length > 0) {
+        writeLibraryNeighbors(neighborIdsRef.current);
+      }
     }
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("wheel", onWheel, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("keydown", onKey);
     window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", onHide);
     document.addEventListener("pointerdown", onLeaveLibrary, true);
     document.addEventListener("click", onLeaveLibrary, true);
     return () => {
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("keydown", onKey);
       window.removeEventListener("pagehide", onPageHide);
       document.removeEventListener("visibilitychange", onHide);
       document.removeEventListener("pointerdown", onLeaveLibrary, true);
@@ -392,7 +414,7 @@ export function LibraryWorkspace({
       cancelAnimationFrame(frame);
       persist(true);
     };
-  }, [query.data?.pages.length, returnHref, scrollKey]);
+  }, [pathname, query.data?.pages.length, returnHref, scrollKey]);
 
   useEffect(() => {
     const node = sentinel.current;

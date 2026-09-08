@@ -356,7 +356,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **カード**：投稿者、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。動画サムネは保存状態でバッジを変える（未保存「動画」／`queued`・`downloading`「キュー」／`video_downloads.status='ready'`「保存済」）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Library カードのサムネに出す。Reader ギャラリーはタイル下部だけ（サムネ上は重ねない）。`ready` の動画サムネはタップでアプリ内再生（プレーヤーは **1本リピート** のトグルのみ）。**3 点メニュー**から「X で開く」と **削除**（DB 行＋ローカル画像/動画ファイル。`dismissed_bookmarks` に残し同期では戻さない。`bookmark.write` があれば X のブックマークも外す。ADR-013）。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
 - **カーソルページネーション**：30件、Intersection Observer で追加読み込み。追加読み込み済みのページは Reader 往復後も保持する。
-- **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示の URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻し、キャッシュ済みページを出したあと、一覧が十分な高さになるまで追加読み込みして同じ位置へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む（戻るたびにサーバー待ちで一覧を消さない）。読み込み・キャッシュ再編（一覧 DOM を往復で残す、persist を IndexedDB、SW TTL）は `docs/design/2026-09-09-library-load-cache.md`。
+- **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示の URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。復元は **1 回**（高さが足りなければ追加ページを待ってから）。読み込み中にユーザーがスクロールしたら復元を打ち切る。遅延タイマーで `scrollTo` を連打しない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む。読み込み・キャッシュ再編は `docs/design/2026-09-09-library-load-cache.md`。
 - **削除**：一覧はキャッシュから当該行を外し、ページ全体の再取得はしない。
 - **Atlas（P2）**：`<canvas>`（`d3-force` + `d3-zoom`、または `pixi.js`）。ノード＝Source（最大 3,000 表示、超過は代表点に集約）。座標はサーバーで週次計算（PCA→UMAP 相当の近似、`source_layout` テーブル）。クラスタ命名は Flash-Lite。タップ→クラスタ内リスト、ロングタップ→そのクラスタを Lens 化。タイムスライダーで `saved_at` によるフェード。PC 優先、モバイルは簡易（ピンチズームのみ）。
 
@@ -373,7 +373,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.5 SC-06 Reader（Source 詳細）
 
-- **戻り**：ヘッダー「← ライブラリ」は直近の Library URL（並び・フィルタ・表示）へ戻す。`/library` 固定にはしない（8.3）。Library 起点では並列ルートで一覧を残す（ADR-016）。
+- **戻り**：ヘッダー「← ライブラリ」は直近の Library URL（並び・フィルタ・表示）へ戻す。`/library` 固定にはしない（8.3）。Library 起点では並列ルートで一覧を残す（ADR-016）。同じ並びの隣へは一覧に戻らず「前の記事」「次の記事」で進む。並びは直近の Library 一覧（フィルタ・ソート込み）。一覧に無い Source やディープリンクでは出さない。
 - **ヒーロー**：投稿者アバター・名前・日時・X で開く。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。
 - **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは Reader で対象ごとに手動取得**し、取得後は折りたたみ（件数つき、既定は展開）。未取得時はボタン、トグル OFF 時は案内。未保存の動画はアプリ内再生せず **サムネイル＋「X で見る」＋「あとで保存」**（ダウンロードキューへ投入、14.6 / SC-15）。`video_downloads.status='ready'` の動画はサムネタップでアプリ内再生（**1本リピート** のトグルのみ。Library カードと同じ）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**（`queued` / `downloading`）は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Reader ギャラリーはタイル下部だけに出し、サムネ上には重ねない。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。本文側に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。Reader 上部に翻訳手順の常時説明は出さない。ボタンはかな優勢の日本語本文では出さず、**漢字だけの中国語など他言語では出す**。記事は投稿 `lang` を使わず、クリック時に Language Detector が本文を見る。X の自動翻訳文は API に無い。原文カラムは書き換えない。
@@ -409,7 +409,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **既定のアカウント**（ADR-014）：アカウント設定カードの外に、別の設定として置く。見出しは「新しいセッション / 既定のアカウント」。`settings.default_x_account_id`。別ブラウザ・初回に開く。表示中アカウントとは連動しない。選択表示は「既定 / 既定にする」。
 - **X 連携**：選んだアカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、個別解除。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
 - **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除・**ハンドルで並べ替え**）。見出しに `@ハンドル` を出す。初期値は seed カテゴリと既定の情報タイプ。Library の絞り込みと AI enrich がこの一覧の順を使う（`account_taxonomy.sort_order`、ADR-015）。
-- **同期**：自動は最短 6 時間＋手動。返信を保存、除外ドメイン。
+- **同期**：自動は最短 6 時間＋手動（「今すぐ同期」は新着、「過去のブックマークを取り込む」は古い方向。ADR-017）。返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
 - **連携**（P2）：MCP エンドポイント URL とトークン（再発行）、Quick Capture トークン、iOS ショートカット導入手順。
@@ -434,9 +434,9 @@ UI/UX の判断に迷ったら以下に従う。
 ### 8.10 SC-15 Videos（v3.5、ADR-007）
 
 - **保存フォルダ**：Settings の「保存フォルダ」カードで選ぶ（File System Access API）。フォルダ名は `settings.video_save_folder_name` で全環境共有。書き込みハンドルはブラウザ／オリジンごとなので、localhost・本番・別ブラウザでは同じフォルダを再リンクする。Videos は未リンク／要再リンク時に Settings への案内だけ出す。Safari/Firefox は非対応案内＋通常ダウンロードにフォールバック。
-- **ダウンロードキュー**：`N / 15` 件表示＋「ダウンロード開始」。各アイテムはサムネイル・投稿抜粋・`@username`・状態・進捗バー・取消。`failed` は理由と「再試行」。実行は逐次 1 件、8MB チャンク＋レジューム（14.6）。
+- **ダウンロードキュー**：`N / 15` 件表示＋「ダウンロード開始」。各アイテムはサムネイル・投稿抜粋・`@username`・状態（日本語。ダウンロード中はパーセント）・進捗バー・取消。`failed` は理由と「再試行」。実行は逐次 1 件、8MB チャンク＋レジューム（14.6）。総サイズが分かるまでパーセントは出さない。
 - **ライブラリ**：フォルダチップ（すべて／未分類／ユーザー作成フォルダ／＋新規フォルダ）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日。操作は「フォルダ移動」「削除」「X で開く」「Source を開く」。
-- **プレーヤー**：カードタップでモーダル（モバイルは全画面）。`<video controls playsInline>` に object URL を渡すブラウザ標準 UI。
+- **プレーヤー**：カードタップで黒ベースの全画面モーダル（ライト／ダークどちらでも黒。テーマトークンは使わない）。`<video controls playsInline>` に object URL を渡す。全画面はプレーヤー枠に対して行い、終了や左右キーで次／前へ移っても維持する。左右キーはシークせず前後の動画へ。ネイティブの全画面ボタンは使わず、枠の全画面に寄せる。
 - 詳細は `docs/design/2026-09-05-video-library.md`。
 
 ---
@@ -702,6 +702,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 - ユーザーがアプリで削除した tweet は `dismissed_bookmarks` に残し、再取り込みしない。可能なら X のブックマークも外す（ADR-013）。
 - 返信投稿は `settings.save_replies`（既定 保存）。
 - 編集追跡は行わない **[仮定]**。
+- **過去分の手動遡及**（ADR-017）：差分は `last_sync_head_tweet_id` で打ち切るため、初回上限より古いブックマークは残る。Settings の「過去のブックマークを取り込む」は `mode=backfill`。head は動かさず、`x_account.backfill_pagination_token` から古いページを 100 件ずつ読む。既存 tweet は ingest でスキップ。`next_token` が無くなったら `backfill_exhausted=1`。1 回の件数は `sync_max_per_run`。自動同期では走らせない。
 
 ### 14.4 ブックマークフォルダ連動（P2）
 
@@ -734,7 +735,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 | 定期 | 最短 6 時間（`sync_interval_min` 下限 360、cron `0 */6 * * *`）。前回同期から 6 時間未満なら投入しない |
 | 差分確認 | incremental は `max_results=10`。既知 head に当たるまでページ送り。初回は 100 |
 | アカウント単位 | `x_account.sync_enabled`（Settings トグル、既定 OFF）。OFF のアカウントは `sync_bookmarks` 対象外 |
-| 手動 | Today / Settings の「今すぐ同期」。最短 60 秒。間隔ガードは適用しない |
+| 手動 | Today / Settings の「今すぐ同期」（新着）。Settings の「過去のブックマークを取り込む」（古い方向、ADR-017）。最短 60 秒。間隔ガードは適用しない |
 | tick | 外部 Cron 1〜5 分＋アプリ起動時 |
 | レート制限 | `x-rate-limit-*` を `sync_runs` に記録。429 は reset＋ジッターで再試行 |
 
@@ -1059,8 +1060,10 @@ CREATE TABLE x_account (
   scopes_json TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active', -- active | reauth_required | revoked
   sync_enabled INTEGER NOT NULL DEFAULT 0, -- アカウント単位の同期。既定 OFF（課金防止）
-  last_sync_head_tweet_id TEXT,           -- アカウント別の同期カーソル
+  last_sync_head_tweet_id TEXT,           -- アカウント別の同期カーソル（新着）
   last_synced_at TEXT,
+  backfill_pagination_token TEXT,         -- 過去遡及の続き（ADR-017）
+  backfill_exhausted INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1984,6 +1987,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-216 | Library 往復で persist 復元中に一覧を消さない。SW `/api/sources` に 10 分 TTL | `src/components/LibraryWorkspace.tsx`, `public/sw.js` | T-206, T-212 | キャッシュありで「読み込み中…」が出ない（`docs/design/2026-09-09-library-load-cache.md`） |
 | T-217 | Library persist を IndexedDB + buster + 最大 8 ページ。queryKey にアカウント | `src/components/LibraryQueryProvider.tsx` | T-216 | リロード後も直近 visit が残る。localStorage `v5` を削除 |
 | T-218 | 共通シェル + Reader 並列ルート。Library↔Reader で一覧をアンマウントしない | `src/app/(shell)/*` または同等 | T-216 | ギャラリー途中→記事→戻るで同じ位置 |
+| T-219 | 過去ブックマークの手動遡及（`mode=backfill`、ページカーソル、Settings ボタン） | `src/server/jobs/handlers/syncBookmarks.ts`, Settings | T-104, T-106 | 今すぐ同期では増えない古い件が、ボタン連打で古い方へ増える。head は新着用のまま |
 
 ### Phase 3（レーン E）
 
@@ -2079,7 +2083,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | --- | --- | --- | --- |
 | R-01 | X API 料金・仕様変更 | コスト増・停止 | 月次で docs 確認。リミット必須 |
 | R-02 | X App 停止 | 収集停止 | 公式 API のみ。データは Turso に残る |
-| R-03 | ブックマーク履歴の遡及限界 | 初回欠落 | 取得範囲を UI 明示、Quick Capture |
+| R-03 | ブックマーク履歴の遡及限界 | 初回欠落 | Settings で過去分を手動遡及（ADR-017）。X 側に残っていないブックマークは API から取れない。個別は Quick Capture |
 | R-04 | **Gemini 無料枠の再縮小／モデル ID 変更** | AI 停止 | レーン・モデル・キャップを設定化、AI 一時停止、有料オプション |
 | R-05 | 記事取得ブロック増 | metadata_only 増 | 投稿本文だけで enrich 成立 |
 | R-06 | 分類精度不足 | Inbox 肥大 | description 整備、学習する司書、しきい値 |

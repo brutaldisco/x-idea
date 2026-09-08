@@ -3,9 +3,11 @@ import {
   applyLibraryScroll,
   beginLibraryLeave,
   beginLibraryRestore,
+  cancelLibraryRestore,
   canRestoreLibraryScroll,
   consumeLibraryReturn,
   isLibraryHref,
+  isLibraryRestoreCancelled,
   keepSavedScrollY,
   libraryHref,
   libraryScrollKey,
@@ -104,6 +106,14 @@ describe("library scroll", () => {
     expect(keepSavedScrollY(640, 900)).toBe(false);
     beginLibraryLeave();
     expect(keepSavedScrollY(3, 1200)).toBe(true);
+  });
+
+  it("stops the restore lock after the user cancels", () => {
+    beginLibraryRestore();
+    expect(keepSavedScrollY(0, 900)).toBe(true);
+    cancelLibraryRestore();
+    expect(isLibraryRestoreCancelled()).toBe(true);
+    expect(keepSavedScrollY(0, 900)).toBe(false);
   });
 
   it("remembers a return from a source only once", () => {

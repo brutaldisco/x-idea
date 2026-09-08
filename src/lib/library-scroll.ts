@@ -14,6 +14,7 @@ const visitListeners = new Set<() => void>();
 let restoreUntil = 0;
 let leaveUntil = 0;
 let pendingReturn = false;
+let restoreCancelled = false;
 
 function now(): number {
   return Date.now();
@@ -45,6 +46,20 @@ export function lockBrowserScrollRestoration(): void {
 
 export function beginLibraryRestore(): void {
   restoreUntil = now() + LOCK_MS;
+  restoreCancelled = false;
+}
+
+export function cancelLibraryRestore(): void {
+  restoreUntil = 0;
+  restoreCancelled = true;
+}
+
+export function isLibraryRestoreCancelled(): boolean {
+  return restoreCancelled;
+}
+
+export function clearLibraryRestoreCancel(): void {
+  restoreCancelled = false;
 }
 
 export function beginLibraryLeave(): void {
@@ -55,6 +70,7 @@ export function resetLibraryScrollLocks(): void {
   restoreUntil = 0;
   leaveUntil = 0;
   pendingReturn = false;
+  restoreCancelled = false;
 }
 
 export function markLibraryReturn(): void {

@@ -41,6 +41,7 @@ const ctx: AccountContext = {
     status: "active",
     syncEnabled: true,
     lastSyncedAt: null,
+    backfillExhausted: false,
   },
 };
 

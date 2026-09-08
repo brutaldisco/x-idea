@@ -15,6 +15,7 @@ export type XAccountPublic = {
   status: string;
   syncEnabled: boolean;
   lastSyncedAt: string | null;
+  backfillExhausted: boolean;
 };
 
 export type XAccountSecret = XAccountPublic & {
@@ -23,6 +24,7 @@ export type XAccountSecret = XAccountPublic & {
   refreshToken: string;
   tokenExpiresAt: string;
   lastSyncHeadTweetId: string | null;
+  backfillPaginationToken: string | null;
 };
 
 export async function countXAccounts(): Promise<number> {
@@ -154,7 +156,8 @@ export async function listXAccounts(): Promise<XAccountPublic[]> {
   }
   await ensureSchema();
   const result = await getClient().execute(
-    `SELECT id, x_username, x_name, status, sync_enabled, last_synced_at
+    `SELECT id, x_username, x_name, status, sync_enabled, last_synced_at,
+            backfill_exhausted
      FROM x_account ORDER BY created_at ASC LIMIT ${MAX_X_ACCOUNTS}`,
   );
   return result.rows.map((row) => ({
@@ -164,6 +167,7 @@ export async function listXAccounts(): Promise<XAccountPublic[]> {
     status: String(row.status),
     syncEnabled: Number(row.sync_enabled) === 1,
     lastSyncedAt: row.last_synced_at ? String(row.last_synced_at) : null,
+    backfillExhausted: Number(row.backfill_exhausted) === 1,
   }));
 }
 
@@ -187,12 +191,16 @@ function asSecret(row: Record<string, unknown>): XAccountSecret {
     lastSyncHeadTweetId: row.last_sync_head_tweet_id
       ? String(row.last_sync_head_tweet_id)
       : null,
+    backfillPaginationToken: row.backfill_pagination_token
+      ? String(row.backfill_pagination_token)
+      : null,
+    backfillExhausted: Number(row.backfill_exhausted) === 1,
   };
 }
 
 const SECRET_COLUMNS = `id, x_user_id, x_username, x_name, status, sync_enabled,
   last_synced_at, access_token, refresh_token, token_expires_at,
-  last_sync_head_tweet_id`;
+  last_sync_head_tweet_id, backfill_pagination_token, backfill_exhausted`;
 
 export async function getXAccountSecret(
   id: string,
@@ -262,6 +270,22 @@ export async function markXAccountReauth(id: string): Promise<void> {
     args: [id],
   });
   logger.warn({ id }, "x_account reauth_required");
+}
+
+export async function markXAccountBackfill(
+  id: string,
+  token: string | null,
+  exhausted: boolean,
+): Promise<void> {
+  await getClient().execute({
+    sql: `UPDATE x_account SET
+      backfill_pagination_token = ?,
+      backfill_exhausted = ?,
+      last_synced_at = datetime('now'),
+      updated_at = datetime('now')
+    WHERE id = ?`,
+    args: [token, exhausted ? 1 : 0, id],
+  });
 }
 
 export async function markXAccountSynced(

@@ -35,10 +35,33 @@ export async function POST(request: Request) {
       );
     }
     lastManual = now;
+    let body: Record<string, unknown> = {};
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      try {
+        const parsed = (await request.json()) as unknown;
+        if (parsed && typeof parsed === "object") {
+          body = parsed as Record<string, unknown>;
+        }
+      } catch {
+        body = {};
+      }
+    }
+    const mode = body.mode === "backfill" ? "backfill" : undefined;
+    const accountId =
+      typeof body.x_account_id === "string" && body.x_account_id.length > 0
+        ? body.x_account_id
+        : undefined;
     await enqueueJob({
       type: "sync_bookmarks",
-      payload: { trigger: "manual" },
-      dedupeKey: `manual:${Math.floor(now / THROTTLE_MS)}`,
+      payload: {
+        trigger: "manual",
+        mode,
+        x_account_id: accountId,
+      },
+      dedupeKey: mode
+        ? `backfill:${accountId ?? "all"}:${Math.floor(now / THROTTLE_MS)}`
+        : `manual:${Math.floor(now / THROTTLE_MS)}`,
     });
     const result = await runJobs({ max: 3 });
     return Response.json({ ok: true, ...result });
