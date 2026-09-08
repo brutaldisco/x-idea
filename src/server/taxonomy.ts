@@ -3,7 +3,9 @@ import { ensureSchema } from "@/db/ensure";
 import { SEED_CATEGORIES } from "@/db/seed";
 import { AppError } from "@/lib/errors";
 import { newId } from "@/lib/ids";
+import { logger } from "@/lib/logger";
 import { isTaxonomyItemId } from "@/lib/taxonomy-id";
+import { taxonomySortOrders } from "@/lib/taxonomy-order";
 import { INFO_TYPE_LABELS, INFO_TYPES } from "@/server/ai/info-types";
 import { listXAccounts } from "@/server/x/account";
 
@@ -147,6 +149,36 @@ export async function renameTaxonomyItem(input: {
     }
   }
   return { id: input.itemId, name };
+}
+
+export async function reorderTaxonomyItems(input: {
+  accountId: string;
+  kind: TaxonomyKind;
+  itemIds: string[];
+}): Promise<AccountTaxonomy> {
+  await ensureSchema();
+  await assertAccount(input.accountId);
+  await ensureAccountTaxonomy(input.accountId);
+  const current = await readAccountTaxonomy(input.accountId);
+  const list =
+    input.kind === "category" ? current.categories : current.infoTypes;
+  const updates = taxonomySortOrders(
+    list.map((row) => row.id),
+    input.itemIds,
+  );
+  const client = getClient();
+  for (const row of updates) {
+    await client.execute({
+      sql: `UPDATE account_taxonomy SET sort_order = ?
+            WHERE x_account_id = ? AND kind = ? AND item_id = ?`,
+      args: [row.sortOrder, input.accountId, input.kind, row.itemId],
+    });
+  }
+  logger.info(
+    { accountId: input.accountId, kind: input.kind, count: updates.length },
+    "taxonomy.reordered",
+  );
+  return readAccountTaxonomy(input.accountId);
 }
 
 export async function removeTaxonomyItem(input: {

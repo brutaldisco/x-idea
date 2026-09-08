@@ -6,7 +6,7 @@
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
 | 版 | **v3.6** |
 | 作成日 | 2026-07-12 |
-| 改訂日 | **2026-09-07** |
+| 改訂日 | **2026-09-08** |
 | ステータス | 実装着手可能 |
 | 外部サービス情報の確認日 | 2026-09-04（Next.js / Turso / Gemini / X API / Vercel / AI SDK / MCP の各公式ドキュメント） |
 | リポジトリ | `https://github.com/brutaldisco/x-idea.git`（空。本書のコミットから開始） |
@@ -405,7 +405,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **アカウント**：1 枚のカードにまとめる。見出しは選んだ `@name`（「このアカウントの設定」）。上部で表示するアカウントを 1 件選び、同じ枠内に X 連携と分類を出す。同時に複数アカウントの設定は表示しない。切替は既存の `x_ctx`（Library / Inbox と同じ）。「アカウントを追加」もここ（最大 3）。
 - **既定のアカウント**（ADR-014）：アカウント設定カードの外に、別の設定として置く。見出しは「新しいセッション / 既定のアカウント」。`settings.default_x_account_id`。別ブラウザ・初回に開く。表示中アカウントとは連動しない。選択表示は「既定 / 既定にする」。
 - **X 連携**：選んだアカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、個別解除。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
-- **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除）。初期値は seed カテゴリと既定の情報タイプ。Library の絞り込みと AI enrich がこの一覧を使う（`account_taxonomy`）。
+- **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除・**ハンドルで並べ替え**）。見出しに `@ハンドル` を出す。初期値は seed カテゴリと既定の情報タイプ。Library の絞り込みと AI enrich がこの一覧の順を使う（`account_taxonomy.sort_order`、ADR-015）。
 - **同期**：自動は最短 6 時間＋手動。返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
@@ -1627,7 +1627,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | POST | `/api/sync` | 手動同期（60秒スロットル、最大 3 ジョブ消化） | 同一オリジン | P1 |
 | PATCH | `/api/settings` | `x_api_enabled` / 同期上限 / 既定アカウント（`default_x_account_id`）など。人間が切り替える | 同一オリジン | P1 |
 | GET/POST | `/api/settings/video-folder` | 動画保存フォルダ名の共有。ハンドルはブラウザごと | 同一オリジン | P1 |
-| GET/POST/PATCH/DELETE | `/api/settings/taxonomy` | アカウント別カテゴリ／情報タイプ | 同一オリジン | P1 |
+| GET/POST/PATCH/DELETE | `/api/settings/taxonomy` | アカウント別カテゴリ／情報タイプ。PATCH は改名または `item_ids` で並べ替え | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
 | GET | `/api/sources` | 一覧（フィルタ・カーソル `?cursor=saved_at,id&limit=30`） | 同一オリジン | P1 |
 | GET | `/api/sources/:id` | 詳細（原文・記事・要約・タグ・関連） | 同一オリジン | P1 |
@@ -1973,7 +1973,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-208 | FTS 検索 `/api/search`（trigram、短語 LIKE、bm25 重み、フィルタ）＋ `/api/search/suggest` ＋ Ask SC-04（キーワードモード） | `src/server/search/keyword.ts`, `src/app/(tabs)/ask/*` | T-105 | 日本語 2/3/4 文字クエリでヒット |
 | T-209 | Today SC-01（同期ピル、新着サマリー、Inbox チップ、最近。Briefing/Echo/Insights はプレースホルダ） | `src/app/(tabs)/today/*` | T-204 | `use cache` + Suspense、空状態 3 種 |
 | T-210 | Settings SC-05（**使用量メーター**、外部サービス/課金トグル、同期、AI レーン/キャップ/しきい値、除外ドメイン、表示、データ削除、エクスポート導線）。有料は既定 OFF | `src/app/(tabs)/settings/*`, `src/server/usage/*` | T-204 | 残量・日次バー・アカウント別が見える。付録H のトグルが UI に並ぶ。OFF の機能はジョブ未投入。worker はトグルを勝手に ON にしない |
-| T-211 | Categories SC-08（階層 CRUD、統合） | `src/app/(tabs)/settings/categories/*` | T-204 | 統合で Source 再割当。当面は Settings のアカウント別分類（`account_taxonomy`）で追加・改名・削除 |
+| T-211 | Categories SC-08（階層 CRUD、統合） | `src/app/(tabs)/settings/categories/*` | T-204 | 統合で Source 再割当。当面は Settings のアカウント別分類（`account_taxonomy`）で追加・改名・削除・ハンドル並べ替え。見出しに `@ハンドル` |
 | T-212 | PWA（`/sw.js`、manifest、オフライン閲覧、インストール案内） | `public/sw.js`, `src/app/manifest.ts` | T-209 | Chrome でインストール可、機内モードで直近閲覧可（ADR-008） |
 | T-213 | Instant Navigations 適用と `instant()` E2E、`<Activity>` でタブ状態保持 | `tests/e2e/instant.spec.ts` | T-205〜T-210 | 5 タブすべて instant |
 | T-214 | 任意ゲート（`APP_PASSCODE` / Google、`proxy.ts`、Cookie 1 年） | `src/proxy.ts` | T-001 | 未設定でオープン、設定で `/unlock` |

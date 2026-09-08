@@ -8,6 +8,7 @@ import {
   isTaxonomyKind,
   removeTaxonomyItem,
   renameTaxonomyItem,
+  reorderTaxonomyItems,
   type TaxonomyKind,
 } from "@/server/taxonomy";
 
@@ -33,6 +34,13 @@ function itemIdOf(raw: unknown): string {
     throw new AppError("VALIDATION", "項目が不正です");
   }
   return raw;
+}
+
+function itemIdsOf(raw: unknown[]): string[] {
+  if (raw.length === 0 || raw.length > 40) {
+    throw new AppError("VALIDATION", "並べ替えの一覧が不正です");
+  }
+  return raw.map(itemIdOf);
 }
 
 export async function GET(request: Request) {
@@ -99,10 +107,19 @@ export async function PATCH(request: Request) {
       account_id?: string;
       kind?: string;
       item_id?: string;
+      item_ids?: unknown;
       name?: string;
     };
     if (typeof body.account_id !== "string") {
       throw new AppError("VALIDATION", "アカウントが必要です");
+    }
+    if (Array.isArray(body.item_ids)) {
+      const taxonomy = await reorderTaxonomyItems({
+        accountId: body.account_id,
+        kind: kindOf(body.kind),
+        itemIds: itemIdsOf(body.item_ids),
+      });
+      return Response.json({ ok: true, taxonomy });
     }
     const item = await renameTaxonomyItem({
       accountId: body.account_id,

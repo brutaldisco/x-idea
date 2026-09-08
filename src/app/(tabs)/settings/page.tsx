@@ -177,6 +177,7 @@ async function SettingsBody({
             <AccountTaxonomyCard
               key={current?.id ?? "none"}
               accountId={current?.id ?? null}
+              accountUsername={current?.username ?? null}
               initial={taxonomy}
             />
           </div>
