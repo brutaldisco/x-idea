@@ -43,14 +43,14 @@ export function SavedVideoPlayer({
   }, [onClose]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-3xl overflow-hidden rounded-lg border border-line bg-paper"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4">
+      <button
+        type="button"
+        aria-label="閉じる"
+        className="absolute inset-0"
+        onClick={onClose}
+      />
+      <div className="relative w-full max-w-3xl overflow-hidden rounded-lg border border-line bg-paper">
         <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
           <p className="min-w-0 truncate text-sm">{title}</p>
           <div className="flex shrink-0 items-center gap-1">
@@ -87,7 +87,9 @@ export function SavedVideoPlayer({
           onLoadedData={(event) => {
             void event.currentTarget.play().catch(() => undefined);
           }}
-        />
+        >
+          <track kind="captions" />
+        </video>
       </div>
     </div>
   );

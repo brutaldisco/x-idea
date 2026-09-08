@@ -161,13 +161,7 @@ export function LibraryWorkspace({
       void query.refetch();
     }, wait);
     return () => window.clearTimeout(timer);
-  }, [
-    query.data,
-    query.isError,
-    query.isFetching,
-    query.refetch,
-    restoring,
-  ]);
+  }, [query.data, query.isError, query.isFetching, query.refetch, restoring]);
 
   const rows = query.data?.pages.flatMap((page) => page.items) ?? [];
   const first = query.data?.pages[0];

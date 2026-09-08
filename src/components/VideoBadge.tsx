@@ -2,10 +2,12 @@ import { QueueBadge } from "@/components/QueueBadge";
 import { SavedBadge } from "@/components/SavedBadge";
 import { type VideoBadgeTone, videoBadgeCopy } from "@/lib/video-badge";
 
-const TONE_CLASS: Record<Exclude<VideoBadgeTone, "saved" | "pending">, string> =
-  {
-    video: "bg-ink/80 text-paper",
-  };
+const TONE_CLASS: Record<
+  Exclude<VideoBadgeTone, "saved" | "pending">,
+  string
+> = {
+  video: "bg-ink/80 text-paper",
+};
 
 export function VideoBadge({
   saveStatus,
