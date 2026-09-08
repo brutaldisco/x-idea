@@ -1,8 +1,9 @@
+import { Suspense } from "react";
 import { LibraryWorkspace } from "@/components/LibraryWorkspace";
 import { parseLibraryFilters, parseLibraryView } from "@/lib/source-filters";
 import { parseSourceSort } from "@/lib/source-sort";
 
-export default async function LibraryPage({
+async function LibraryBody({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -14,6 +15,21 @@ export default async function LibraryPage({
     ),
   );
   return (
+    <LibraryWorkspace
+      sort={parseSourceSort(params.sort)}
+      view={parseLibraryView(params.view)}
+      filters={parseLibraryFilters(query)}
+      search={query.toString()}
+    />
+  );
+}
+
+export default function LibraryPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  return (
     <main className="min-w-0 overflow-x-clip px-4 pt-8">
       <h1 className="font-semibold text-2xl">Library</h1>
       <form action="/ask" className="mt-4">
@@ -23,12 +39,11 @@ export default async function LibraryPage({
           placeholder="ライブラリを検索（Ask）"
         />
       </form>
-      <LibraryWorkspace
-        sort={parseSourceSort(params.sort)}
-        view={parseLibraryView(params.view)}
-        filters={parseLibraryFilters(query)}
-        search={query.toString()}
-      />
+      <Suspense
+        fallback={<p className="mt-16 text-ink-2 text-sm">読み込み中…</p>}
+      >
+        <LibraryBody searchParams={searchParams} />
+      </Suspense>
     </main>
   );
 }
