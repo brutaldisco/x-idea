@@ -331,7 +331,8 @@ export function LibraryWorkspace({
       captureLibraryScroll({
         key: scrollKey,
         href: returnHref,
-        sourceId: sourceIdFromHref(link.getAttribute("href") ?? link.href),
+        sourceId:
+          sourceIdFromHref(link.getAttribute("href") ?? link.href) ?? undefined,
         pageCount,
       });
     }
