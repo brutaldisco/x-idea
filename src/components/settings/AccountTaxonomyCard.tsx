@@ -1,14 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { moveTaxonomyItem } from "@/lib/taxonomy-order";
 import type { AccountTaxonomy, TaxonomyKind } from "@/server/taxonomy";
 
 export function AccountTaxonomyCard({
   accountId,
+  accountUsername,
   initial,
 }: {
   accountId: string | null;
+  accountUsername: string | null;
   initial: AccountTaxonomy | null;
 }) {
   const router = useRouter();
@@ -22,10 +25,15 @@ export function AccountTaxonomyCard({
   async function request(
     path: string,
     init: RequestInit,
-  ): Promise<{ ok: boolean; error?: { message?: string } }> {
+  ): Promise<{
+    ok: boolean;
+    taxonomy?: AccountTaxonomy;
+    error?: { message?: string };
+  }> {
     const res = await fetch(path, init);
     return (await res.json().catch(() => ({}))) as {
       ok: boolean;
+      taxonomy?: AccountTaxonomy;
       error?: { message?: string };
     };
   }
@@ -123,6 +131,41 @@ export function AccountTaxonomyCard({
     router.refresh();
   }
 
+  async function reorder(kind: TaxonomyKind, itemIds: string[]) {
+    if (!accountId) {
+      return;
+    }
+    const key = kind === "category" ? "categories" : "infoTypes";
+    const previous = taxonomy[key];
+    setTaxonomy((prev) => ({
+      ...prev,
+      [key]: itemIds
+        .map((id) => prev[key].find((row) => row.id === id))
+        .filter((row): row is { id: string; name: string } => Boolean(row)),
+    }));
+    setBusy(true);
+    setMessage(null);
+    const body = await request("/api/settings/taxonomy", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        account_id: accountId,
+        kind,
+        item_ids: itemIds,
+      }),
+    });
+    setBusy(false);
+    if (!body.ok) {
+      setTaxonomy((prev) => ({ ...prev, [key]: previous }));
+      setMessage(body.error?.message ?? "並べ替えできませんでした");
+      return;
+    }
+    if (body.taxonomy) {
+      setTaxonomy(body.taxonomy);
+    }
+    router.refresh();
+  }
+
   if (!accountId) {
     return (
       <section>
@@ -136,9 +179,17 @@ export function AccountTaxonomyCard({
 
   return (
     <section>
-      <h3 className="font-semibold">分類</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-semibold">分類</h3>
+        {accountUsername ? (
+          <span className="rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">
+            @{accountUsername}
+          </span>
+        ) : null}
+      </div>
       <p className="mt-2 text-ink-2 text-sm">
-        このアカウントの Library 絞り込みと AI 分類に使います。
+        @{accountUsername ?? "このアカウント"} の Library 絞り込みと AI
+        分類に使います。左のハンドルで並べ替えできます。
       </p>
       <div className="mt-4 grid gap-4 min-[48rem]:grid-cols-2">
         <TaxonomyList
@@ -153,6 +204,7 @@ export function AccountTaxonomyCard({
           onAdd={() => void add("category")}
           onRename={(id, name) => void rename("category", id, name)}
           onRemove={(id) => void remove("category", id)}
+          onReorder={(itemIds) => void reorder("category", itemIds)}
         />
         <TaxonomyList
           accountId={accountId}
@@ -166,6 +218,7 @@ export function AccountTaxonomyCard({
           onAdd={() => void add("info_type")}
           onRename={(id, name) => void rename("info_type", id, name)}
           onRemove={(id) => void remove("info_type", id)}
+          onReorder={(itemIds) => void reorder("info_type", itemIds)}
         />
       </div>
       {message ? <p className="mt-3 text-ink-2 text-xs">{message}</p> : null}
@@ -183,6 +236,7 @@ function TaxonomyList({
   onAdd,
   onRename,
   onRemove,
+  onReorder,
 }: {
   accountId: string;
   title: string;
@@ -193,13 +247,113 @@ function TaxonomyList({
   onAdd: () => void;
   onRename: (id: string, name: string) => void;
   onRemove: (id: string) => void;
+  onReorder: (itemIds: string[]) => void;
 }) {
+  const listRef = useRef<HTMLUListElement>(null);
+  const overRef = useRef<string | null>(null);
+  const onReorderRef = useRef(onReorder);
+  onReorderRef.current = onReorder;
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const canReorder = items.length > 1 && !disabled;
+
+  useEffect(() => {
+    if (!draggingId) {
+      return;
+    }
+    function onMove(event: PointerEvent) {
+      const id = itemIdAtPoint(listRef.current, event.clientY);
+      if (id) {
+        overRef.current = id;
+        setOverId(id);
+      }
+    }
+    function finish(commit: boolean) {
+      const sourceId = draggingId;
+      const targetId = overRef.current;
+      overRef.current = null;
+      setDraggingId(null);
+      setOverId(null);
+      if (commit && sourceId && targetId && sourceId !== targetId) {
+        const next = moveTaxonomyItem(items, sourceId, targetId);
+        if (next !== items) {
+          onReorderRef.current(next.map((row) => row.id));
+        }
+      }
+    }
+    function onUp() {
+      finish(true);
+    }
+    function onCancel() {
+      finish(false);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [draggingId, items]);
+
+  function moveByKey(itemId: string, direction: -1 | 1) {
+    const index = items.findIndex((row) => row.id === itemId);
+    const target = items[index + direction];
+    if (!target) {
+      return;
+    }
+    onReorder(moveTaxonomyItem(items, itemId, target.id).map((row) => row.id));
+  }
+
   return (
     <section>
       <h3 className="text-sm">{title}</h3>
-      <ul className="mt-2 space-y-2">
+      <ul ref={listRef} className="mt-2 space-y-2">
         {items.map((item) => (
-          <li key={`${accountId}-${item.id}`} className="flex gap-2">
+          <li
+            key={`${accountId}-${item.id}`}
+            data-item-id={item.id}
+            className={`flex gap-2 ${
+              draggingId === item.id
+                ? "opacity-60"
+                : overId === item.id && draggingId
+                  ? "rounded-lg ring-1 ring-ink"
+                  : ""
+            }`}
+          >
+            <button
+              type="button"
+              disabled={!canReorder}
+              aria-label={`${item.name}を並べ替え`}
+              title="ドラッグ、または矢印キーで並べ替え"
+              onPointerDown={(event) => {
+                if (!canReorder || event.button !== 0) {
+                  return;
+                }
+                event.preventDefault();
+                event.currentTarget.setPointerCapture(event.pointerId);
+                overRef.current = item.id;
+                setDraggingId(item.id);
+                setOverId(item.id);
+              }}
+              onKeyDown={(event) => {
+                if (!canReorder) {
+                  return;
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  moveByKey(item.id, -1);
+                }
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  moveByKey(item.id, 1);
+                }
+              }}
+              className="grid h-9 w-8 shrink-0 cursor-grab place-items-center rounded-lg border border-line bg-paper text-ink-2 active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+            >
+              <GripIcon />
+            </button>
             <input
               defaultValue={item.name}
               disabled={disabled}
@@ -245,5 +399,38 @@ function TaxonomyList({
         </button>
       </form>
     </section>
+  );
+}
+
+function itemIdAtPoint(
+  list: HTMLUListElement | null,
+  clientY: number,
+): string | null {
+  if (!list) {
+    return null;
+  }
+  const rows = [...list.querySelectorAll<HTMLElement>("[data-item-id]")];
+  if (rows.length === 0) {
+    return null;
+  }
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect();
+    if (clientY <= rect.top + rect.height / 2) {
+      return row.dataset.itemId ?? null;
+    }
+  }
+  return rows.at(-1)?.dataset.itemId ?? null;
+}
+
+function GripIcon() {
+  return (
+    <span aria-hidden className="grid grid-cols-2 gap-0.5">
+      <span className="h-1 w-1 rounded-full bg-current" />
+      <span className="h-1 w-1 rounded-full bg-current" />
+      <span className="h-1 w-1 rounded-full bg-current" />
+      <span className="h-1 w-1 rounded-full bg-current" />
+      <span className="h-1 w-1 rounded-full bg-current" />
+      <span className="h-1 w-1 rounded-full bg-current" />
+    </span>
   );
 }
