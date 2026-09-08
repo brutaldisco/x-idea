@@ -8,9 +8,19 @@ import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import { LIBRARY_SOURCES_KEY } from "@/lib/library-cache";
 import {
-  canRestoreLibraryScroll,
+  applyLibraryVisit,
+  beginLibraryLeave,
+  beginLibraryRestore,
+  canApplyLibraryVisit,
+  captureLibraryScroll,
+  consumeLibraryReturn,
+  libraryHref,
   libraryScrollKey,
-  readLibraryScroll,
+  lockBrowserScrollRestoration,
+  markLibraryReturn,
+  peekLibraryReturn,
+  readLibraryVisit,
+  sourceIdFromHref,
   writeLibraryScroll,
 } from "@/lib/library-scroll";
 import {
@@ -131,6 +141,7 @@ export function LibraryWorkspace({
     [filterKey, sort],
   );
   const scrollKey = libraryScrollKey({ sort, filters: filterKey, view });
+  const returnHref = libraryHref(search);
   const prevScrollKey = useRef(scrollKey);
   if (prevScrollKey.current !== scrollKey) {
     prevScrollKey.current = scrollKey;
@@ -146,20 +157,21 @@ export function LibraryWorkspace({
         filters,
         cursor: pageParam,
       }),
+    enabled: !restoring,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     refetchOnMount: (entry) => entry.state.data == null,
+    refetchOnReconnect: false,
     staleTime: 5 * 60_000,
   });
 
   useEffect(() => {
-    if (query.data || query.isFetching || query.isError) {
+    if (restoring || query.data || query.isFetching || query.isError) {
       return;
     }
-    const wait = restoring ? 400 : 0;
     const timer = window.setTimeout(() => {
       void query.refetch();
-    }, wait);
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [query.data, query.isError, query.isFetching, query.refetch, restoring]);
 
@@ -171,79 +183,173 @@ export function LibraryWorkspace({
   const infoTypes = first?.infoTypes ?? [];
 
   useLayoutEffect(() => {
-    const y = readLibraryScroll(scrollKey);
-    if (y == null) {
+    lockBrowserScrollRestoration();
+    const saved = readLibraryVisit();
+    if (peekLibraryReturn()) {
+      consumeLibraryReturn();
+      if (saved && returnHref === "/library" && saved.href !== "/library") {
+        router.replace(saved.href, { scroll: false });
+        return;
+      }
+    }
+    if (!saved || (saved.key !== scrollKey && saved.href !== returnHref)) {
       restored.current = true;
       return;
     }
+    beginLibraryRestore();
     if (rows.length === 0) {
       return;
     }
     if (
-      canRestoreLibraryScroll(
-        y,
+      canApplyLibraryVisit(
+        saved,
         document.documentElement.scrollHeight,
         window.innerHeight,
       ) ||
       !query.hasNextPage
     ) {
-      window.scrollTo(0, y);
-      restored.current = true;
+      if (applyLibraryVisit(saved)) {
+        restored.current = true;
+      }
     }
-  }, [query.hasNextPage, rows.length, scrollKey]);
+  }, [query.hasNextPage, returnHref, router, rows.length, scrollKey]);
 
   useEffect(() => {
-    if (restored.current || query.isFetchingNextPage) {
+    if (restored.current || query.isFetchingNextPage || restoring) {
       return;
     }
-    const y = readLibraryScroll(scrollKey);
-    if (y == null) {
-      restored.current = true;
+    const saved = readLibraryVisit();
+    if (!saved || (saved.key !== scrollKey && saved.href !== returnHref)) {
       return;
     }
-    if (rows.length === 0) {
-      return;
-    }
-    if (
+    const pages = query.data?.pages.length ?? 0;
+    const needPages = saved.pageCount != null && pages < saved.pageCount;
+    const needHeight =
       query.hasNextPage &&
-      !canRestoreLibraryScroll(
-        y,
+      !canApplyLibraryVisit(
+        saved,
         document.documentElement.scrollHeight,
         window.innerHeight,
-      )
-    ) {
+      );
+    if (needPages || needHeight) {
       void query.fetchNextPage();
     }
   }, [
+    query.data?.pages.length,
     query.fetchNextPage,
     query.hasNextPage,
     query.isFetchingNextPage,
-    rows.length,
+    restoring,
+    returnHref,
     scrollKey,
   ]);
 
   useEffect(() => {
-    const previous = history.scrollRestoration;
-    history.scrollRestoration = "manual";
-    let frame = 0;
-    function persist() {
-      if (!restored.current) {
+    beginLibraryRestore();
+    lockBrowserScrollRestoration();
+    const delays = [0, 50, 100, 200, 400, 800, 1600, 2800];
+    function restore() {
+      const saved = readLibraryVisit();
+      if (!saved || (saved.key !== scrollKey && saved.href !== returnHref)) {
         return;
       }
-      writeLibraryScroll(scrollKey, window.scrollY);
+      if (rows.length === 0) {
+        return;
+      }
+      if (
+        canApplyLibraryVisit(
+          saved,
+          document.documentElement.scrollHeight,
+          window.innerHeight,
+        ) ||
+        !query.hasNextPage
+      ) {
+        if (applyLibraryVisit(saved)) {
+          restored.current = true;
+        }
+      }
+    }
+    const timers = delays.map((ms) => window.setTimeout(restore, ms));
+    function onReveal(event: Event) {
+      const transition = (
+        event as { viewTransition?: { finished?: Promise<void> } }
+      ).viewTransition;
+      if (transition?.finished) {
+        void transition.finished.then(restore);
+        return;
+      }
+      restore();
+    }
+    window.addEventListener("pagereveal", onReveal);
+    window.addEventListener("pageshow", onReveal);
+    return () => {
+      for (const timer of timers) {
+        window.clearTimeout(timer);
+      }
+      window.removeEventListener("pagereveal", onReveal);
+      window.removeEventListener("pageshow", onReveal);
+    };
+  }, [query.hasNextPage, returnHref, rows.length, scrollKey]);
+
+  useEffect(() => {
+    lockBrowserScrollRestoration();
+    let frame = 0;
+    const pageCount = query.data?.pages.length;
+    function persist(leaving: boolean) {
+      if (leaving) {
+        beginLibraryLeave();
+      }
+      const y = window.scrollY;
+      if (!restored.current && y < 8) {
+        return;
+      }
+      writeLibraryScroll(scrollKey, y, returnHref, { pageCount });
     }
     function onScroll() {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(persist);
+      frame = requestAnimationFrame(() => persist(false));
+    }
+    function onHide() {
+      if (document.visibilityState && document.visibilityState !== "hidden") {
+        return;
+      }
+      persist(true);
+    }
+    function onPageHide() {
+      markLibraryReturn();
+      persist(true);
+    }
+    function onLeaveLibrary(event: Event) {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const link = target.closest('a[href^="/source/"]');
+      if (!(link instanceof HTMLAnchorElement)) {
+        return;
+      }
+      captureLibraryScroll({
+        key: scrollKey,
+        href: returnHref,
+        sourceId: sourceIdFromHref(link.getAttribute("href") ?? link.href),
+        pageCount,
+      });
     }
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onHide);
+    document.addEventListener("pointerdown", onLeaveLibrary, true);
+    document.addEventListener("click", onLeaveLibrary, true);
     return () => {
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onHide);
+      document.removeEventListener("pointerdown", onLeaveLibrary, true);
+      document.removeEventListener("click", onLeaveLibrary, true);
       cancelAnimationFrame(frame);
-      persist();
-      history.scrollRestoration = previous;
+      persist(true);
     };
-  }, [scrollKey]);
+  }, [query.data?.pages.length, returnHref, scrollKey]);
 
   useEffect(() => {
     const node = sentinel.current;

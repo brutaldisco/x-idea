@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { InboxWorkspace } from "@/components/InboxWorkspace";
+import { LibraryBackLink } from "@/components/LibraryBackLink";
 import { parseSourceSort } from "@/lib/source-sort";
 import {
   countInboxBulk,
@@ -34,12 +34,9 @@ async function InboxBody({
         <p className="text-ink-2">
           {label}の Inbox は空です。ライブラリへどうぞ。
         </p>
-        <Link
-          href="/library"
-          className="mt-4 inline-flex min-h-11 items-center rounded-full bg-ink px-4 text-paper text-sm"
-        >
+        <LibraryBackLink className="mt-4 inline-flex min-h-11 items-center rounded-full bg-ink px-4 text-paper text-sm">
           ライブラリを開く
-        </Link>
+        </LibraryBackLink>
       </div>
     );
   }

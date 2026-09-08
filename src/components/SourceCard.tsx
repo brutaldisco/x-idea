@@ -49,6 +49,7 @@ export function SourceCard({
 
   return (
     <li
+      data-source-id={id}
       className={
         variant === "rail"
           ? "w-56 shrink-0 rounded-[var(--radius-card)] border border-line bg-paper-2 p-3"

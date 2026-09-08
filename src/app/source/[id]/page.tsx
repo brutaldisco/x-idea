@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after, connection } from "next/server";
 import { ArticleBlock } from "@/components/ArticleBlock";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
+import { LibraryBackLink } from "@/components/LibraryBackLink";
 import { PostBlock } from "@/components/PostBlock";
 import { ReaderSegments } from "@/components/ReaderSegments";
 import { SourceActions } from "@/components/SourceActions";
@@ -80,14 +80,7 @@ export default async function SourcePage({
   return (
     <main className="scroll-smooth px-3 pt-8 pb-8 min-[48rem]:px-6">
       <div className="flex items-center justify-between gap-3">
-        <Link
-          href="/library"
-          scroll={false}
-          transitionTypes={["nav-back"]}
-          className="text-ink-2 text-sm hover:underline"
-        >
-          ← ライブラリ
-        </Link>
+        <LibraryBackLink />
         <div className="flex items-center gap-2">
           <p className="text-ink-2 text-xs">{source.availability}</p>
           <SourceCardMenu sourceId={source.id} url={source.post.url} />

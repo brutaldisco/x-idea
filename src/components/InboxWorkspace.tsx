@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
@@ -11,6 +10,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { LibraryBackLink } from "@/components/LibraryBackLink";
 import { LinkedText } from "@/components/LinkedText";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import { SwipeCard } from "@/components/SwipeCard";
@@ -233,12 +233,9 @@ export function InboxWorkspace({
         <p className="text-ink-2">
           {label}の Inbox は空です。ライブラリへどうぞ。
         </p>
-        <Link
-          href="/library"
-          className="mt-4 inline-flex min-h-11 items-center rounded-full bg-ink px-4 text-paper text-sm"
-        >
+        <LibraryBackLink className="mt-4 inline-flex min-h-11 items-center rounded-full bg-ink px-4 text-paper text-sm">
           ライブラリを開く
-        </Link>
+        </LibraryBackLink>
       </div>
     );
   }

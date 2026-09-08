@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { removeSourceFromLibraryQueries } from "@/lib/library-cache";
+import { readLibraryHref } from "@/lib/library-scroll";
 
 export function SourceCardMenu({
   sourceId,
@@ -57,7 +58,7 @@ export function SourceCardMenu({
       setOpen(false);
       removeSourceFromLibraryQueries(queryClient, sourceId);
       if (pathname.startsWith("/source/")) {
-        router.push("/library", { scroll: false });
+        router.push(readLibraryHref() ?? "/library", { scroll: false });
         return;
       }
       if (!pathname.startsWith("/library")) {

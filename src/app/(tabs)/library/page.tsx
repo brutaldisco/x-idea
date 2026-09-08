@@ -1,34 +1,7 @@
 import { Suspense } from "react";
-import { LibraryWorkspace } from "@/components/LibraryWorkspace";
-import { parseLibraryFilters, parseLibraryView } from "@/lib/source-filters";
-import { parseSourceSort } from "@/lib/source-sort";
+import { LibraryClient } from "@/components/LibraryClient";
 
-async function LibraryBody({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
-  const params = await searchParams;
-  const query = new URLSearchParams(
-    Object.entries(params).filter((entry): entry is [string, string] =>
-      Boolean(entry[1]),
-    ),
-  );
-  return (
-    <LibraryWorkspace
-      sort={parseSourceSort(params.sort)}
-      view={parseLibraryView(params.view)}
-      filters={parseLibraryFilters(query)}
-      search={query.toString()}
-    />
-  );
-}
-
-export default function LibraryPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
+export default function LibraryPage() {
   return (
     <main className="min-w-0 overflow-x-clip px-4 pt-8">
       <h1 className="font-semibold text-2xl">Library</h1>
@@ -42,7 +15,7 @@ export default function LibraryPage({
       <Suspense
         fallback={<p className="mt-16 text-ink-2 text-sm">読み込み中…</p>}
       >
-        <LibraryBody searchParams={searchParams} />
+        <LibraryClient />
       </Suspense>
     </main>
   );
