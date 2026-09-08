@@ -641,7 +641,7 @@ function TaxonomyRow({
         }
         className="grid h-11 w-9 shrink-0 cursor-grab touch-none select-none place-items-center text-ink-2 outline-none [-webkit-touch-callout:none] [-webkit-user-select:none] active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
       >
-        <GripIcon />
+        <TaxonomyGripIcon />
       </button>
       {preview ? (
         <span className="min-w-0 flex-1 truncate rounded-lg border border-line bg-paper px-2 py-1.5 text-sm">
@@ -682,7 +682,7 @@ function vibrate(ms: number) {
   }
 }
 
-function GripIcon() {
+function TaxonomyGripIcon() {
   return (
     <span aria-hidden className="grid grid-cols-2 gap-0.5">
       <span className="h-1 w-1 rounded-full bg-current" />
