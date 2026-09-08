@@ -3,7 +3,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { writeLibraryAccountId } from "@/lib/library-account";
 import { resetLibraryQueries } from "@/lib/library-cache";
+import { clearSourcesHttpCache } from "@/lib/pwa";
 import type { XAccountPublic } from "@/server/x/account";
 
 function SyncBullet({
@@ -45,6 +47,10 @@ export function AccountSwitcher({
   const [, startTransition] = useTransition();
   const current =
     accounts.find((account) => account.id === currentId) ?? accounts[0] ?? null;
+
+  useEffect(() => {
+    writeLibraryAccountId(current?.id ?? currentId);
+  }, [current?.id, currentId]);
 
   useEffect(() => {
     if (!open) {
@@ -96,7 +102,9 @@ export function AccountSwitcher({
                         .then((res) => {
                           if (res.ok) {
                             setOpen(false);
+                            writeLibraryAccountId(account.id);
                             resetLibraryQueries(queryClient);
+                            void clearSourcesHttpCache();
                             startTransition(() => router.refresh());
                           }
                         })

@@ -1,40 +1,26 @@
-import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { Suspense } from "react";
-import { AccountSwitcher } from "@/components/AccountSwitcher";
-import { BottomDock, DockProvider } from "@/components/BottomDock";
-import { InstallHint } from "@/components/pwa/InstallHint";
-import { TabBar } from "@/components/TabBar";
-import { TickOnMount } from "@/components/TickOnMount";
-import { ensureSchema } from "@/db/ensure";
-import { listXAccounts } from "@/server/x/account";
-import { getAccountContext } from "@/server/x/context";
+import { AccountChrome } from "@/components/AccountChrome";
+import { AppChrome } from "@/components/AppChrome";
 
-async function AccountChrome() {
-  await connection();
-  await ensureSchema();
-  const [accounts, ctx] = await Promise.all([
-    listXAccounts(),
-    getAccountContext(),
-  ]);
-  const currentId = ctx.kind === "account" ? ctx.account.id : null;
-  return <AccountSwitcher accounts={accounts} currentId={currentId} />;
-}
-
-export default function TabsLayout({ children }: { children: ReactNode }) {
+export default function TabsLayout({
+  children,
+  reader,
+}: {
+  children: ReactNode;
+  reader: ReactNode;
+}) {
   return (
-    <DockProvider>
-      <div className="mx-auto min-h-dvh max-w-3xl pb-32 min-[48rem]:pb-24">
-        <TickOnMount />
-        {children}
+    <AppChrome
+      reader={reader}
+      installHint
+      account={
         <Suspense fallback={null}>
           <AccountChrome />
         </Suspense>
-        <InstallHint />
-        <BottomDock>
-          <TabBar />
-        </BottomDock>
-      </div>
-    </DockProvider>
+      }
+    >
+      {children}
+    </AppChrome>
   );
 }

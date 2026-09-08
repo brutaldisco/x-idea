@@ -356,7 +356,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **カード**：投稿者、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。動画サムネは保存状態でバッジを変える（未保存「動画」／`queued`・`downloading`「キュー」／`video_downloads.status='ready'`「保存済」）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Library カードのサムネに出す。Reader ギャラリーはタイル下部だけ（サムネ上は重ねない）。`ready` の動画サムネはタップでアプリ内再生（プレーヤーは **1本リピート** のトグルのみ）。**3 点メニュー**から「X で開く」と **削除**（DB 行＋ローカル画像/動画ファイル。`dismissed_bookmarks` に残し同期では戻さない。`bookmark.write` があれば X のブックマークも外す。ADR-013）。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
 - **カーソルページネーション**：30件、Intersection Observer で追加読み込み。追加読み込み済みのページは Reader 往復後も保持する。
-- **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示の URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻し、キャッシュ済みページを出したあと、一覧が十分な高さになるまで追加読み込みして同じ位置へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む（戻るたびにサーバー待ちで一覧を消さない）。
+- **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示の URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻し、キャッシュ済みページを出したあと、一覧が十分な高さになるまで追加読み込みして同じ位置へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む（戻るたびにサーバー待ちで一覧を消さない）。読み込み・キャッシュ再編（一覧 DOM を往復で残す、persist を IndexedDB、SW TTL）は `docs/design/2026-09-09-library-load-cache.md`。
 - **削除**：一覧はキャッシュから当該行を外し、ページ全体の再取得はしない。
 - **Atlas（P2）**：`<canvas>`（`d3-force` + `d3-zoom`、または `pixi.js`）。ノード＝Source（最大 3,000 表示、超過は代表点に集約）。座標はサーバーで週次計算（PCA→UMAP 相当の近似、`source_layout` テーブル）。クラスタ命名は Flash-Lite。タップ→クラスタ内リスト、ロングタップ→そのクラスタを Lens 化。タイムスライダーで `saved_at` によるフェード。PC 優先、モバイルは簡易（ピンチズームのみ）。
 
@@ -373,7 +373,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.5 SC-06 Reader（Source 詳細）
 
-- **戻り**：ヘッダー「← ライブラリ」は直近の Library URL（並び・フィルタ・表示）へ戻す。`/library` 固定にはしない（8.3）。
+- **戻り**：ヘッダー「← ライブラリ」は直近の Library URL（並び・フィルタ・表示）へ戻す。`/library` 固定にはしない（8.3）。Library 起点では並列ルートで一覧を残す（ADR-016）。
 - **ヒーロー**：投稿者アバター・名前・日時・X で開く。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。
 - **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは Reader で対象ごとに手動取得**し、取得後は折りたたみ（件数つき、既定は展開）。未取得時はボタン、トグル OFF 時は案内。未保存の動画はアプリ内再生せず **サムネイル＋「X で見る」＋「あとで保存」**（ダウンロードキューへ投入、14.6 / SC-15）。`video_downloads.status='ready'` の動画はサムネタップでアプリ内再生（**1本リピート** のトグルのみ。Library カードと同じ）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**（`queued` / `downloading`）は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Reader ギャラリーはタイル下部だけに出し、サムネ上には重ねない。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。本文側に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。Reader 上部に翻訳手順の常時説明は出さない。ボタンはかな優勢の日本語本文では出さず、**漢字だけの中国語など他言語では出す**。記事は投稿 `lang` を使わず、クリック時に Language Detector が本文を見る。X の自動翻訳文は API に無い。原文カラムは書き換えない。
@@ -584,7 +584,7 @@ UI/UX の判断に迷ったら以下に従う。
 | ランタイム | **Node.js 24 LTS**、**pnpm 10** | Vercel 対応 |
 | フレームワーク | **Next.js 16.3.x**（App Router、Turbopack、`cacheComponents: true`、`partialPrefetching: true`、React Compiler） | `middleware.ts` は **`proxy.ts`** に置換。ナビゲーション回帰は `@next/playwright` の `instant()` で検査 |
 | UI | **React 19.2**、**Tailwind CSS v4**、**shadcn/ui**（最新）、`framer-motion`、`sonner`、`cmdk`、`lucide-react` | `<ViewTransition>` / `<Activity>` / `useOptimistic` |
-| データ取得 | RSC + Server Actions を基本。クライアント側の一覧・無限スクロールは **TanStack Query v5**（`persistQueryClient` で IndexedDB 永続化） | オフライン閲覧に寄与 |
+| データ取得 | RSC + Server Actions を基本。クライアント側の一覧・無限スクロールは **TanStack Query v5**（`persistQueryClient` で IndexedDB 永続化、直近 8 ページ、ADR-016） | オフライン閲覧に寄与 |
 | ホスティング | **Vercel Hobby**（Fluid compute、Functions 最大 300 秒、リージョン **hnd1**） | 個人非商用 $0 |
 | DB | **Turso Free（libSQL）** `libsql://x-idea-brutaldisco.aws-ap-northeast-1.turso.io` | 5GB / 500M rows read / 10M rows written / 月。**超過時ブロック** |
 | DB クライアント / ORM | **`@libsql/client`** + **Drizzle ORM 1.0**（`drizzle-kit` で SQL マイグレーション） | Turso ダッシュボードが `turso://` URL を配る場合は `@tursodatabase/serverless` を使用可（`libsql://` のままなら `@libsql/client`） |
@@ -1776,7 +1776,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 ## 26. PWA・オフライン・プッシュ通知
 
 - **マニフェスト**：`src/app/manifest.ts` → `/manifest.webmanifest`。`display: standalone`、`start_url: /today`、アイコン（192 / 512 と maskable）、`share_target: { action: '/capture', method: 'GET', params: { title, text, url } }`（Android Chrome）。
-- **Service Worker**：`public/sw.js`（ADR-008）。App Shell と静的資産はプリキャッシュ。`/api/sources*` は Stale-While-Revalidate（上限 200 エントリ）。Reader（`/source/*`）は直近閲覧 100 件。オフライン時はバナー＋`/offline`＋読み取り専用。動画 Range・同期・ジョブは SW を通さない。
+- **Service Worker**：`public/sw.js`（ADR-008 / ADR-016）。App Shell と静的資産はプリキャッシュ。`/api/sources*` は Stale-While-Revalidate（上限 200、TTL 10 分）。サムネ `/api/media/*`（`file` 以外）は cache-first。Reader（`/source/*`）は直近閲覧 100 件。navigate の RUNTIME は 30 件。オフライン時はバナー＋`/offline`＋読み取り専用。動画 Range・同期・ジョブは SW を通さない。
 - **インストール案内**：Settings / オンボーディング STEP 5 / `beforeinstallprompt`。iOS は共有シートの手順。
 - **iOS 注意**：Push・Badging は「ホーム画面に追加」した PWA のみ（iOS 16.4+）。Web Share Target 非対応 → **iOS ショートカット**（共有シート→「Marginalia に保存」→ `POST /api/capture` に Bearer）を Settings から導入案内（ショートカットの iCloud リンクを用意 **[仮定]**）。キャッシュは 7 日で消える前提。
 - **Web Push**：`web-push`（VAPID）。イベント：Briefing 完成、Inbox ≥ しきい値（1 日 1 回）、`reauth_required`、同期失敗 6 時間超。`send_push` ジョブが送信、410/404 は購読削除。
@@ -1981,6 +1981,9 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-213 | Instant Navigations 適用と `instant()` E2E、`<Activity>` でタブ状態保持 | `tests/e2e/instant.spec.ts` | T-205〜T-210 | 5 タブすべて instant |
 | T-214 | 任意ゲート（`APP_PASSCODE` / Google、`proxy.ts`、Cookie 1 年） | `src/proxy.ts` | T-001 | 未設定でオープン、設定で `/unlock` |
 | T-215 | 評価セット 50 件と `pnpm eval:enrich`、README（環境変数・運用手順・枠監視） | `eval/`, `README.md` | T-202 | S3 初期値記録 |
+| T-216 | Library 往復で persist 復元中に一覧を消さない。SW `/api/sources` に 10 分 TTL | `src/components/LibraryWorkspace.tsx`, `public/sw.js` | T-206, T-212 | キャッシュありで「読み込み中…」が出ない（`docs/design/2026-09-09-library-load-cache.md`） |
+| T-217 | Library persist を IndexedDB + buster + 最大 8 ページ。queryKey にアカウント | `src/components/LibraryQueryProvider.tsx` | T-216 | リロード後も直近 visit が残る。localStorage `v5` を削除 |
+| T-218 | 共通シェル + Reader 並列ルート。Library↔Reader で一覧をアンマウントしない | `src/app/(shell)/*` または同等 | T-216 | ギャラリー途中→記事→戻るで同じ位置 |
 
 ### Phase 3（レーン E）
 

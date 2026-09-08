@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { resetLibraryQueries } from "@/lib/library-cache";
+import { clearSourcesHttpCache } from "@/lib/pwa";
 
 export function ManualSyncButton({
   disabled,
@@ -45,6 +46,7 @@ export function ManualSyncButton({
               }
               setMessage("同期を実行しました。");
               resetLibraryQueries(queryClient);
+              void clearSourcesHttpCache();
               router.refresh();
             })
             .finally(() => setBusy(false));

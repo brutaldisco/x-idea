@@ -51,6 +51,7 @@ export async function GET(request: Request) {
       items: page.items,
       nextCursor: page.nextCursor,
       count,
+      accountId,
       ...(taxonomy
         ? {
             label: contextLabel(ctx),

@@ -1,7 +1,9 @@
-export const PWA_CACHE_VERSION = "marginalia-v2";
+export const PWA_CACHE_VERSION = "marginalia-v3";
 export const PWA_READER_CACHE_LIMIT = 100;
 export const PWA_SOURCES_CACHE_LIMIT = 200;
-export const PWA_SOURCES_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const PWA_SOURCES_MAX_AGE_MS = 10 * 60 * 1000;
+export const PWA_RUNTIME_NAV_LIMIT = 30;
+export const PWA_CLEAR_SOURCES_MESSAGE = "clear-sources";
 
 export const PWA_NAME = "Marginalia";
 export const PWA_SHORT_NAME = "Marginalia";
@@ -73,6 +75,39 @@ export function isStaticAssetPath(pathname: string): boolean {
   return (
     pathname.startsWith("/_next/static/") || pathname.startsWith("/icons/")
   );
+}
+
+export function isMediaThumbPath(pathname: string): boolean {
+  return pathname.startsWith("/api/media/") && !pathname.includes("/file");
+}
+
+export function isHttpDateFresh(
+  dateHeader: string | null,
+  maxAgeMs: number,
+  now = Date.now(),
+): boolean {
+  if (!dateHeader) {
+    return false;
+  }
+  const time = Date.parse(dateHeader);
+  return Number.isFinite(time) && now - time < maxAgeMs;
+}
+
+export function sourcesCacheName(): string {
+  return `${PWA_CACHE_VERSION}-sources`;
+}
+
+export async function clearSourcesHttpCache(): Promise<void> {
+  if (typeof caches !== "undefined") {
+    try {
+      await caches.delete(sourcesCacheName());
+    } catch {
+      return;
+    }
+  }
+  if (typeof navigator !== "undefined") {
+    navigator.serviceWorker?.controller?.postMessage(PWA_CLEAR_SOURCES_MESSAGE);
+  }
 }
 
 export function safeInternalPath(next: string | null | undefined): string {

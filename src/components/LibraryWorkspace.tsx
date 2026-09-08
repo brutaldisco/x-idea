@@ -1,11 +1,27 @@
 "use client";
 
-import { useInfiniteQuery, useIsRestoring } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useIsRestoring,
+} from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
+import {
+  getLibraryAccountServerSnapshot,
+  getLibraryAccountSnapshot,
+  subscribeLibraryAccount,
+  writeLibraryAccountId,
+} from "@/lib/library-account";
 import { LIBRARY_SOURCES_KEY } from "@/lib/library-cache";
 import {
   applyLibraryVisit,
@@ -45,6 +61,7 @@ type Page = {
   items: SourceListItem[];
   nextCursor: string | null;
   count: number | null;
+  accountId?: string | null;
   label?: string;
   categories?: { id: string; name: string }[];
   infoTypes?: { id: string; name: string }[];
@@ -83,7 +100,11 @@ async function fetchPage(input: {
   if (!res.ok) {
     throw new Error("一覧を読めませんでした");
   }
-  return (await res.json()) as Page;
+  const page = (await res.json()) as Page;
+  if (page.accountId) {
+    writeLibraryAccountId(page.accountId);
+  }
+  return page;
 }
 
 function FilterSelect({
@@ -133,12 +154,17 @@ export function LibraryWorkspace({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const accountId = useSyncExternalStore(
+    subscribeLibraryAccount,
+    getLibraryAccountSnapshot,
+    getLibraryAccountServerSnapshot,
+  );
   const sentinel = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
   const filterKey = JSON.stringify(filters);
   const queryKey = useMemo(
-    () => [LIBRARY_SOURCES_KEY, sort, filterKey] as const,
-    [filterKey, sort],
+    () => [LIBRARY_SOURCES_KEY, accountId || "anon", sort, filterKey] as const,
+    [accountId, filterKey, sort],
   );
   const scrollKey = libraryScrollKey({ sort, filters: filterKey, view });
   const returnHref = libraryHref(search);
@@ -162,6 +188,7 @@ export function LibraryWorkspace({
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     refetchOnMount: (entry) => entry.state.data == null,
     refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
 
@@ -213,6 +240,21 @@ export function LibraryWorkspace({
       }
     }
   }, [query.hasNextPage, returnHref, router, rows.length, scrollKey]);
+
+  useLayoutEffect(() => {
+    if (!pathname.startsWith("/library")) {
+      return;
+    }
+    const saved = readLibraryVisit();
+    if (!saved || (saved.key !== scrollKey && saved.href !== returnHref)) {
+      return;
+    }
+    if (rows.length === 0) {
+      return;
+    }
+    beginLibraryRestore();
+    applyLibraryVisit(saved);
+  }, [pathname, returnHref, rows.length, scrollKey]);
 
   useEffect(() => {
     if (restored.current || query.isFetchingNextPage || restoring) {
@@ -381,7 +423,8 @@ export function LibraryWorkspace({
       params.set("view", next);
     }
     const queryString = params.toString();
-    router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
+    const base = pathname.startsWith("/library") ? pathname : "/library";
+    router.replace(queryString ? `${base}?${queryString}` : base, {
       scroll: false,
     });
   }
@@ -403,8 +446,12 @@ export function LibraryWorkspace({
     );
   }
 
-  if (query.isPending && rows.length === 0) {
-    return <p className="mt-16 text-ink-2 text-sm">読み込み中…</p>;
+  if (rows.length === 0 && (query.isPending || restoring)) {
+    return (
+      <p className="mt-16 text-ink-2 text-sm">
+        {restoring ? "表示を戻しています…" : "読み込み中…"}
+      </p>
+    );
   }
 
   return (

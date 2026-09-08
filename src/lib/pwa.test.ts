@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  isHttpDateFresh,
+  isMediaThumbPath,
   isPwaPublicPath,
   isReaderPath,
   isSourcesApiPath,
   isStaticAssetPath,
+  PWA_SOURCES_MAX_AGE_MS,
   PWA_START_URL,
   safeInternalPath,
   shouldBypassServiceWorker,
@@ -40,6 +43,29 @@ describe("path classifiers", () => {
     expect(isSourcesApiPath("/api/sources/1")).toBe(true);
     expect(isReaderPath("/source/abc")).toBe(true);
     expect(isStaticAssetPath("/_next/static/chunks/app.js")).toBe(true);
+    expect(isMediaThumbPath("/api/media/abc")).toBe(true);
+    expect(isMediaThumbPath("/api/media/abc/file")).toBe(false);
+  });
+});
+
+describe("isHttpDateFresh", () => {
+  it("treats sources as stale after ten minutes", () => {
+    const now = Date.parse("2026-09-09T00:00:00.000Z");
+    expect(
+      isHttpDateFresh(
+        "Wed, 09 Sep 2026 00:00:00 GMT",
+        PWA_SOURCES_MAX_AGE_MS,
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      isHttpDateFresh(
+        "Wed, 09 Sep 2026 00:00:00 GMT",
+        PWA_SOURCES_MAX_AGE_MS,
+        now + PWA_SOURCES_MAX_AGE_MS + 1,
+      ),
+    ).toBe(false);
+    expect(isHttpDateFresh(null, PWA_SOURCES_MAX_AGE_MS, now)).toBe(false);
   });
 });
 

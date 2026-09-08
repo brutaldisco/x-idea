@@ -1,10 +1,12 @@
-const VERSION = "marginalia-v2";
+const VERSION = "marginalia-v3";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const SOURCES = `${VERSION}-sources`;
 const READER = `${VERSION}-reader`;
 const READER_LIMIT = 100;
 const SOURCES_LIMIT = 200;
+const RUNTIME_NAV_LIMIT = 30;
+const SOURCES_MAX_AGE_MS = 10 * 60 * 1000;
 
 const PRECACHE_URLS = [
   "/offline",
@@ -54,6 +56,14 @@ function bypass(request, url) {
 function isDevHost() {
   const host = self.location.hostname;
   return host === "localhost" || host === "127.0.0.1";
+}
+
+function isFresh(response, maxAgeMs) {
+  const date = Date.parse(response.headers.get("date") || "");
+  if (!Number.isFinite(date)) {
+    return false;
+  }
+  return Date.now() - date < maxAgeMs;
 }
 
 async function trim(cacheName, max) {
@@ -112,9 +122,12 @@ async function cacheFirst(request, cacheName) {
   return response;
 }
 
-async function staleWhileRevalidate(request, cacheName, limit) {
+async function staleWhileRevalidate(request, cacheName, limit, maxAgeMs) {
   const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
+  let cached = await cache.match(request);
+  if (cached && maxAgeMs && !isFresh(cached, maxAgeMs)) {
+    cached = undefined;
+  }
   const network = fetch(request)
     .then((response) => {
       void putOk(cacheName, request, response, limit);
@@ -129,11 +142,19 @@ async function handle(request, url) {
   if (path.startsWith("/_next/static/") || path.startsWith("/icons/")) {
     return cacheFirst(request, RUNTIME);
   }
+  if (path.startsWith("/api/media/") && !path.includes("/file")) {
+    return cacheFirst(request, RUNTIME);
+  }
   if (path.startsWith("/api/sources")) {
     if (isDevHost()) {
       return fetch(request);
     }
-    return staleWhileRevalidate(request, SOURCES, SOURCES_LIMIT);
+    return staleWhileRevalidate(
+      request,
+      SOURCES,
+      SOURCES_LIMIT,
+      SOURCES_MAX_AGE_MS,
+    );
   }
   if (request.mode === "navigate") {
     if (isDevHost()) {
@@ -148,7 +169,9 @@ async function handle(request, url) {
       }
     }
     const cacheName = path.startsWith("/source/") ? READER : RUNTIME;
-    const limit = path.startsWith("/source/") ? READER_LIMIT : undefined;
+    const limit = path.startsWith("/source/")
+      ? READER_LIMIT
+      : RUNTIME_NAV_LIMIT;
     return networkFirst(request, cacheName, "/offline", limit);
   }
   return networkFirst(request, RUNTIME);
@@ -176,6 +199,12 @@ self.addEventListener("activate", (event) => {
       )
       .then(() => self.clients.claim()),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data === "clear-sources") {
+    event.waitUntil(caches.delete(SOURCES));
+  }
 });
 
 self.addEventListener("fetch", (event) => {
