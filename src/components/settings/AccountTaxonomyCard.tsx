@@ -261,7 +261,10 @@ function TaxonomyList({
     if (!draggingId) {
       return;
     }
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
     function onMove(event: PointerEvent) {
+      event.preventDefault();
       const id = itemIdAtPoint(listRef.current, event.clientY);
       if (id) {
         overRef.current = id;
@@ -274,6 +277,7 @@ function TaxonomyList({
       overRef.current = null;
       setDraggingId(null);
       setOverId(null);
+      document.body.style.userSelect = previousUserSelect;
       if (commit && sourceId && targetId && sourceId !== targetId) {
         const next = moveTaxonomyItem(items, sourceId, targetId);
         if (next !== items) {
@@ -287,10 +291,11 @@ function TaxonomyList({
     function onCancel() {
       finish(false);
     }
-    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
     return () => {
+      document.body.style.userSelect = previousUserSelect;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
@@ -309,12 +314,15 @@ function TaxonomyList({
   return (
     <section>
       <h3 className="text-sm">{title}</h3>
-      <ul ref={listRef} className="mt-2 space-y-2">
+      <ul
+        ref={listRef}
+        className={`mt-2 space-y-2 select-none ${draggingId ? "touch-none" : ""}`}
+      >
         {items.map((item) => (
           <li
             key={`${accountId}-${item.id}`}
             data-item-id={item.id}
-            className={`flex gap-2 ${
+            className={`flex items-center gap-1 ${
               draggingId === item.id
                 ? "opacity-60"
                 : overId === item.id && draggingId
@@ -332,11 +340,23 @@ function TaxonomyList({
                   return;
                 }
                 event.preventDefault();
+                event.stopPropagation();
+                window.getSelection()?.removeAllRanges();
+                if (document.activeElement instanceof HTMLElement) {
+                  document.activeElement.blur();
+                }
                 event.currentTarget.setPointerCapture(event.pointerId);
                 overRef.current = item.id;
                 setDraggingId(item.id);
                 setOverId(item.id);
               }}
+              onTouchStart={(event) => {
+                if (!canReorder) {
+                  return;
+                }
+                event.preventDefault();
+              }}
+              onContextMenu={(event) => event.preventDefault()}
               onKeyDown={(event) => {
                 if (!canReorder) {
                   return;
@@ -350,17 +370,19 @@ function TaxonomyList({
                   moveByKey(item.id, 1);
                 }
               }}
-              className="grid h-9 w-8 shrink-0 cursor-grab place-items-center rounded-lg border border-line bg-paper text-ink-2 active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+              className="grid h-11 w-9 shrink-0 cursor-grab touch-none select-none place-items-center text-ink-2 outline-none [-webkit-touch-callout:none] [-webkit-user-select:none] active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
             >
               <GripIcon />
             </button>
             <input
               defaultValue={item.name}
-              disabled={disabled}
+              disabled={disabled || Boolean(draggingId)}
               maxLength={40}
               aria-label={title}
               onBlur={(event) => onRename(item.id, event.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-2 py-1.5 text-sm"
+              className={`min-w-0 flex-1 select-none rounded-lg border border-line bg-paper px-2 py-1.5 text-sm focus:select-text ${
+                draggingId ? "pointer-events-none" : ""
+              }`}
             />
             <button
               type="button"
