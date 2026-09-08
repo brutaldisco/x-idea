@@ -242,7 +242,6 @@ const PREVIEW_LIFT_PX = 40;
 
 type DragSession = {
   id: string;
-  pointerId: number;
   startItems: TaxonomyItem[];
   grabOffsetY: number;
   listLeft: number;
@@ -305,6 +304,8 @@ function TaxonomyList({
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.userSelect = "none";
 
+    let cancelTimer = 0;
+
     function applyPreviewTop(clientY: number) {
       const session = dragRef.current;
       const node = previewRef.current;
@@ -314,14 +315,17 @@ function TaxonomyList({
       node.style.top = `${clientY - session.grabOffsetY - PREVIEW_LIFT_PX}px`;
     }
 
-    function onMove(event: PointerEvent) {
+    function applyFromClientY(clientY: number) {
       const session = dragRef.current;
-      if (!session || event.pointerId !== session.pointerId) {
+      if (!session) {
         return;
       }
-      event.preventDefault();
-      lastYRef.current = event.clientY;
-      applyPreviewTop(event.clientY);
+      if (cancelTimer) {
+        window.clearTimeout(cancelTimer);
+        cancelTimer = 0;
+      }
+      lastYRef.current = clientY;
+      applyPreviewTop(clientY);
       const remaining = itemsRef.current.filter(
         (item) => item.id !== session.id,
       );
@@ -333,7 +337,7 @@ function TaxonomyList({
         const rect = el.getBoundingClientRect();
         return rect.top + rect.height / 2;
       });
-      const target = dragTargetIndex(event.clientY, mids);
+      const target = dragTargetIndex(clientY, mids);
       const current = itemsRef.current.findIndex(
         (row) => row.id === session.id,
       );
@@ -353,7 +357,19 @@ function TaxonomyList({
       vibrate(8);
     }
 
+    function onMove(event: PointerEvent) {
+      if (!dragRef.current) {
+        return;
+      }
+      event.preventDefault();
+      applyFromClientY(event.clientY);
+    }
+
     function finish(commit: boolean) {
+      if (cancelTimer) {
+        window.clearTimeout(cancelTimer);
+        cancelTimer = 0;
+      }
       const session = dragRef.current;
       dragRef.current = null;
       lastYRef.current = null;
@@ -374,34 +390,40 @@ function TaxonomyList({
       onReorderRef.current(nextIds);
     }
 
-    function onUp(event: PointerEvent) {
-      if (event.pointerId !== drag.pointerId) {
-        return;
-      }
+    function onUp() {
       finish(true);
     }
-    function onCancel(event: PointerEvent) {
-      if (event.pointerId !== drag.pointerId) {
-        return;
+    function onCancel() {
+      if (cancelTimer) {
+        window.clearTimeout(cancelTimer);
       }
-      finish(false);
+      cancelTimer = window.setTimeout(() => finish(false), 80);
     }
 
-    function preventTouchScroll(event: TouchEvent) {
+    function onTouchMove(event: TouchEvent) {
+      const touch = event.touches[0];
+      if (!touch || !dragRef.current) {
+        return;
+      }
       event.preventDefault();
+      applyFromClientY(touch.clientY);
     }
+
     window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
-    window.addEventListener("touchmove", preventTouchScroll, {
-      passive: false,
-    });
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onUp);
     return () => {
+      if (cancelTimer) {
+        window.clearTimeout(cancelTimer);
+      }
       document.body.style.userSelect = previousUserSelect;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
-      window.removeEventListener("touchmove", preventTouchScroll);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onUp);
     };
   }, [drag]);
 
@@ -427,7 +449,6 @@ function TaxonomyList({
     const listRect = list.getBoundingClientRect();
     const session: DragSession = {
       id: item.id,
-      pointerId: event.pointerId,
       startItems: ordered,
       grabOffsetY: event.clientY - rowRect.top,
       listLeft: listRect.left,
