@@ -1,12 +1,12 @@
-export const PWA_CACHE_VERSION = "marginalia-v3";
+export const PWA_CACHE_VERSION = "x-idea-v4";
 export const PWA_READER_CACHE_LIMIT = 100;
 export const PWA_SOURCES_CACHE_LIMIT = 200;
 export const PWA_SOURCES_MAX_AGE_MS = 10 * 60 * 1000;
 export const PWA_RUNTIME_NAV_LIMIT = 30;
 export const PWA_CLEAR_SOURCES_MESSAGE = "clear-sources";
 
-export const PWA_NAME = "Marginalia";
-export const PWA_SHORT_NAME = "Marginalia";
+export const PWA_NAME = "x-idea";
+export const PWA_SHORT_NAME = "x-idea";
 export const PWA_DESCRIPTION = "X ブックマークのパーソナルナレッジベース";
 export const PWA_START_URL = "/today";
 export const PWA_OFFLINE_PATH = "/offline";

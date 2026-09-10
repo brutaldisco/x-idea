@@ -6,7 +6,7 @@ import {
   writeLibraryNeighbors,
 } from "@/lib/library-neighbors";
 
-const STORAGE_KEY = "marginalia.library.neighbors";
+const STORAGE_KEY = "x-idea.library.neighbors";
 
 afterEach(() => {
   try {

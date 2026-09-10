@@ -21,7 +21,7 @@ import {
   writeLibraryVisit,
 } from "@/lib/library-scroll";
 
-const STORAGE_KEY = "marginalia.library.scroll";
+const STORAGE_KEY = "x-idea.library.scroll";
 
 afterEach(() => {
   resetLibraryScrollLocks();

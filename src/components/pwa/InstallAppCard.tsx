@@ -59,7 +59,7 @@ export function InstallAppCard() {
         </ol>
       ) : (
         <p className="mt-3 text-ink-2 text-sm">
-          Chrome のアドレスバー右、またはメニューの「Marginalia
+          Chrome のアドレスバー右、またはメニューの「x-idea
           をインストール」から追加できます。
         </p>
       )}

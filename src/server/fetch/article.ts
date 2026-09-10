@@ -9,7 +9,7 @@ import {
 } from "@/server/fetch/classify";
 import { hostOf, isExcludedDomain, normalizeUrl } from "@/server/ingest/url";
 
-export const ARTICLE_UA = "MarginaliaBot/1.0 (+https://x-idea.vercel.app)";
+export const ARTICLE_UA = "x-idea-bot/1.0 (+https://x-idea.vercel.app)";
 const MAX_BYTES = 3 * 1024 * 1024;
 const TIMEOUT_MS = 15_000;
 const MAX_REDIRECTS = 5;

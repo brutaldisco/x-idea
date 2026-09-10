@@ -1,4 +1,4 @@
-const STORAGE_KEY = "marginalia.library.scroll";
+const STORAGE_KEY = "x-idea.library.scroll";
 const LOCK_MS = 4000;
 
 export type LibraryVisit = {

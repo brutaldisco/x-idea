@@ -1,4 +1,4 @@
-const STORAGE_KEY = "marginalia.library.account";
+const STORAGE_KEY = "x-idea.library.account";
 const listeners = new Set<() => void>();
 
 function emit(): void {

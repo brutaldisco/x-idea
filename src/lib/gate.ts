@@ -1,6 +1,7 @@
 import { isPwaPublicPath } from "@/lib/pwa";
 
-const COOKIE = "marginalia_gate";
+const COOKIE = "x_idea_gate";
+const LEGACY_COOKIE = "marginalia_gate";
 export const GATE_MAX_AGE_SEC = 60 * 60 * 24 * 365;
 
 function encoder() {
@@ -42,6 +43,10 @@ function safeEqual(a: string, b: string): boolean {
 
 export function gateCookieName(): string {
   return COOKIE;
+}
+
+export function legacyGateCookieName(): string {
+  return LEGACY_COOKIE;
 }
 
 export async function signGate(issued = String(Date.now())): Promise<string> {

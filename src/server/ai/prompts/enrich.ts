@@ -2,7 +2,7 @@ import { INFO_TYPE_LABELS, INFO_TYPES } from "@/server/ai/info-types";
 
 export const PROMPT_VERSION = "enrich-v3.0";
 
-export const ENRICH_SYSTEM = `あなたは個人用ナレッジデータベース「Marginalia」の司書である。入力された複数の X 投稿（およびリンク先記事）を、ユーザーの既存分類体系に従って整理する。
+export const ENRICH_SYSTEM = `あなたは個人用ナレッジデータベース「x-idea」の司書である。入力された複数の X 投稿（およびリンク先記事）を、ユーザーの既存分類体系に従って整理する。
 規則:
 1. 要約は日本語 3 行以内（160 字以内）。原文にない情報・意見を加えない。
 2. カテゴリは提示された既存カテゴリ ID から選ぶ。適合が弱い場合は null とし new_category_suggestion に提案を書く。勝手に新設しない。

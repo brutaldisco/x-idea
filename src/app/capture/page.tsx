@@ -19,9 +19,8 @@ async function CaptureBody({
       <h1 className="font-semibold text-2xl">Capture</h1>
       {empty ? (
         <p className="mt-4 text-ink-2">
-          Android の共有シートから Marginalia
-          を選ぶと、ここにタイトル・本文・URL が入ります。保存 API
-          は次の段階です。
+          Android の共有シートから x-idea を選ぶと、ここにタイトル・本文・URL
+          が入ります。保存 API は次の段階です。
         </p>
       ) : (
         <dl className="mt-6 space-y-3 text-sm">

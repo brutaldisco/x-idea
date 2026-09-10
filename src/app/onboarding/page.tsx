@@ -19,7 +19,7 @@ async function OnboardingBody({
     return (
       <section>
         <p className="text-sm tracking-[0.2em] text-ink-2">STEP 1</p>
-        <h1 className="mt-3 font-semibold text-3xl">Marginalia へ</h1>
+        <h1 className="mt-3 font-semibold text-3xl">x-idea へ</h1>
         <p className="mt-4 text-ink-2">
           X
           でブックマークした投稿を、要約と分類のあるライブラリにします。ユーザー登録はありません。必要なら

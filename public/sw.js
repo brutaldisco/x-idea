@@ -1,4 +1,4 @@
-const VERSION = "marginalia-v3";
+const VERSION = "x-idea-v4";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const SOURCES = `${VERSION}-sources`;

@@ -12,7 +12,7 @@
 
 - `user_id` は追加しない。許可メールは環境変数 `ALLOWED_GOOGLE_EMAIL` の 1 件。
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `ALLOWED_GOOGLE_EMAIL` が揃ったときだけ Google ゲートを有効にする。
-- 成功時は既存の `marginalia_gate` Cookie（署名のみ、1 年）。Google トークンは保存しない。
+- 成功時は `x_idea_gate` Cookie（署名のみ、1 年）。旧 `marginalia_gate` も受理する。Google トークンは保存しない。
 - `APP_PASSCODE` は残す。Cursor 内ブラウザが Google に弾かれたときの逃げ道。
 - どちらも未設定なら、従来どおりゲートなし。
 

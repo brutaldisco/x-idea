@@ -22,7 +22,7 @@ export async function UnlockForm({
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-      <p className="text-ink-2 text-sm tracking-wide">Marginalia</p>
+      <p className="text-ink-2 text-sm tracking-wide">x-idea</p>
       <h1 className="mt-2 font-semibold text-2xl">ライブラリを開く</h1>
       <p className="mt-2 text-ink-2 text-sm">
         このライブラリは本人確認のあとで開きます。一度入れば、このブラウザでは長く有効です。

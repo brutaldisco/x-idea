@@ -1,4 +1,4 @@
-const STORAGE_KEY = "marginalia.library.neighbors";
+const STORAGE_KEY = "x-idea.library.neighbors";
 
 export const EMPTY_LIBRARY_NEIGHBORS: string[] = [];
 

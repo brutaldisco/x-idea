@@ -42,7 +42,7 @@ async function TodayBody() {
   if (empty === "unlinked") {
     return (
       <section className="flex min-h-[70dvh] flex-col items-center justify-center px-6 text-center">
-        <p className="text-sm tracking-[0.2em] text-ink-2">MARGINALIA</p>
+        <p className="text-sm tracking-[0.2em] text-ink-2">X-IDEA</p>
         <h1 className="mt-4 font-semibold text-3xl">余白に残す、知識。</h1>
         <p className="mt-3 max-w-sm text-ink-2">
           X のブックマークが、要約と分類と再浮上のあるライブラリになります。

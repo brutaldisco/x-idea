@@ -1,12 +1,12 @@
-# 実装設計書：Marginalia — Xブックマーク・パーソナルナレッジベース
+# 実装設計書：x-idea — Xブックマーク・パーソナルナレッジベース
 
 | 項目 | 内容 |
 | --- | --- |
 | ドキュメント種別 | 実装設計書（Implementation Design Document） |
 | 対象読者 | 実装担当AI（worker AI）／エンジニア |
-| 版 | **v3.6** |
+| 版 | **v3.7** |
 | 作成日 | 2026-07-12 |
-| 改訂日 | **2026-09-09** |
+| 改訂日 | **2026-09-10** |
 | ステータス | 実装着手可能 |
 | 外部サービス情報の確認日 | 2026-09-04（Next.js / Turso / Gemini / X API / Vercel / AI SDK / MCP の各公式ドキュメント） |
 | リポジトリ | `https://github.com/brutaldisco/x-idea.git`（空。本書のコミットから開始） |
@@ -20,7 +20,7 @@
 > **v3.0 の要点（v2.0 からの変更）**
 > 1. **技術スタックを 2026-09 時点の最新に刷新**：Next.js 16.3（Cache Components / Instant Navigations / `proxy.ts`）、React 19.2（`<ViewTransition>` / `<Activity>`）、Tailwind CSS v4、shadcn/ui、AI SDK 6（`ToolLoopAgent` / `Output.object` / 生成UI）、Drizzle ORM 1.0、Zod 4、Turso libSQL（ネイティブ vector + DiskANN、FTS5 trigram）。
 > 2. **Gemini 無料枠の激減に対応**：2026-09 実測で Flash 系は **20 リクエスト/日**、Flash-Lite は **500/日**、Embedding 2 は **1,000/日**。→ 「AI予算（AI Budget）」を第一級の設計概念にし、**レーン別モデルルーティング**・**バッチenrich**・**日次クォータ管理**を導入。インフラ/AI $0 の原則は維持。
-> 3. **「驚き」を生む体験を追加**：朝の **Daily Briefing**（音声つき）、引用と生成UIつきの **Ask**、知識の星図 **Atlas**、忘却に逆らう **Echo**、AIが余白に書き込む **Marginalia Reader**、スクショの文字まで検索できる **マルチモーダル取り込み**、自分の知識を Claude / ChatGPT / Cursor から使える **MCPサーバー**、Xの **ブックマークフォルダ連動**、自然言語で作る **Lens（スマートコレクション）**、ユーザー修正から学ぶ **「学習する司書」**。
+> 3. **「驚き」を生む体験を追加**：朝の **Daily Briefing**（音声つき）、引用と生成UIつきの **Ask**、知識の星図 **Atlas**、忘却に逆らう **Echo**、AIが余白に書き込む **x-idea Reader**、スクショの文字まで検索できる **マルチモーダル取り込み**、自分の知識を Claude / ChatGPT / Cursor から使える **MCPサーバー**、Xの **ブックマークフォルダ連動**、自然言語で作る **Lens（スマートコレクション）**、ユーザー修正から学ぶ **「学習する司書」**。
 > 4. **個人用途・シングルテナント・ユーザー登録なし** は維持。外部から機械アクセスする経路（MCP / Quick Capture / Cron）には **Bearer トークン必須**。任意で `APP_PASSCODE` と許可メール 1 件の Google ログイン（ADR-012）。
 > 5. **リポジトリと本番DB・本番URLを確定**：GitHub `brutaldisco/x-idea`、Turso 東京、Vercel `https://x-idea.vercel.app`（`hnd1`）。有料プランはすべて **設定トグル既定 OFF**。契約が遅れても実装は `MOCK_EXTERNAL=1` と無料枠で進められる（付録H）。
 
@@ -41,6 +41,9 @@
 >
 > **v3.6 の要点（v3.5 からの変更）**
 > 1. **既定の X アカウントを Settings で選ぶ**（ADR-014）。Cookie `x_ctx` が無いときのフォールバックを「先頭アカウント」から「`settings.default_x_account_id`、未設定なら先頭」に変更する。Settings では「このアカウントの設定」と「既定のアカウント」を別カードにする。
+>
+> **v3.7 の要点（v3.6 からの変更）**
+> 1. **サービス名を Marginalia から x-idea に揃える**。PWA 名・画面表示・enrich プロンプト・UA・ゲート Cookie（新規 `x_idea_gate`、旧 `marginalia_gate` も受理）、SW `x-idea-v4`、Library persist キー。
 
 ---
 
@@ -121,7 +124,7 @@
 
 ## 1. プロダクト概要
 
-**Marginalia** は、X でブックマークした投稿を自動的に収集し、AI が要約・分類・タグ付け・関連付け・画像解読を行い、「保存して終わり」ではなく **「必要なときに引き出せる」「勝手に思い出させてくれる」「自分のAIエージェントの記憶になる」** 個人用ナレッジデータベースである。名前の由来は「本の余白に書き込むメモ（marginalia）」。原文は書き換えず、AIと自分のメモを **余白** に書き込むという思想を UI にも反映する。
+**x-idea** は、X でブックマークした投稿を自動的に収集し、AI が要約・分類・タグ付け・関連付け・画像解読を行い、「保存して終わり」ではなく **「必要なときに引き出せる」「勝手に思い出させてくれる」「自分のAIエージェントの記憶になる」** 個人用ナレッジデータベースである。原文は書き換えず、AIと自分のメモを **余白** に書き込むという思想を UI にも反映する。
 
 コアコンセプト（4原則）：
 
@@ -188,7 +191,7 @@ S3/S4/S9/S10 はリリース後のチューニング指標であり、リリー�
 週末、筋トレメニューを組み直すため Ask に「週3回の分割法で初心者向けの推奨は？」と（音声で）質問。保存情報だけを根拠に、根拠となる Source カードがインラインで並んだ回答がストリーミング表示される。「まだ実践していないものだけ」と続けて絞る。回答を Knowledge Card として保存する。
 
 **シナリオ5：Claude から自分の知識を使う**
-Claude Desktop に Marginalia の MCP サーバーを接続済み。「私が保存した『組織のフラット化』に関する情報を踏まえて、来週の社内提案の論点を整理して」と頼むと、Claude が `search_knowledge` ツールで自分のブックマークを検索し、出典つきで論点を組み立てる。
+Claude Desktop に x-idea の MCP サーバーを接続済み。「私が保存した『組織のフラット化』に関する情報を踏まえて、来週の社内提案の論点を整理して」と頼むと、Claude が `search_knowledge` ツールで自分のブックマークを検索し、出典つきで論点を組み立てる。
 
 **シナリオ6：Echo（忘却に逆らう）**
 夜、Today 画面の Echo カードが「4か月前に保存した『タンパク質は体重×1.6g』という主張、今も同意しますか？」と問う。「同意」「変わった」「もう不要」のいずれかを1タップ。「変わった」を選ぶと、関連する新しい Source が提示され、KC の更新を提案される。
@@ -234,7 +237,7 @@ PC でライブラリを Atlas 表示に切り替える。埋め込みから自�
 | F-29 | **Daily Briefing** | 毎朝の要点・矛盾・テーマ動向を1本の Briefing に。端末音声合成で読み上げ。プッシュ通知 | P2 |
 | F-30 | **Echo（再浮上）** | 間隔反復スケジュールで古い Source/KC を問いとして再提示。反応を記録 | P2 |
 | F-31 | **Insights（週次の気づき）** | 週次で新興テーマ・橋渡し Source・放置テーマを生成 | P2 |
-| F-32 | **Marginalia Reader** | AI が本文の重要文を余白にハイライト・注釈。ユーザーのハイライト保存。選択範囲について質問 | P2 |
+| F-32 | **x-idea Reader** | AI が本文の重要文を余白にハイライト・注釈。ユーザーのハイライト保存。選択範囲について質問 | P2 |
 | F-33 | **マルチモーダル取り込み** | 画像 OCR／説明を enrich に統合。画像ベクトル化で「見た記憶」から検索 | P2 |
 | F-34 | **Lens（スマートコレクション）** | 自然言語条件（例「初心者向けの筋トレ」）＋フィルタで自動更新される仮想コレクション | P2 |
 | F-35 | **Atlas（知識星図）** | 埋め込みクラスタの2D俯瞰、クラスタ自動命名、タイムスライダー | P2 |
@@ -379,7 +382,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは Reader で対象ごとに手動取得**し、取得後は折りたたみ（件数つき、既定は展開）。未取得時はボタン、トグル OFF 時は案内。未保存の動画はアプリ内再生せず **サムネイル＋「X で見る」＋「あとで保存」**（ダウンロードキューへ投入、14.6 / SC-15）。`video_downloads.status='ready'` の動画はサムネタップでアプリ内再生（**1本リピート** のトグルのみ。Library カードと同じ）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**（`queued` / `downloading`）は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Reader ギャラリーはタイル下部だけに出し、サムネ上には重ねない。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。本文側に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。Reader 上部に翻訳手順の常時説明は出さない。ボタンはかな優勢の日本語本文では出さず、**漢字だけの中国語など他言語では出す**。記事は投稿 `lang` を使わず、クリック時に Language Detector が本文を見る。X の自動翻訳文は API に無い。原文カラムは書き換えない。
 - **記事**：外部リンクだけにせず、取得できた本文を **アプリ内リーダー**で表示する。タイトル＋本文（sanitize 済み HTML 優先）＋補助の「元の記事を開く」。`fetch_scope` バッジ（全文／一部／概要のみ／失敗）。既存 Source は Reader 表示時に URL を拾ってバックフィルする。モバイルは左右パディングを詰めて本文幅を広げる。
 - **要約**：「✦ AI」バッジ、3行要約、情報タイプ、重要度、タグ、カテゴリ（確信度）。「AI で再処理」。
-- **Marginalia（P2）**：記事・原文の重要文を AI がハイライト（薄いマーカー色）、余白（PC は右カラム、モバイルはハイライトタップで下部シート）に注釈。ユーザーは選択→「ハイライト」「メモ」「これについて聞く」。
+- **x-idea Reader（P2）**：記事・原文の重要文を AI がハイライト（薄いマーカー色）、余白（PC は右カラム、モバイルはハイライトタップで下部シート）に注釈。ユーザーは選択→「ハイライト」「メモ」「これについて聞く」。
 - **関連（P2）**：関連・重複・矛盾 Source。矛盾は警告色バナー。
 - **下部固定バー**：状態変更（未読/読了/実践予定/実践済）、メモ、（P2）KC に追加、共有。タブバー（グローバルメニュー）の直上に接して固定する。
 - **ユーザーメモ**：左ボーダー＋「自分のメモ」ラベル。AI 要約と明確に分離。
@@ -518,7 +521,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 10.5 コンポーネント（shadcn/ui ベース）
 
-`Button, Card, Badge, Chip(Toggle), Sheet(BottomSheet), Dialog, Tabs, SegmentedControl, Command(⌘K), Toast(Sonner), Skeleton, Progress, Slider, Switch, Tooltip, Popover, DropdownMenu, ScrollArea, Avatar, Separator`。独自：`SourceCard`, `SwipeCard`, `AIBadge`, `UserNote`, `BudgetMeter`, `SyncPill`, `Marginalia`, `CitationChip`, `AtlasCanvas`。
+`Button, Card, Badge, Chip(Toggle), Sheet(BottomSheet), Dialog, Tabs, SegmentedControl, Command(⌘K), Toast(Sonner), Skeleton, Progress, Slider, Switch, Tooltip, Popover, DropdownMenu, ScrollArea, Avatar, Separator`。独自：`SourceCard`, `SwipeCard`, `AIBadge`, `UserNote`, `BudgetMeter`, `SyncPill`, `XIdea`, `CitationChip`, `AtlasCanvas`。
 
 ---
 
@@ -664,7 +667,7 @@ UI/UX の判断に迷ったら以下に従う。
 - ジョブ実行時に期限を確認し、失効 5 分前ならリフレッシュ。失敗はその行の `status='reauth_required'`、Today に赤ピル、（P2）Push。
 - 3 件目以降の追加は拒否し、Settings に「上限 3」と表示する。
 
-**任意ゲート（ADR-012）**：`APP_PASSCODE` または `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` + `ALLOWED_GOOGLE_EMAIL` があるとき `/unlock`。Google は `openid email` のみ。`email_verified` かつ許可メールと一致したら `marginalia_gate`（1 年）。Google トークンは保存しない。Cursor 内ブラウザが Google に弾かれたらパスコード。どちらも未設定ならゲートなし。
+**任意ゲート（ADR-012）**：`APP_PASSCODE` または `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` + `ALLOWED_GOOGLE_EMAIL` があるとき `/unlock`。Google は `openid email` のみ。`email_verified` かつ許可メールと一致したら `x_idea_gate`（1 年。旧 `marginalia_gate` も受理）。Google トークンは保存しない。Cursor 内ブラウザが Google に弾かれたらパスコード。どちらも未設定ならゲートなし。
 
 ### 14.3 差分取得アルゴリズム
 
@@ -768,7 +771,7 @@ article_fetch(url):
   2. articles.normalized_url で重複確認。`/status/` は記事化しない。X Articles と外部 URL は取得を試みる（15.3）
   3. 除外ドメインなら metadata_only
   4. robots.txt 確認（robots-parser）→ 拒否なら metadata_only
-  5. HTML 取得（UA: "MarginaliaBot/1.0 (+https://x-idea.vercel.app)", 15秒, 3MB, text/html のみ, リダイレクト5）
+  5. HTML 取得（UA: "x-idea-bot/1.0 (+https://x-idea.vercel.app)", 15秒, 3MB, text/html のみ, リダイレクト5）
   6. OGP / Twitter Card / JSON-LD → メタデータ
   7. Readability で本文 → sanitize-html → content_html / content_text
   8. 短文（<400字）/ ペイウォール検出 → partial / metadata_only
@@ -811,7 +814,7 @@ article_fetch(url):
 
 | レーン | 既定モデル | 無料枠（2026-09-02 実測、無保証） | 用途 | 日次ソフトキャップ既定 |
 | --- | --- | --- | --- | --- |
-| `bulk` | `gemini-3.5-flash-lite` | 15 RPM / **500 RPD** | enrich（バッチ）、タグ正規化、クラスタ命名、Echo 問い生成、Ask 既定回答、Marginalia 注釈 | 400 |
+| `bulk` | `gemini-3.5-flash-lite` | 15 RPM / **500 RPD** | enrich（バッチ）、タグ正規化、クラスタ命名、Echo 問い生成、Ask 既定回答、x-idea 注釈 | 400 |
 | `quality` | `gemini-3.6-flash` | 5 RPM / **20 RPD** | Daily Briefing（1）、Insights（週1）、KC ドラフト、Ask「深く考える」、矛盾の二次判定 | 16 |
 | `embed` | `gemini-embedding-2`（768 次元） | 100 RPM / **1,000 RPD** | チャンク埋め込み、画像埋め込み、クエリ埋め込み、修正例埋め込み | 800 |
 
@@ -867,7 +870,7 @@ on 429:
       info_type: enum, info_type_confidence,
       importance: 1|2|3,
       language: 'ja'|'en'|..., 
-      key_sentences: string[] (≤3, Marginalia 用・原文からの逐語抜き出し),
+      key_sentences: string[] (≤3, x-idea Reader 用・原文からの逐語抜き出し),
       media: [{ index, ocr_text: string|null, description: string|null }]   // P2
   }] }
 
@@ -991,7 +994,7 @@ RETURNING *;
 | `enrichments` / `feedback_examples` / `ai_usage_daily` | AI 記録・学習・予算 |
 | `source_chunks` / `media_embeddings` | 検索チャンク＋埋め込み（P2） |
 | `source_relations` | 関連・重複・矛盾（P2） |
-| `highlights` | ユーザー／AI ハイライト（Marginalia、P2） |
+| `highlights` | ユーザー／AI ハイライト（x-idea Reader、P2） |
 | `knowledge_cards` / `kc_sources` / `kc_relations` | KC（P2） |
 | `lenses` | スマートコレクション（P2） |
 | `briefings` / `insights` / `recall_items` / `recall_events` | 押し出し系（P2） |
@@ -1357,7 +1360,7 @@ CREATE TABLE source_relations (                 -- P2
 CREATE INDEX idx_relations_a ON source_relations (source_id_a, status);
 CREATE INDEX idx_relations_b ON source_relations (source_id_b, status);
 
-CREATE TABLE highlights (                       -- P2 Marginalia
+CREATE TABLE highlights (                       -- P2 x-idea Reader
   id TEXT PRIMARY KEY,
   source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   target TEXT NOT NULL,                          -- post | article
@@ -1770,7 +1773,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | `set_read_status` | `{source_id, status}` | 更新結果 |
 | `get_briefing` | `{date?}` | Briefing 本文 |
 
-- Resources：`marginalia://source/{id}`、`marginalia://kc/{id}`（Markdown）。
+- Resources：`x-idea://source/{id}`、`x-idea://kc/{id}`（Markdown）。
 - Prompts：`summarize_topic(topic)`（「保存情報から topic を要約せよ」テンプレート）。
 - レート：60 req/分/トークン。応答は各 ≤ 50KB。
 
@@ -1781,7 +1784,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 - **マニフェスト**：`src/app/manifest.ts` → `/manifest.webmanifest`。`display: standalone`、`start_url: /today`、アイコン（192 / 512 と maskable）、`share_target: { action: '/capture', method: 'GET', params: { title, text, url } }`（Android Chrome）。
 - **Service Worker**：`public/sw.js`（ADR-008 / ADR-016）。App Shell と静的資産はプリキャッシュ。`/api/sources*` は Stale-While-Revalidate（上限 200、TTL 10 分）。サムネ `/api/media/*`（`file` 以外）は cache-first。Reader（`/source/*`）は直近閲覧 100 件。navigate の RUNTIME は 30 件。オフライン時はバナー＋`/offline`＋読み取り専用。動画 Range・同期・ジョブは SW を通さない。
 - **インストール案内**：Settings / オンボーディング STEP 5 / `beforeinstallprompt`。iOS は共有シートの手順。
-- **iOS 注意**：Push・Badging は「ホーム画面に追加」した PWA のみ（iOS 16.4+）。Web Share Target 非対応 → **iOS ショートカット**（共有シート→「Marginalia に保存」→ `POST /api/capture` に Bearer）を Settings から導入案内（ショートカットの iCloud リンクを用意 **[仮定]**）。キャッシュは 7 日で消える前提。
+- **iOS 注意**：Push・Badging は「ホーム画面に追加」した PWA のみ（iOS 16.4+）。Web Share Target 非対応 → **iOS ショートカット**（共有シート→「x-idea に保存」→ `POST /api/capture` に Bearer）を Settings から導入案内（ショートカットの iCloud リンクを用意 **[仮定]**）。キャッシュは 7 日で消える前提。
 - **Web Push**：`web-push`（VAPID）。イベント：Briefing 完成、Inbox ≥ しきい値（1 日 1 回）、`reauth_required`、同期失敗 6 時間超。`send_push` ジョブが送信、410/404 は購読削除。
 - **Badging**：`navigator.setAppBadge(inboxCount)` を起動時と Inbox 更新時に。
 - **Instant Navigations**：`next.config.ts` に `cacheComponents: true`, `experimental.partialPrefetching: true`。各タブの App Shell が URL 非依存になるよう `searchParams` 依存は Suspense 内へ。E2E に `instant()`。
@@ -1926,7 +1929,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | **Phase 2: AI＋UI（MVP）** | enrich_batch、AI 予算、Inbox、Library、Reader、検索、Today、Settings、Sync、PWA、Instant Navigations | 36 章 MVP 受け入れ | 2〜3 週 |
 | **Phase 3: 知識化 I** | 埋め込み、ハイブリッド、Ask（生成UI）、Lens、学習する司書（注入）、マルチモーダル | Ask と Lens が動く | 2〜3 週 |
 | **Phase 4: 押し出し** | Briefing、Echo、Insights、Push、Badging、フォルダ連動 | 朝の Briefing が届く | 2 週 |
-| **Phase 5: 外部・俯瞰** | MCP、Quick Capture、Atlas、KC、Marginalia Reader、関連/矛盾、エクスポート、⌘K、スレッド展開 | Claude から検索できる、Atlas 表示 | 3 週 |
+| **Phase 5: 外部・俯瞰** | MCP、Quick Capture、Atlas、KC、x-idea Reader、関連/矛盾、エクスポート、⌘K、スレッド展開 | Claude から検索できる、Atlas 表示 | 3 週 |
 | **Phase 6: 将来** | 動画文字起こし、MCP OAuth | 未計画 | — |
 
 ---
@@ -2018,7 +2021,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-502 | Quick Capture（`/api/capture`、SC-12、Android share_target、iOS ショートカット手順、`origin='manual'` の enrich） | `src/app/capture/*` | T-202 | 共有から Reader まで 2 タップ |
 | T-503 | 関連・重複・矛盾（`relate_source`、Reader 関連セクション、矛盾バナー、Briefing 連携） | `relateSource.ts` | T-301 | 手作り矛盾ペアを検出 |
 | T-504 | Knowledge Card（CRUD、`kc_draft`、SC-07、Ask から保存、Echo 登録） | `src/app/kc/*` | T-303, T-403 | AI 部と自分の記述の分離、再生成で保持 |
-| T-505 | Marginalia Reader（`key_sentences` ハイライト、ユーザーハイライト/メモ、選択→質問、余白 UI） | Reader 拡張, `highlights` | T-207, T-303 | 選択→Ask に引き継ぎ |
+| T-505 | x-idea Reader（`key_sentences` ハイライト、ユーザーハイライト/メモ、選択→質問、余白 UI） | Reader 拡張, `highlights` | T-207, T-303 | 選択→Ask に引き継ぎ |
 | T-506 | Atlas（`compute_layout`：PCA→2D 近似＋k-means、クラスタ命名、`AtlasCanvas`、タイムスライダー、Lens 化） | `computeLayout.ts`, `src/app/(tabs)/library/atlas/*` | T-301 | 3,000 ノードで 60fps（PC） |
 | T-507 | エクスポート（Markdown/Obsidian frontmatter、JSON、zip ストリーミング） | `/api/export` | T-204 | Obsidian で開ける |
 | T-508 | コマンドパレット ⌘K（検索・移動・状態変更） | `components/CommandK.tsx` | T-208 | PC で主要操作到達 |
@@ -2154,7 +2157,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 
 ```
 system:
-あなたは個人用ナレッジデータベース「Marginalia」の司書である。入力された複数の X 投稿
+あなたは個人用ナレッジデータベース「x-idea」の司書である。入力された複数の X 投稿
 （および添付画像・リンク先記事）を、ユーザーの既存分類体系に従って整理する。
 規則:
 1. 要約は日本語 3 行以内（160 字以内）。原文にない情報・意見を加えない。
@@ -2269,7 +2272,7 @@ images: [image_1, image_2]（添付）                 ← P2
 | `ANTHROPIC_API_KEY` | 任意 | 有料トグル OFF のあいだ未使用 |
 | `OPENAI_API_KEY` | 任意 | 有料トグル OFF のあいだ未使用 |
 | `SENTRY_DSN` | 任意 | `observability_json.sentry` が true のときだけ初期化 |
-| `ARTICLE_FETCH_UA` | 任意 | 既定 `MarginaliaBot/1.0 (+mailto:...)` |
+| `ARTICLE_FETCH_UA` | 任意 | 既定 `x-idea-bot/1.0 (+mailto:...)` |
 | `MOCK_EXTERNAL` | 開発 | `1` で X/Gemini を msw モック |
 | `LOG_LEVEL` | 任意 | `info` |
 | `MEDIA_ROOT` | 任意（ローカル実行時） | メディア保存先（既定 `./data/media`）。**Vercel では設定しない**（ADR-005） |
@@ -2341,7 +2344,7 @@ x-idea/
 | Insights | 週次の気づき（新興テーマ・橋渡し・滞留・矛盾・継続） |
 | Lens | 自然言語条件＋フィルタで自動更新される仮想コレクション |
 | Atlas | 埋め込みクラスタの 2D 俯瞰図 |
-| Marginalia（機能） | Reader の余白に AI／ユーザーがハイライト・注釈を書く機能 |
+| x-idea Reader（機能） | Reader の余白に AI／ユーザーがハイライト・注釈を書く機能 |
 | MCP | Model Context Protocol。外部 AI クライアントから本アプリのツールを呼ぶ標準 |
 | Quick Capture | 共有シート／ショートカットから任意 URL を取り込む機能 |
 | tick | 外部 Cron またはクライアントから叩かれるワーカー実行 1 回 |
@@ -2382,7 +2385,7 @@ x-idea/
 
 | 項目 | 理由 |
 | --- | --- |
-| 独自ドメイン（`marginalia.example` 等） | `x-idea.vercel.app` を使う。DNS / 証明書の追加契約は不要 |
+| 独自ドメイン（`x-idea.example` 等） | `x-idea.vercel.app` を使う。DNS / 証明書の追加契約は不要 |
 | Apple Developer / Google Play | ネイティブアプリは作らない。PWA |
 | MCP OAuth（ChatGPT / Claude.ai Web） | P3。Claude Desktop / Cursor は Bearer で足りる |
 | Gemini TTS | 端末の `speechSynthesis` で代替。有料 |

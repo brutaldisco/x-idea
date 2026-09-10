@@ -3,6 +3,7 @@ import {
   gateCookieName,
   gateRequired,
   isPublicPath,
+  legacyGateCookieName,
   verifyGate,
 } from "@/lib/gate";
 import { safeInternalPath } from "@/lib/pwa";
@@ -22,7 +23,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const cookie = request.cookies.get(gateCookieName())?.value;
+  const cookie =
+    request.cookies.get(gateCookieName())?.value ??
+    request.cookies.get(legacyGateCookieName())?.value;
   if (await verifyGate(cookie)) {
     return NextResponse.next();
   }

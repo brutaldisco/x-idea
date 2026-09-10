@@ -7,7 +7,7 @@ import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 export type HealthPayload = {
   ok: true;
-  app: "marginalia";
+  app: "x-idea";
   db: "ok" | "unconfigured" | "error";
   last_synced_at: string | null;
   pending_jobs: number;
@@ -31,7 +31,7 @@ const EMPTY_BUDGET = {
 export async function getHealth(ctx?: AccountContext): Promise<HealthPayload> {
   const base: HealthPayload = {
     ok: true,
-    app: "marginalia",
+    app: "x-idea",
     db: "unconfigured",
     last_synced_at: null,
     pending_jobs: 0,

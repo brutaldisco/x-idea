@@ -4,7 +4,8 @@ import manifest from "./manifest";
 describe("web app manifest", () => {
   it("meets Chrome install fields", () => {
     const data = manifest();
-    expect(data.name || data.short_name).toBeTruthy();
+    expect(data.name).toBe("x-idea");
+    expect(data.short_name).toBe("x-idea");
     expect(data.start_url).toBe("/today");
     expect(data.display).toBe("standalone");
     expect(data.prefer_related_applications).not.toBe(true);

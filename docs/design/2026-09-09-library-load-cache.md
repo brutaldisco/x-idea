@@ -19,12 +19,12 @@ Library ↔ Reader の往復で、**並び・フィルタ・スクロール位�
 [DOM / スクロール]
   LibraryWorkspace  （(tabs) レイアウト。Reader へ行くとアンマウント）
         │
-        ├─ sessionStorage `marginalia.library.scroll`
+        ├─ sessionStorage `x-idea.library.scroll`
         │    href / y / sourceId / offset / pageCount
         │
 [一覧 JSON]
   QueryClient（root layout で生存）
-        └─ persist → localStorage `marginalia.library.v5`
+        └─ persist → localStorage `x-idea.library.v5`
              queryKey[0] === "sources" だけ
         │
 [HTTP]
@@ -62,7 +62,7 @@ Library の query オプション:
 - 戻ったあとのスクロールは 1 回だけ戻す（高さが足りなければ追加ページを待つ）。読み込み中にユーザーがスクロールしたら打ち切る。遅延タイマーの `scrollTo` 連打はしない。
 - タブの `<Activity>`（T-213）は未実装。View Transition（`source-{id}`）だけ入っている。
 
-### 2.4 Service Worker（ADR-008 / `marginalia-v2`）
+### 2.4 Service Worker（ADR-008 / `x-idea-v4`）
 
 | 対象 | 戦略 | 問題 |
 | --- | --- | --- |
@@ -143,7 +143,7 @@ P2 完了後、`LibraryWorkspace` の 8 段タイマー復元は **フルリロ�
 ### 5.3 persist（P1）
 
 - `@tanstack/query-async-storage-persister` + IndexedDB（`idb-keyval` で足りる）。
-- key: `marginalia.library.v6`、`buster: "2026-09-09"`（スキーマを変えたら buster だけ上げ、旧 v5 は起動時に `localStorage.removeItem`）。
+- key: `x-idea.library.v6`、`buster: "2026-09-10"`（スキーマを変えたら buster だけ上げ、旧 `marginalia.library.v5` / `v6` は起動時に `localStorage.removeItem`）。
 - `shouldDehydrateQuery`: 成功した `sources` のみ。**pages は最大 8**。超過は末尾を切る（スクロール復元に必要な `pageCount` と揃える）。
 - quota / IDB 失敗は `console` に出さず、Today 相当の静かな失敗（再取得するだけ）。成功フラグをメモリに持ち、失敗時は persist を止める。
 - queryKey に **アカウント ID**（`x_ctx`）を足す。切替後に他人の一覧が一瞬出ない。`resetLibraryQueries` は残す。
