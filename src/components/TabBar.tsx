@@ -2,33 +2,20 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 import {
   getLibraryHrefServerSnapshot,
   getLibraryHrefSnapshot,
   subscribeLibraryVisit,
 } from "@/lib/library-scroll";
-
-const TABS = [
-  { href: "/today", label: "Today" },
-  { href: "/inbox", label: "Inbox" },
-  { href: "/library", label: "Library" },
-  { href: "/videos", label: "Videos" },
-  { href: "/ask", label: "Ask" },
-  { href: "/settings", label: "Settings" },
-] as const;
-
-function currentTab(pathname: string): (typeof TABS)[number]["href"] {
-  const hit = TABS.find(
-    (tab) => pathname === tab.href || pathname.startsWith(`${tab.href}/`),
-  );
-  return hit?.href ?? "/today";
-}
+import { initialTab, rememberTab, TABS } from "@/lib/tab-nav";
 
 export function TabBar() {
   const router = useRouter();
   const pathname = usePathname();
-  const active = currentTab(pathname);
+  const lastTab = useRef(initialTab(pathname));
+  lastTab.current = rememberTab(pathname, lastTab.current);
+  const active = lastTab.current;
   const libraryHref = useSyncExternalStore(
     subscribeLibraryVisit,
     getLibraryHrefSnapshot,
