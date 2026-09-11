@@ -13,6 +13,7 @@ import { SourceHero } from "@/components/SourceHero";
 import { SourceNote } from "@/components/SourceNote";
 import { SourceReenrichButton } from "@/components/SourceReenrichButton";
 import { SourceStatusBar } from "@/components/SourceStatusBar";
+import { mediaHasQueueableVideos } from "@/lib/video-queue";
 import { infoTypeLabel } from "@/server/ai/info-types";
 import { ensureSourceArticles } from "@/server/fetch/attach";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
@@ -87,7 +88,11 @@ export default async function SourcePage({
         </div>
         <div className="flex items-center gap-2">
           <p className="text-ink-2 text-xs">{source.availability}</p>
-          <SourceCardMenu sourceId={source.id} url={source.post.url} />
+          <SourceCardMenu
+            sourceId={source.id}
+            url={source.post.url}
+            canQueueVideos={mediaHasQueueableVideos(source.post.media)}
+          />
         </div>
       </div>
 

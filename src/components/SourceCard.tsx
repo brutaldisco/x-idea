@@ -5,6 +5,7 @@ import { SourceCardThumb } from "@/components/SourceCardThumb";
 import { VideoBadge } from "@/components/VideoBadge";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
+import { canShowSaveVideosMenu } from "@/lib/video-queue";
 
 function thumbSrc(mediaId: string, mediaType: string | null): string {
   return mediaType === "photo"
@@ -25,6 +26,8 @@ export function SourceCard({
   mediaType,
   videoSaveStatus,
   videoRelPath,
+  kind,
+  hasQueueableVideos,
   lang,
   summaryFromAi = false,
   postedAt,
@@ -38,6 +41,8 @@ export function SourceCard({
   mediaType?: string | null;
   videoSaveStatus?: string | null;
   videoRelPath?: string | null;
+  kind?: string | null;
+  hasQueueableVideos?: boolean;
   lang?: string | null;
   summaryFromAi?: boolean;
   postedAt?: string | null;
@@ -151,6 +156,10 @@ export function SourceCard({
               sourceId={id}
               url={url}
               compact={variant === "grid"}
+              canQueueVideos={canShowSaveVideosMenu({
+                kind,
+                hasQueueableVideos,
+              })}
             />
           </div>
           <div

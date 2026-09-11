@@ -11,12 +11,13 @@ Library と Reader が別レイアウトだったため、記事を開くたび�
 ## 決定
 
 1. **Reader は `(tabs)` の並列ルート `@reader/(.)source/[id]` で割り込む。** Library 起点の往復では一覧をアンマウントしない。ディープリンク / リロードは従来の `/source/[id]`。
-2. **一覧 JSON の persist は IndexedDB**（`x-idea.library.v6`、buster `2026-09-11-paged`）。旧 `marginalia.library.v5` / `v6` は起動時に捨てる。queryKey は `["sources", sort, filters, page]`。1 ページ 60 件。アカウントはキーに入れない（切替時は `resetLibraryQueries`）。SSR ハイドレーションで `anon → 実ID` とキーが変わって毎回取り直すのを避ける。
+2. **一覧 JSON の persist は IndexedDB**（`x-idea.library.v6`、buster `2026-09-11-save-videos`）。旧 `marginalia.library.v5` / `v6` は起動時に捨てる。queryKey は `["sources", sort, filters, page]`。1 ページ 60 件。アカウントはキーに入れない（切替時は `resetLibraryQueries`）。SSR ハイドレーションで `anon → 実ID` とキーが変わって毎回取り直すのを避ける。
 3. **SW の `/api/sources` は 10 分 TTL。** サムネは cache-first。アカウント切替と手動同期で sources キャッシュを捨てる。
 4. sessionStorage のスクロール復元は、フルリロードと「隠した一覧を再表示したとき」のフォールバックに残す。
 
 ## 影響
 
 - TabBar / Dock は `AppChrome` に寄せる。intercept 中は tabs 側の children を `hidden` にして Reader を出す。`/source/` 以外のタブでは並列スロットが残っていても Reader を描画しない。
+- 番号ページの移動では前ページのカードを残さない。`keepPreviousData` は件数・フィルタ用で、カードはスケルトンにしてから次ページを出す。
 - 設計書 12 章の IndexedDB 記述と実装が一致する。
 - Serwist は使わない（ADR-008 維持）。バージョンは `x-idea-v6`。

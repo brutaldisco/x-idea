@@ -42,6 +42,37 @@ export function sourcePageCount(
   return Math.ceil(total / pageSize);
 }
 
+export type LibraryPageSlot = number | "gap";
+
+export function libraryPageSlots(
+  current: number,
+  total: number,
+  radius = 1,
+): LibraryPageSlot[] {
+  const safeTotal = Math.max(1, Math.floor(total));
+  const page = Math.min(safeTotal, Math.max(1, Math.floor(current)));
+  if (safeTotal <= 7) {
+    return Array.from({ length: safeTotal }, (_, index) => index + 1);
+  }
+  const picked = new Set<number>([1, safeTotal, page]);
+  for (let offset = 1; offset <= radius; offset += 1) {
+    picked.add(page - offset);
+    picked.add(page + offset);
+  }
+  const ordered = [...picked]
+    .filter((value) => value >= 1 && value <= safeTotal)
+    .sort((left, right) => left - right);
+  const slots: LibraryPageSlot[] = [];
+  for (const value of ordered) {
+    const prev = slots[slots.length - 1];
+    if (typeof prev === "number" && value - prev > 1) {
+      slots.push("gap");
+    }
+    slots.push(value);
+  }
+  return slots;
+}
+
 export function withLibraryPage(search: string, page: number): string {
   const next = new URLSearchParams(search);
   if (page <= 1) {

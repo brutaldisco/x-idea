@@ -37,6 +37,7 @@ import {
   writeLibraryScroll,
 } from "@/lib/library-scroll";
 import {
+  libraryPageSlots,
   SOURCE_PAGE_SIZE,
   sourcePageCount,
   withLibraryPage,
@@ -106,6 +107,129 @@ async function fetchPage(input: {
     throw new Error("一覧を読めませんでした");
   }
   return (await res.json()) as Page;
+}
+
+function LibraryCardSkeleton({ view }: { view: LibraryView }) {
+  if (view === "grid") {
+    return (
+      <li
+        className="min-w-0 w-full overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2 p-2"
+        aria-hidden
+      >
+        <span className="mb-1.5 block h-[112px] w-full animate-pulse rounded-lg bg-paper" />
+        <span className="mt-1 block h-3 w-1/3 animate-pulse rounded bg-line" />
+        <span className="mt-2 block h-3 w-full animate-pulse rounded bg-line" />
+        <span className="mt-1.5 block h-3 w-2/3 animate-pulse rounded bg-line" />
+      </li>
+    );
+  }
+  return (
+    <li
+      className="min-w-0 w-full overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
+      aria-hidden
+    >
+      <div className="flex min-w-0 gap-3">
+        <span className="h-20 w-20 shrink-0 animate-pulse rounded-lg bg-paper" />
+        <div className="min-w-0 flex-1">
+          <span className="block h-3 w-24 animate-pulse rounded bg-line" />
+          <span className="mt-2 block h-3 w-full animate-pulse rounded bg-line" />
+          <span className="mt-1.5 block h-3 w-5/6 animate-pulse rounded bg-line" />
+        </div>
+      </div>
+    </li>
+  );
+}
+
+const LIST_SKELETON_KEYS = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
+const GRID_SKELETON_KEYS = [...LIST_SKELETON_KEYS, "i", "j", "k", "l"] as const;
+
+function LibraryPageSkeleton({ view }: { view: LibraryView }) {
+  const keys = view === "grid" ? GRID_SKELETON_KEYS : LIST_SKELETON_KEYS;
+  return (
+    <ul
+      aria-busy="true"
+      aria-label="読み込み中"
+      className={
+        view === "grid"
+          ? "mt-4 grid min-w-0 grid-cols-2 gap-2 text-wrap min-[48rem]:grid-cols-3"
+          : "mt-4 grid min-w-0 grid-cols-1 gap-3 text-wrap"
+      }
+    >
+      {keys.map((key) => (
+        <LibraryCardSkeleton key={key} view={view} />
+      ))}
+    </ul>
+  );
+}
+
+function LibraryPager({
+  page,
+  totalPages,
+  busy,
+  onGoToPage,
+  ariaLabel,
+}: {
+  page: number;
+  totalPages: number;
+  busy: boolean;
+  onGoToPage: (page: number) => void;
+  ariaLabel: string;
+}) {
+  if (totalPages <= 1) {
+    return null;
+  }
+  const slots = libraryPageSlots(page, totalPages);
+  return (
+    <nav
+      aria-label={ariaLabel}
+      className="flex flex-wrap items-center justify-center gap-1.5 text-ink-2 text-xs"
+    >
+      <button
+        type="button"
+        disabled={page <= 1 || busy}
+        className="min-h-8 rounded-full border border-line px-3 disabled:opacity-40"
+        onClick={() => onGoToPage(page - 1)}
+      >
+        前へ
+      </button>
+      {slots.map((slot, index) => {
+        if (slot === "gap") {
+          const prev = slots[index - 1];
+          return (
+            <span key={`gap-${prev}`} className="px-1" aria-hidden>
+              …
+            </span>
+          );
+        }
+        const current = slot === page;
+        return (
+          <button
+            key={slot}
+            type="button"
+            aria-label={`ページ ${slot}`}
+            aria-current={current ? "page" : undefined}
+            disabled={busy || current}
+            onClick={() => onGoToPage(slot)}
+            className={`min-h-8 min-w-8 rounded-full px-2 disabled:opacity-100 ${
+              current
+                ? "bg-ink text-paper"
+                : "border border-line hover:bg-paper-2"
+            }`}
+          >
+            {slot}
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        disabled={page >= totalPages || busy}
+        className="min-h-8 rounded-full border border-line px-3 disabled:opacity-40"
+        onClick={() => onGoToPage(page + 1)}
+      >
+        次へ
+      </button>
+    </nav>
+  );
 }
 
 function FilterSelect({
@@ -197,13 +321,17 @@ export function LibraryWorkspace({
   );
   const neighborIdsRef = useRef<string[]>([]);
   const itemIds = (query.data?.items ?? []).map((item) => item.id).join(",");
+  const paging = query.isPlaceholderData;
   useEffect(() => {
+    if (paging) {
+      return;
+    }
     const ids = itemIds ? itemIds.split(",") : [];
     neighborIdsRef.current = ids;
     if (ids.length > 0) {
       writeLibraryNeighbors(ids);
     }
-  }, [itemIds]);
+  }, [itemIds, paging]);
 
   const total = query.data?.count ?? rows.length;
   const totalPages = sourcePageCount(total);
@@ -235,14 +363,21 @@ export function LibraryWorkspace({
   ]);
 
   const prevPage = useRef(page);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevPage.current === page) {
       return;
     }
     prevPage.current = page;
-    if (!peekLibraryReturn()) {
-      window.scrollTo(0, 0);
+    if (peekLibraryReturn()) {
+      return;
     }
+    programmaticScroll.current = true;
+    window.scrollTo(0, 0);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        programmaticScroll.current = false;
+      });
+    });
   }, [page]);
 
   useLayoutEffect(() => {
@@ -406,7 +541,7 @@ export function LibraryWorkspace({
   function goToPage(nextPage: number) {
     const href = withLibraryPage(search, nextPage);
     const base = pathname.startsWith("/library") ? pathname : "/library";
-    router.push(href ? `${base}?${href}` : base);
+    router.push(href ? `${base}?${href}` : base, { scroll: false });
   }
 
   function setView(next: LibraryView) {
@@ -523,7 +658,19 @@ export function LibraryWorkspace({
         />
       </div>
 
-      {rows.length === 0 ? (
+      <div className="mt-4">
+        <LibraryPager
+          page={safePage}
+          totalPages={totalPages}
+          busy={query.isFetching}
+          onGoToPage={goToPage}
+          ariaLabel="ページ（上）"
+        />
+      </div>
+
+      {paging ? (
+        <LibraryPageSkeleton view={view} />
+      ) : rows.length === 0 ? (
         <p className="mt-16 text-center text-ink-2">
           {hasLibraryFilters(filters)
             ? "条件に合う Source はありません。"
@@ -548,6 +695,8 @@ export function LibraryWorkspace({
               mediaType={item.mediaType}
               videoSaveStatus={item.videoSaveStatus}
               videoRelPath={item.videoRelPath}
+              kind={item.kind}
+              hasQueueableVideos={item.hasQueueableVideos}
               lang={item.lang}
               summaryFromAi={item.summaryFromAi}
               postedAt={item.postedAt}
@@ -557,32 +706,15 @@ export function LibraryWorkspace({
         </ul>
       )}
 
-      {totalPages > 1 ? (
-        <nav
-          aria-label="ページ"
-          className="mt-6 flex items-center justify-center gap-3 text-ink-2 text-xs"
-        >
-          <button
-            type="button"
-            disabled={safePage <= 1 || query.isFetching}
-            className="min-h-8 rounded-full border border-line px-3 disabled:opacity-40"
-            onClick={() => goToPage(safePage - 1)}
-          >
-            前へ
-          </button>
-          <span>
-            {safePage} / {totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={safePage >= totalPages || query.isFetching}
-            className="min-h-8 rounded-full border border-line px-3 disabled:opacity-40"
-            onClick={() => goToPage(safePage + 1)}
-          >
-            次へ
-          </button>
-        </nav>
-      ) : null}
+      <div className="mt-6">
+        <LibraryPager
+          page={safePage}
+          totalPages={totalPages}
+          busy={query.isFetching}
+          onGoToPage={goToPage}
+          ariaLabel="ページ（下）"
+        />
+      </div>
 
       {query.isError ? (
         <p className="py-3 text-center text-ink-2 text-xs">

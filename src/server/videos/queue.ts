@@ -8,6 +8,12 @@ import {
   VIDEO_QUEUE_MAX,
   videoRelPath,
 } from "@/lib/video-path";
+import {
+  sourceVideosQueueMessage,
+  tallySourceVideoQueue,
+  type VideoEnqueueStatus,
+  type VideoEnqueueTally,
+} from "@/lib/video-queue";
 import { accountIdForMedia } from "@/server/media/account";
 import { loadMediaRow } from "@/server/media/download";
 import { refreshMediaFromTweet } from "@/server/media/refresh";
@@ -168,10 +174,41 @@ export async function listVideoLibrary(
   };
 }
 
-export async function enqueueVideo(
+export type EnqueueOutcome =
+  | { status: "queued"; item: VideoItem }
+  | { status: Exclude<VideoEnqueueStatus, "queued">; message?: string };
+
+export type SourceVideosQueueResult = VideoEnqueueTally & {
+  items: VideoItem[];
+  message: string;
+};
+
+function throwEnqueueOutcome(outcome: EnqueueOutcome): never {
+  if (outcome.status === "ready") {
+    throw new AppError("CONFLICT", "すでにライブラリにあります");
+  }
+  if (outcome.status === "already_queued") {
+    throw new AppError("CONFLICT", "すでにキューにあります");
+  }
+  if (outcome.status === "full") {
+    throw new AppError(
+      "CONFLICT",
+      `キューがいっぱいです（${VIDEO_QUEUE_MAX}件）。実行してから追加してください`,
+    );
+  }
+  throw new AppError(
+    "VALIDATION",
+    outcome.status === "invalid"
+      ? (outcome.message ?? "この動画は保存できません")
+      : "この動画は保存できません",
+    { status: 422 },
+  );
+}
+
+export async function tryEnqueueVideo(
   mediaId: string,
   ctx: AccountContext,
-): Promise<VideoItem> {
+): Promise<EnqueueOutcome> {
   const accountId = contextAccountId(ctx);
   if (!accountId) {
     throw new AppError("VALIDATION", "アカウントを選んでください");
@@ -183,7 +220,14 @@ export async function enqueueVideo(
   if (mediaAccount !== accountId) {
     throw new AppError("FORBIDDEN", "このアカウントの動画ではありません");
   }
-  await requireMp4Url(mediaId, accountId);
+  try {
+    await requireMp4Url(mediaId, accountId);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "VALIDATION") {
+      return { status: "invalid", message: error.message };
+    }
+    throw error;
+  }
 
   const existing = await getClient().execute({
     sql: `SELECT id, status FROM video_downloads WHERE media_id = ? LIMIT 1`,
@@ -193,18 +237,15 @@ export async function enqueueVideo(
   if (row) {
     const status = String(row.status);
     if (status === "ready") {
-      throw new AppError("CONFLICT", "すでにライブラリにあります");
+      return { status: "ready" };
     }
     if (status === "queued" || status === "downloading") {
-      throw new AppError("CONFLICT", "すでにキューにあります");
+      return { status: "already_queued" };
     }
     if (status === "failed" || status === "canceled") {
       const count = await queuedCount(accountId);
       if (count >= VIDEO_QUEUE_MAX) {
-        throw new AppError(
-          "CONFLICT",
-          `キューがいっぱいです（${VIDEO_QUEUE_MAX}件）。実行してから追加してください`,
-        );
+        return { status: "full" };
       }
       await getClient().execute({
         sql: `UPDATE video_downloads SET
@@ -212,16 +253,13 @@ export async function enqueueVideo(
               WHERE id = ?`,
         args: [String(row.id)],
       });
-      return loadVideoItem(String(row.id));
+      return { status: "queued", item: await loadVideoItem(String(row.id)) };
     }
   }
 
   const count = await queuedCount(accountId);
   if (count >= VIDEO_QUEUE_MAX) {
-    throw new AppError(
-      "CONFLICT",
-      `キューがいっぱいです（${VIDEO_QUEUE_MAX}件）。実行してから追加してください`,
-    );
+    return { status: "full" };
   }
 
   const id = newId();
@@ -231,7 +269,79 @@ export async function enqueueVideo(
           ) VALUES (?, ?, ?, 'queued', datetime('now'))`,
     args: [id, mediaId, accountId],
   });
-  return loadVideoItem(id);
+  return { status: "queued", item: await loadVideoItem(id) };
+}
+
+export async function enqueueVideo(
+  mediaId: string,
+  ctx: AccountContext,
+): Promise<VideoItem> {
+  const outcome = await tryEnqueueVideo(mediaId, ctx);
+  if (outcome.status === "queued") {
+    return outcome.item;
+  }
+  throwEnqueueOutcome(outcome);
+}
+
+export async function enqueueSourceVideos(
+  sourceId: string,
+  ctx: AccountContext,
+): Promise<SourceVideosQueueResult> {
+  const accountId = contextAccountId(ctx);
+  if (!accountId) {
+    throw new AppError("VALIDATION", "アカウントを選んでください");
+  }
+  const source = await getClient().execute({
+    sql: `SELECT id, kind, x_post_id, x_account_id
+          FROM sources WHERE id = ? LIMIT 1`,
+    args: [sourceId],
+  });
+  const row = source.rows[0];
+  if (!row) {
+    throw new AppError("NOT_FOUND", "Source がありません");
+  }
+  if (String(row.x_account_id ?? "") !== accountId) {
+    throw new AppError("FORBIDDEN", "このアカウントの投稿ではありません");
+  }
+  const postId = row.x_post_id ? String(row.x_post_id) : "";
+  if (!postId) {
+    throw new AppError("VALIDATION", "この投稿に動画がありません", {
+      status: 422,
+    });
+  }
+  const media = await getClient().execute({
+    sql: `SELECT id FROM media_assets
+          WHERE x_post_id = ?
+            AND type IN ('video', 'animated_gif')
+          ORDER BY created_at ASC
+          LIMIT 8`,
+    args: [postId],
+  });
+  const mediaIds = media.rows.map((item) => String(item.id));
+  if (mediaIds.length === 0) {
+    throw new AppError("VALIDATION", "この投稿に保存できる動画がありません", {
+      status: 422,
+    });
+  }
+
+  const statuses: VideoEnqueueStatus[] = [];
+  const items: VideoItem[] = [];
+  for (const [index, mediaId] of mediaIds.entries()) {
+    const outcome = await tryEnqueueVideo(mediaId, ctx);
+    statuses.push(outcome.status);
+    if (outcome.status === "queued") {
+      items.push(outcome.item);
+    }
+    if (outcome.status === "full") {
+      const tally = tallySourceVideoQueue(
+        statuses,
+        mediaIds.length - index - 1,
+      );
+      return { ...tally, items, message: sourceVideosQueueMessage(tally) };
+    }
+  }
+  const tally = tallySourceVideoQueue(statuses);
+  return { ...tally, items, message: sourceVideosQueueMessage(tally) };
 }
 
 export async function loadVideoItem(id: string): Promise<VideoItem> {

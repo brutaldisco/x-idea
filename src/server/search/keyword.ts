@@ -65,6 +65,7 @@ function mapRow(row: Record<string, unknown>): SourceListItem {
       ? String(row.video_save_status)
       : null,
     videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
+    hasQueueableVideos: Boolean(row.has_queueable_videos),
   };
 }
 

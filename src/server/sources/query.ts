@@ -46,6 +46,7 @@ export type SourceListItem = {
   mediaType: string | null;
   videoSaveStatus: string | null;
   videoRelPath: string | null;
+  hasQueueableVideos: boolean;
 };
 
 export const LIST_MEDIA_SQL = `(SELECT m.id FROM media_assets m
@@ -61,7 +62,13 @@ export const LIST_MEDIA_SQL = `(SELECT m.id FROM media_assets m
                  (SELECT vd.rel_path FROM media_assets m
                   JOIN video_downloads vd ON vd.media_id = m.id
                   WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS video_rel_path`;
+                  ORDER BY m.created_at ASC LIMIT 1) AS video_rel_path,
+                 (SELECT 1 FROM media_assets m
+                  LEFT JOIN video_downloads vd ON vd.media_id = m.id
+                  WHERE m.x_post_id = p.id
+                    AND m.type IN ('video', 'animated_gif')
+                    AND (vd.id IS NULL OR vd.status IN ('failed', 'canceled'))
+                  LIMIT 1) AS has_queueable_videos`;
 
 export type InboxListItem = SourceListItem & {
   uncertaintyReason: string | null;
@@ -102,6 +109,7 @@ function mapSourceRow(row: Record<string, unknown>): SourceListItem {
       ? String(row.video_save_status)
       : null,
     videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
+    hasQueueableVideos: Boolean(row.has_queueable_videos),
   };
 }
 
@@ -223,18 +231,6 @@ export async function listInbox(input: {
     result.rows.map((row) => String(row.id)),
   );
   return result.rows.map((row) => {
-    const { summary, fromAi } = cardSummary({
-      aiSummary: row.ai_summary ? String(row.ai_summary) : null,
-      postText: row.text ? String(row.text) : null,
-      articleExcerpt: row.article_excerpt ? String(row.article_excerpt) : null,
-    });
-    const postedAt = row.posted_at
-      ? String(row.posted_at)
-      : row.bookmarked_at
-        ? String(row.bookmarked_at)
-        : row.saved_at
-          ? String(row.saved_at)
-          : null;
     const categoryId = row.category_id ? String(row.category_id) : null;
     const candidates = parseCategoryCandidates(row.category_candidates_json)
       .filter((item) => names.has(item.category_id))
@@ -244,22 +240,7 @@ export async function listInbox(input: {
         confidence: item.confidence,
       }));
     return {
-      id: String(row.id),
-      kind: String(row.kind),
-      summary,
-      savedAt: String(row.saved_at),
-      postedAt,
-      triageStatus: String(row.triage_status),
-      authorUsername: row.author_username ? String(row.author_username) : null,
-      url: row.url ? String(row.url) : null,
-      lang: row.lang ? String(row.lang) : null,
-      summaryFromAi: fromAi,
-      mediaId: row.media_id ? String(row.media_id) : null,
-      mediaType: row.media_type ? String(row.media_type) : null,
-      videoSaveStatus: row.video_save_status
-        ? String(row.video_save_status)
-        : null,
-      videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
+      ...mapSourceRow(row as Record<string, unknown>),
       uncertaintyReason: row.ai_uncertainty_reason
         ? String(row.ai_uncertainty_reason)
         : null,

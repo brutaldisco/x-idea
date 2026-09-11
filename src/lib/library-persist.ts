@@ -4,7 +4,7 @@ import type {
 } from "@tanstack/react-query-persist-client";
 
 export const LIBRARY_PERSIST_KEY = "x-idea.library.v6";
-export const LIBRARY_PERSIST_BUSTER = "2026-09-11-paged";
+export const LIBRARY_PERSIST_BUSTER = "2026-09-11-save-videos";
 export const LIBRARY_PERSIST_MAX_PAGES = 1;
 const LEGACY_KEYS = ["marginalia.library.v5", "marginalia.library.v6"];
 

@@ -144,6 +144,8 @@ export function AskSearch({
               mediaType={item.mediaType}
               videoSaveStatus={item.videoSaveStatus}
               videoRelPath={item.videoRelPath}
+              kind={item.kind}
+              hasQueueableVideos={item.hasQueueableVideos}
               lang={item.lang}
               summaryFromAi={item.summaryFromAi}
               postedAt={item.postedAt}

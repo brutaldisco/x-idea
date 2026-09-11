@@ -137,7 +137,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 | API | 役割 |
 | --- | --- |
-| `POST /api/videos/queue` `{ media_id }` | キュー投入。15 件上限・重複は 409 |
+| `POST /api/videos/queue` `{ media_id }` または `{ source_id }` | 1 本、またはその Source の投稿に付く全動画をキュー投入。15 件上限。`source_id` は保存済み／キュー中を飛ばし、上限に達したら残りを見送る。Library の 3 点メニュー「動画を保存する」は投稿（`x_post`）かつ未保存動画があるときだけ出す |
 | `GET /api/videos/queue` | キュー＋ライブラリ一覧（サムネイル・投稿抜粋・フォルダ・状態） |
 | `POST /api/videos/queue/[id]` `{ action: "cancel" \| "retry" }` | 取消／再試行 |
 | `POST /api/videos/queue/[id]/complete` `{ rel_path, bytes }` | クライアント書き込み完了の記録（`ready` 化） |

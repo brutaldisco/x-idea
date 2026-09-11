@@ -4,6 +4,7 @@ import {
   clampSourcePage,
   decodeSourceCursor,
   encodeSourceCursor,
+  libraryPageSlots,
   SOURCE_PAGE_SIZE,
   sourceCursorKey,
   sourceCursorSql,
@@ -54,5 +55,12 @@ describe("source cursor", () => {
       sourceCursorKey({ ...item, videoSaveStatus: "ready" }, "video_saved"),
     ).toBe("1|2026-01-01");
     expect(sourceCursorKey(item, "video_saved")).toBe("0|2026-01-01");
+  });
+
+  it("builds compact page slots with gaps", () => {
+    expect(libraryPageSlots(1, 4)).toEqual([1, 2, 3, 4]);
+    expect(libraryPageSlots(1, 10)).toEqual([1, 2, "gap", 10]);
+    expect(libraryPageSlots(5, 10)).toEqual([1, "gap", 4, 5, 6, "gap", 10]);
+    expect(libraryPageSlots(10, 10)).toEqual([1, "gap", 9, 10]);
   });
 });
