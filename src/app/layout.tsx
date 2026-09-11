@@ -47,9 +47,7 @@ export const metadata: Metadata = {
         type: "image/png",
       },
     ],
-    apple: [
-      { url: PWA_APPLE_TOUCH_ICON, sizes: "180x180", type: "image/png" },
-    ],
+    apple: [{ url: PWA_APPLE_TOUCH_ICON, sizes: "180x180", type: "image/png" }],
   },
   formatDetection: {
     telephone: false,
