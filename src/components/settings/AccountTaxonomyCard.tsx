@@ -3,7 +3,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { invalidateLibraryTaxonomy } from "@/lib/library-cache";
+import {
+  invalidateLibraryTaxonomy,
+  resetLibraryQueries,
+} from "@/lib/library-cache";
 import {
   TAXONOMY_ACCENT_CLASSES,
   TAXONOMY_ACCENT_IDS,
@@ -33,6 +36,31 @@ export function AccountTaxonomyCard({
   const [draft, setDraft] = useState({ category: "", info_type: "" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmClearBadges, setConfirmClearBadges] = useState(false);
+
+  useEffect(() => {
+    if (!confirmClearBadges) {
+      return;
+    }
+    function onPointer(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-taxonomy-clear-badges-confirm]")) {
+        return;
+      }
+      setConfirmClearBadges(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setConfirmClearBadges(false);
+      }
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [confirmClearBadges]);
 
   async function request(
     path: string,
@@ -41,6 +69,7 @@ export function AccountTaxonomyCard({
     ok: boolean;
     item?: TaxonomyItem;
     taxonomy?: AccountTaxonomy;
+    cleared?: number;
     error?: { message?: string };
   }> {
     const res = await fetch(path, init);
@@ -48,6 +77,7 @@ export function AccountTaxonomyCard({
       ok: boolean;
       item?: TaxonomyItem;
       taxonomy?: AccountTaxonomy;
+      cleared?: number;
       error?: { message?: string };
     };
   }
@@ -220,6 +250,36 @@ export function AccountTaxonomyCard({
     router.refresh();
   }
 
+  async function clearSourceBadges() {
+    if (!accountId) {
+      return;
+    }
+    setConfirmClearBadges(false);
+    setBusy(true);
+    setMessage(null);
+    const body = await request("/api/settings/taxonomy", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        account_id: accountId,
+        clear_source_badges: true,
+      }),
+    });
+    setBusy(false);
+    if (!body.ok) {
+      setMessage(body.error?.message ?? "タグバッジを外せませんでした");
+      return;
+    }
+    const cleared = body.cleared ?? 0;
+    setMessage(
+      cleared > 0
+        ? `${cleared}件の記事からタグバッジを外しました。上の分類一覧はそのままです。`
+        : "外すタグバッジはありませんでした。上の分類一覧はそのままです。",
+    );
+    resetLibraryQueries(queryClient);
+    router.refresh();
+  }
+
   if (!accountId) {
     return (
       <section>
@@ -243,7 +303,8 @@ export function AccountTaxonomyCard({
       </div>
       <p className="mt-2 text-ink-2 text-sm">
         @{accountUsername ?? "このアカウント"} の Library 絞り込みと AI
-        分類に使います。左のハンドルで並べ替えできます。
+        分類に使います。左のハンドルで並べ替えできます。いらない項目は 1 件ずつ
+        × で消せます。
       </p>
       <div className="mt-4 grid gap-4 min-[48rem]:grid-cols-2">
         <TaxonomyList
@@ -276,6 +337,48 @@ export function AccountTaxonomyCard({
           onRemove={(id) => void remove("info_type", id)}
           onReorder={(itemIds) => void reorder("info_type", itemIds)}
         />
+      </div>
+      <div className="mt-6 border-line border-t pt-4">
+        <p className="text-sm">記事のタグバッジを外す</p>
+        <p className="mt-1 text-ink-2 text-xs leading-relaxed">
+          上のカテゴリ／情報タイプの一覧は消えません。消えるのは Library
+          や Reader
+          の各カードに付いている色つきタグバッジ（記事ごとの割り当て）だけです。あとから記事ごとに付け直せます。
+        </p>
+        <div className="mt-2">
+          {confirmClearBadges ? (
+            <output
+              data-taxonomy-clear-badges-confirm
+              className="inline-flex flex-wrap items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 text-ink text-xs shadow-card"
+            >
+              各記事のタグバッジをすべて外しますか？ 上の分類一覧は残ります。
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void clearSourceBadges()}
+                className="font-medium text-destructive-fg underline-offset-2 hover:underline disabled:opacity-40"
+              >
+                する
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmClearBadges(false)}
+                className="text-ink-2 hover:underline"
+              >
+                やめる
+              </button>
+            </output>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirmClearBadges(true)}
+              className="rounded-full border border-line px-3 py-1 text-ink-2 text-xs disabled:opacity-40"
+            >
+              記事のタグバッジを外す
+            </button>
+          )}
+        </div>
       </div>
       {message ? <p className="mt-3 text-ink-2 text-xs">{message}</p> : null}
     </section>
@@ -397,6 +500,9 @@ function TaxonomyList({
   return (
     <section>
       <h3 className="text-sm">{title}</h3>
+      {items.length === 0 ? (
+        <p className="mt-2 text-ink-2 text-xs">項目はありません</p>
+      ) : null}
       <ul
         ref={listRef}
         className={`mt-2 space-y-2 select-none ${draggingId ? "touch-none" : ""}`}

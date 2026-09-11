@@ -63,6 +63,7 @@ export async function getAccountTaxonomy(
   }
   await ensureSchema();
   await assertAccount(accountId);
+  await removeEmptyTaxonomyMarker(accountId);
   await ensureAccountTaxonomy(accountId);
   return readAccountTaxonomy(accountId);
 }
@@ -269,6 +270,38 @@ export async function taxonomyForAccount(
   return readAccountTaxonomy(accountId);
 }
 
+const TAXONOMY_EMPTY_ITEM_ID = "_empty";
+
+export async function clearSourceTaxonomyBadges(
+  accountId: string,
+): Promise<{ cleared: number }> {
+  await ensureSchema();
+  await assertAccount(accountId);
+  const result = await getClient().execute({
+    sql: `UPDATE sources
+          SET category_id = NULL,
+              category_source = 'none',
+              category_confidence = NULL,
+              info_type = NULL,
+              info_type_source = 'none',
+              updated_at = datetime('now')
+          WHERE x_account_id = ?
+            AND (category_id IS NOT NULL OR info_type IS NOT NULL)`,
+    args: [accountId],
+  });
+  const cleared = Number(result.rowsAffected ?? 0);
+  logger.info({ accountId, cleared }, "taxonomy.source_badges_cleared");
+  return { cleared };
+}
+
+async function removeEmptyTaxonomyMarker(accountId: string): Promise<void> {
+  await getClient().execute({
+    sql: `DELETE FROM account_taxonomy
+          WHERE x_account_id = ? AND item_id = ?`,
+    args: [accountId, TAXONOMY_EMPTY_ITEM_ID],
+  });
+}
+
 async function ensureAccountTaxonomy(accountId: string): Promise<void> {
   const existing = await getClient().execute({
     sql: `SELECT id FROM account_taxonomy WHERE x_account_id = ? LIMIT 1`,
@@ -277,6 +310,10 @@ async function ensureAccountTaxonomy(accountId: string): Promise<void> {
   if (existing.rows[0]) {
     return;
   }
+  await seedAccountTaxonomy(accountId);
+}
+
+async function seedAccountTaxonomy(accountId: string): Promise<void> {
   const defaults = defaultAccountTaxonomy();
   const client = getClient();
   let order = 10;
@@ -315,6 +352,9 @@ async function readAccountTaxonomy(
   const categories: TaxonomyItem[] = [];
   const infoTypes: TaxonomyItem[] = [];
   for (const row of result.rows) {
+    if (String(row.item_id) === TAXONOMY_EMPTY_ITEM_ID) {
+      continue;
+    }
     const colorRaw = row.color ? String(row.color) : "";
     const item = {
       id: String(row.item_id),

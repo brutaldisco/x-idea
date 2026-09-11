@@ -223,10 +223,7 @@ async function SettingsBody({
             exhausted={current.backfillExhausted}
           />
         ) : null}
-        <SyncLimitsForm
-          syncMaxPerRun={sync.syncMaxPerRun}
-          mediaDownloadPerTick={sync.mediaDownloadPerTick}
-        />
+        <SyncLimitsForm syncMaxPerRun={sync.syncMaxPerRun} />
         <SettingsFlagToggle
           field="thread_expand_enabled"
           enabled={flags.threadExpandEnabled}

@@ -356,7 +356,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **フィルタバー**：カテゴリ（現在の X アカウントの分類）、情報タイプ（同）、状態（未読/読了/実践予定/実践済/KC化）、タグ、期間、`kind`（投稿/記事/手動）。Lens はフィルタバーにピン留め。カテゴリと情報タイプは Settings の `account_taxonomy` を都度読む（一覧キャッシュには載せない）。Settings でアカウントごとに編集する。選んだカテゴリ／情報タイプのチップは Settings の accent 色。
 - **表示**：リスト（密）／グリッド（サムネ重視、**既定**。モバイルは 2 列、`min-[48rem]` 以上は 3 列）／**Atlas**。リスト／グリッド切替でもページ幅は変えない（カードは枠内で折り返す）。並び・フィルタは自前メニューで、開閉時に青いフォーカス枠を出さない。
 - **並び**：既定は投稿日時の新しい順（`posted_at`。取り込み順の `saved_at` ではない）。Library / Inbox は `?sort=` で **新しい順 / 古い順 / 保存が新しい順 / 保存が古い順 / 動画の保存済み** を切り替えられる。動画の保存済みは `video_downloads.status='ready'` を先頭にし、同じグループ内は投稿日時の新しい順。重要度・関連度（Lens 時）は後続。
-- **カード**：カテゴリ／情報タイプの小さいバッジ（Settings の accent 色）、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。投稿者ハンドルは出さない。動画サムネは保存状態でバッジを変える（未保存「動画」／`queued`・`downloading`「キュー」／`video_downloads.status='ready'`「保存済」）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Library カードのサムネに出す。Reader ギャラリーはタイル下部だけ（サムネ上は重ねない）。`ready` の動画サムネはタップでアプリ内再生（プレーヤーは **1本リピート** のトグルのみ）。**3 点メニュー**は、投稿に未保存の動画があれば先頭が **動画を保存する**（その投稿の全動画をキューへ。すでに `ready` / `queued` / `downloading` の分は飛ばす。上限 15 件）、続いて「X で開く」、**削除**（DB 行＋ローカル画像/動画ファイル。`dismissed_bookmarks` に残し同期では戻さない。`bookmark.write` があれば X のブックマークも外す。ADR-013）。
+- **カード**：カテゴリ／情報タイプの小さいバッジ（Settings の accent 色）、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。投稿者ハンドルは出さない。動画サムネは保存状態でバッジを変える（未保存「動画」／`queued`・`downloading`「キュー」／`video_downloads.status='ready'`「保存済」）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Library カードのサムネに出す。Reader ギャラリーはタイル下部だけ（サムネ上は重ねない）。`ready` の動画サムネはタップでアプリ内再生（プレーヤーは **1本リピート** のトグルのみ）。**3 点メニュー**は、投稿に未保存の動画があれば先頭が **動画を保存する**（確認せずその投稿の全動画をキューへ。すでに `ready` / `queued` / `downloading` の分は飛ばす。上限 15 件。Library では押したあと Videos のキューを開く）、続いて「X で開く」、**削除**（DB 行＋ローカル画像/動画ファイル。`dismissed_bookmarks` に残し同期では戻さない。`bookmark.write` があれば X のブックマークも外す。ADR-013）。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
 - **ページネーション**：1ページ 60件。`?page=`（1始まり）。前へ／次へに加え、ページ番号で直接移動できる（多いときは省略）。ページャは一覧の下だけ。並び・フィルタを変えると 1 ページ目に戻る。API は `LIMIT 60 OFFSET (page-1)*60`（全件 SELECT 禁止）。Reader 往復は同じ `page` を URL に残す。ページ送りでは前ページの先頭を見せず、スケルトンのあと次ページを出す。
 - **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示・ページの URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。復元は **1 回**。読み込み中にユーザーがスクロールしたら復元を打ち切る。遅延タイマーで `scrollTo` を連打しない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む。読み込み・キャッシュ再編は `docs/design/2026-09-09-library-load-cache.md`。
@@ -402,7 +402,7 @@ UI/UX の判断に迷ったら以下に従う。
   - Gemini：レーン別「残り / 上限」。リセットは太平洋時間 0:00。
   - 追加記録は `x_credit_ledger`（`topup` / `snapshot`）。公式残量は App Bearer（`X_BEARER_TOKEN` または client credentials）か連携トークンで再取得（15 分キャッシュ）。
 - **外部サービス / 課金**：付録H の各サービスをカードで並べる。状態は `未設定 / 無料枠 / 有料ON / 停止`。**有料トグルはすべて既定 OFF**。OFF の機能はジョブを投入せず、Today に「設定が必要」バナーだけ出す。契約完了後に人間が ON にする（worker AI はトグルを勝手に ON にしない）。
-  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings / Today に「今すぐ同期」。自動は最短 6 時間（`sync_interval_min`、下限 360）。差分確認は `max_results=10`。1回の取り込み上限は `sync_max_per_run`（既定 100、10〜500）
+  - X API：`x_api_enabled`（クレジット未購入なら OFF。ON にするまで `sync_bookmarks` は投入しない）。Settings / Today に「今すぐ同期」。自動は最短 6 時間（`sync_interval_min`、下限 360）。差分確認は `max_results=10`。1回の取り込み上限は `sync_max_per_run`（既定 100、10〜500）。未保存画像の追いつき投入は Settings に出さず、`media_download` の pending/running 件数を見て tick 数回分だけ積む
   - Gemini 有料：`ai_paid_enabled`（既定 OFF。ON でも月額上限で無料枠挙動に戻す）
   - スレッド展開：`thread_expand_enabled`（追加課金、$0.005/投稿。既定 OFF。Reader で対象ごとに手動取得）
   - 直近 7 日の返信取得：`reply_context_enabled`（追加課金、$0.005/投稿。既定 OFF。上限はスレッド展開と共用）
@@ -411,7 +411,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **アカウント**：1 枚のカードにまとめる。見出しは選んだ `@name`（「このアカウントの設定」）。上部で表示するアカウントを 1 件選び、同じ枠内に X 連携と分類を出す。同時に複数アカウントの設定は表示しない。切替は既存の `x_ctx`（Library / Inbox と同じ）。「アカウントを追加」もここ（最大 3）。
 - **既定のアカウント**（ADR-014）：アカウント設定カードの外に、別の設定として置く。見出しは「新しいセッション / 既定のアカウント」。`settings.default_x_account_id`。別ブラウザ・初回に開く。表示中アカウントとは連動しない。選択表示は「既定 / 既定にする」。
 - **X 連携**：選んだアカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、個別解除。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
-- **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除・**ハンドルで並べ替え**・**accent-01〜09 の色**）。色は選んだら即保存。削除は ×、確認チップのあと実行。見出しに `@ハンドル` を出す。初期値は seed カテゴリと既定の情報タイプ。Library の絞り込みと AI enrich がこの一覧の順を使う（`account_taxonomy.sort_order`、ADR-015）。
+- **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除・**ハンドルで並べ替え**・**accent-01〜09 の色**）。色は選んだら即保存。削除は ×、確認チップのあと実行（1件ずつ。一覧を一括で空にはしない）。**記事のタグバッジを外す**は、分類一覧はそのまま残し、Library / Reader の各カードに付いているカテゴリ／情報タイプのバッジだけを外す（確認チップあり。`sources.category_id` / `info_type` を NULL）。見出しに `@ハンドル` を出す。Library の絞り込みと AI enrich がこの一覧の順を使う（`account_taxonomy.sort_order`、ADR-015）。
 - **同期**：自動は最短 6 時間＋手動（「今すぐ同期」は新着、「過去のブックマークを取り込む」は古い方向。ADR-017）。返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
@@ -437,7 +437,7 @@ UI/UX の判断に迷ったら以下に従う。
 ### 8.10 SC-15 Videos（v3.5、ADR-007）
 
 - **保存フォルダ**：Settings の「保存フォルダ」カードで選ぶ（File System Access API）。フォルダ名は `settings.video_save_folder_name` で全環境共有。書き込みハンドルはブラウザ／オリジンごとなので、localhost・本番・別ブラウザでは同じフォルダを再リンクする。Videos は未リンク／要再リンク時に Settings への案内だけ出す。Safari/Firefox は非対応案内＋通常ダウンロードにフォールバック。
-- **ダウンロードキュー**：`N / 15` 件表示＋「ダウンロード開始」。各アイテムはサムネイル・投稿抜粋・`@username`・状態（日本語。ダウンロード中はパーセント）・進捗バー・取消。`failed` は理由と「再試行」。実行は逐次 1 件、8MB チャンク＋レジューム（14.6）。総サイズが分かるまでパーセントは出さない。
+- **ダウンロードキュー**：`N / 15` 件表示＋「すべて開始」。チェックで対象を選び「選んだ N 件を開始」、各行の「この動画だけ」でも実行できる。各アイテムはサムネイル・投稿抜粋・`@username`・状態（日本語。ダウンロード中はパーセント）・進捗バー・取消。`failed` は理由と「再試行」。実行は逐次 1 件、8MB チャンク＋レジューム（14.6）。総サイズが分かるまでパーセントは出さない。
 - **ライブラリ**：フォルダチップ（すべて／未分類／ユーザー作成フォルダ／＋新規フォルダ）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日。操作は「フォルダ移動」「削除」「X で開く」「Source を開く」。
 - **プレーヤー**：カードタップで黒ベースの全画面モーダル（ライト／ダークどちらでも黒。テーマトークンは使わない）。`<video controls playsInline>` に object URL を渡す。全画面はプレーヤー枠に対して行い、終了や左右キーで次／前へ移っても維持する。左右キーはシークせず前後の動画へ。ネイティブの全画面ボタンは使わず、枠の全画面に寄せる。
 - 詳細は `docs/design/2026-09-05-video-library.md`。
@@ -986,7 +986,7 @@ RETURNING *;
 
 - **起動**：外部 Cron が 1〜5 分毎に `POST /api/jobs/tick`（`Authorization: Bearer CRON_SECRET`）。加えてアプリ起動時にクライアントから tick（同一シークレットは使わず、`/api/jobs/tick?source=client` はオリジン同一・60 秒に 1 回のサーバー側スロットル）。
 - **スケジュール**：tick 冒頭で `job_schedules`（`key, cron_expr, tz, last_run_at, enabled`）を評価し、期限到達のものを `jobs` に投入（重複投入防止に `UNIQUE(type, dedupe_key) WHERE status IN ('pending','running')`）。
-- **1 tick の仕事量**：最大 N 件（既定 5）または 240 秒で終了。`enrich_batch` は 1 tick に 2 件まで（RPM 保護）。
+- **1 tick の仕事量**：最大 N 件（既定 5）または 240 秒で終了。`enrich_batch` は 1 tick に 2 件まで（RPM 保護）。未保存画像の追いつきは `media_download` の pending/running が 15 件未満のときだけ追加投入する（Settings には出さない）。
 - **coalesce**：`enrich_batch` は `pending` の enrich 対象 Source を最大 5 件まとめて 1 ジョブ化（`payload.source_ids`）。sync 直後に投入し、記事取得完了で再要約が必要なら `needs_reenrich=1` を立てて次バッチへ。
 - **再試行**：指数バックオフ `1m * 2^attempts`（最大 5 回）。レーン起因（`LaneCooldown` / `LaneCapReached`）は attempts を増やさず `run_after` のみ更新。
 - **ゾンビ回収**：`running` かつ `started_at + timeout < now` を `pending` に戻す。
@@ -1051,7 +1051,7 @@ CREATE TABLE settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   sync_interval_min INTEGER NOT NULL DEFAULT 360,  -- 自動同期の最短間隔（分）。下限 360。0006 で改定
   sync_max_per_run INTEGER NOT NULL DEFAULT 100,   -- 1回の同期で取り込む件数（10〜500）
-  media_download_per_tick INTEGER NOT NULL DEFAULT 5, -- 1回の tick で保存するメディア数（1〜50）
+  media_download_per_tick INTEGER NOT NULL DEFAULT 5, -- 未使用。投入量は enqueue-pending が jobs 残から決める
   save_replies INTEGER NOT NULL DEFAULT 1,
   auto_file_threshold REAL NOT NULL DEFAULT 0.8,
   excluded_domains_json TEXT NOT NULL DEFAULT '[]',
@@ -1670,7 +1670,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | POST | `/api/sync` | 手動同期（60秒スロットル、最大 3 ジョブ消化） | 同一オリジン | P1 |
 | PATCH | `/api/settings` | `x_api_enabled` / 同期上限 / 既定アカウント（`default_x_account_id`）など。人間が切り替える | 同一オリジン | P1 |
 | GET/POST | `/api/settings/video-folder` | 動画保存フォルダ名の共有。ハンドルはブラウザごと | 同一オリジン | P1 |
-| GET/POST/PATCH/DELETE | `/api/settings/taxonomy` | アカウント別カテゴリ／情報タイプ。PATCH は改名または `item_ids` で並べ替え | 同一オリジン | P1 |
+| GET/POST/PATCH/DELETE | `/api/settings/taxonomy` | アカウント別カテゴリ／情報タイプ。PATCH は改名、`item_ids` 並べ替え、色、または `clear_source_badges`（記事の分類バッジだけ外す） | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
 | GET | `/api/sources` | 一覧（フィルタ・`?page=1&limit=60`。互換で `cursor` も可） | 同一オリジン | P1 |
 | GET | `/api/sources/:id` | 詳細（原文・記事・要約・タグ・関連） | 同一オリジン | P1 |

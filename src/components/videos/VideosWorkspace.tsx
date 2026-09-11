@@ -49,9 +49,11 @@ function errorMessage(error: unknown): string {
 export function VideosWorkspace({
   initial,
   initialFolderName,
+  initialQueueOpen = false,
 }: {
   initial: VideoLibraryPayload;
   initialFolderName?: string | null;
+  initialQueueOpen?: boolean;
 }) {
   const router = useRouter();
   const { supported, linked, folderName } =
@@ -71,7 +73,9 @@ export function VideosWorkspace({
   const [repeat, setRepeat] = useState<RepeatMode>("folder");
   const abortRef = useRef<AbortController | null>(null);
   const [offlineHint, setOfflineHint] = useState(false);
-  const [queueOpen, setQueueOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(initialQueueOpen);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setData(initial);
@@ -122,7 +126,7 @@ export function VideosWorkspace({
     router.refresh();
   }
 
-  async function startDownloads() {
+  async function startDownloads(ids?: string[]) {
     const handle = root ?? (await loadVideoRoot());
     if (!handle) {
       setMessage("Settings で保存フォルダを選んでください");
@@ -139,8 +143,11 @@ export function VideosWorkspace({
       return;
     }
     const queued = data.queue.filter((item) => item.status === "queued");
-    if (queued.length === 0) {
-      setMessage("キューは空です");
+    const chosen = ids?.length
+      ? queued.filter((item) => ids.includes(item.id))
+      : queued;
+    if (chosen.length === 0) {
+      setMessage(ids?.length ? "選んだ動画はキューにありません" : "キューは空です");
       return;
     }
     setBusy(true);
@@ -151,7 +158,7 @@ export function VideosWorkspace({
     const started = performance.now();
     let doneBytes = 0;
     try {
-      for (const item of queued) {
+      for (const item of chosen) {
         if (controller.signal.aborted) {
           break;
         }
@@ -386,17 +393,54 @@ export function VideosWorkspace({
     return data.library.filter((item) => item.folderId === filter);
   }, [data.library, filter]);
 
+  const queuedItems = useMemo(
+    () => data.queue.filter((item) => item.status === "queued"),
+    [data.queue],
+  );
+
+  useEffect(() => {
+    const live = new Set(queuedItems.map((item) => item.id));
+    setSelectedIds((current) => current.filter((id) => live.has(id)));
+  }, [queuedItems]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) {
+      return;
+    }
+    selectAllRef.current.indeterminate =
+      selectedIds.length > 0 && selectedIds.length < queuedItems.length;
+  }, [selectedIds, queuedItems.length]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((current) =>
+      current.length === queuedItems.length
+        ? []
+        : queuedItems.map((item) => item.id),
+    );
+  }
+
   const eta = useMemo(() => {
-    const queued = data.queue.filter((item) => item.status === "queued");
-    if (queued.length === 0) {
+    const targets =
+      selectedIds.length > 0
+        ? queuedItems.filter((item) => selectedIds.includes(item.id))
+        : queuedItems;
+    if (targets.length === 0) {
       return null;
     }
-    const assumed = queued.reduce((sum, item) => {
+    const assumed = targets.reduce((sum, item) => {
       const minutes = (item.durationMs ?? 60_000) / 60_000;
       return sum + minutes * 10 * 1024 * 1024;
     }, 0);
     return `目安 ${formatBytes(assumed)}（回線により変動）`;
-  }, [data.queue]);
+  }, [queuedItems, selectedIds]);
 
   return (
     <>
@@ -430,14 +474,44 @@ export function VideosWorkspace({
         {queueOpen ? (
           <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">キュー</h2>
+              <div className="flex min-w-0 items-center gap-3">
+                <h2 className="font-semibold">キュー</h2>
+                {queuedItems.length > 0 ? (
+                  <label className="flex items-center gap-1.5 text-ink-2 text-xs">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={
+                        selectedIds.length > 0 &&
+                        selectedIds.length === queuedItems.length
+                      }
+                      disabled={busy}
+                      onChange={toggleSelectAll}
+                    />
+                    すべて
+                  </label>
+                ) : null}
+              </div>
               <button
                 type="button"
-                disabled={busy || !supported || !linked}
-                onClick={() => void startDownloads()}
+                disabled={
+                  busy ||
+                  !supported ||
+                  !linked ||
+                  (selectedIds.length === 0 && queuedItems.length === 0)
+                }
+                onClick={() =>
+                  void startDownloads(
+                    selectedIds.length > 0 ? selectedIds : undefined,
+                  )
+                }
                 className="rounded-full bg-ink px-3 py-1.5 text-paper text-sm disabled:opacity-50"
               >
-                {busy ? "実行中…" : "ダウンロード開始"}
+                {busy
+                  ? "実行中…"
+                  : selectedIds.length > 0
+                    ? `選んだ ${selectedIds.length} 件を開始`
+                    : "すべて開始"}
               </button>
             </div>
             {eta ? <p className="mt-1 text-ink-2 text-xs">{eta}</p> : null}
@@ -469,7 +543,7 @@ export function VideosWorkspace({
             ) : null}
             {offlineHint ? (
               <p className="mt-2 text-warn text-xs">
-                回線が切れました。つながったら「ダウンロード開始」で再開できます。
+                回線が切れました。つながったら「すべて開始」か選んだ件で再開できます。
               </p>
             ) : null}
             {data.queue.length === 0 ? (
@@ -497,6 +571,19 @@ export function VideosWorkspace({
                       key={item.id}
                       className="flex gap-3 rounded-xl border border-line bg-paper p-3"
                     >
+                      {item.status === "queued" ? (
+                        <label className="grid shrink-0 place-items-center self-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(item.id)}
+                            disabled={busy}
+                            aria-label={`${item.excerpt || item.tweetId}を選ぶ`}
+                            onChange={() => toggleSelected(item.id)}
+                          />
+                        </label>
+                      ) : (
+                        <span className="w-4 shrink-0" aria-hidden />
+                      )}
                       <Image
                         src={item.previewSrc}
                         alt=""
@@ -541,13 +628,25 @@ export function VideosWorkspace({
                               再試行
                             </button>
                           ) : (
-                            <button
-                              type="button"
-                              className="text-ink-2 text-xs hover:underline"
-                              onClick={() => void cancelItem(item.id)}
-                            >
-                              取消
-                            </button>
+                            <>
+                              {item.status === "queued" ? (
+                                <button
+                                  type="button"
+                                  disabled={busy || !supported || !linked}
+                                  className="text-accent text-xs hover:underline disabled:opacity-40"
+                                  onClick={() => void startDownloads([item.id])}
+                                >
+                                  この動画だけ
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                className="text-ink-2 text-xs hover:underline"
+                                onClick={() => void cancelItem(item.id)}
+                              >
+                                取消
+                              </button>
+                            </>
                           )}
                           {!supported ? (
                             <a

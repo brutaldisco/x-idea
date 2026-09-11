@@ -9,6 +9,7 @@ import {
   removeTaxonomyItem,
   renameTaxonomyItem,
   reorderTaxonomyItems,
+  clearSourceTaxonomyBadges,
   setTaxonomyItemColor,
   type TaxonomyKind,
 } from "@/server/taxonomy";
@@ -111,9 +112,14 @@ export async function PATCH(request: Request) {
       item_ids?: unknown;
       name?: string;
       color?: string | null;
+      clear_source_badges?: boolean;
     };
     if (typeof body.account_id !== "string") {
       throw new AppError("VALIDATION", "アカウントが必要です");
+    }
+    if (body.clear_source_badges === true) {
+      const result = await clearSourceTaxonomyBadges(body.account_id);
+      return Response.json({ ok: true, cleared: result.cleared });
     }
     if (Array.isArray(body.item_ids)) {
       const taxonomy = await reorderTaxonomyItems({

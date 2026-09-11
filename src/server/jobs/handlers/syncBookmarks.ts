@@ -165,11 +165,7 @@ async function syncOneAccount(
       );
     }
 
-    const settings = await getSyncSettings();
-    await enqueuePendingMediaDownloads(
-      account.id,
-      settings.mediaDownloadPerTick,
-    );
+    await enqueuePendingMediaDownloads(account.id);
     await enqueuePendingArticleFetches(8);
     await markXAccountSynced(account.id, newHead);
     await writeRun({
@@ -328,11 +324,7 @@ async function syncOneAccountBackfill(
       await markXAccountGoneSweep(account.id, swept.nextCursor);
     }
 
-    const settings = await getSyncSettings();
-    await enqueuePendingMediaDownloads(
-      account.id,
-      settings.mediaDownloadPerTick,
-    );
+    await enqueuePendingMediaDownloads(account.id);
     await enqueuePendingArticleFetches(8);
     await writeRun({
       runId,

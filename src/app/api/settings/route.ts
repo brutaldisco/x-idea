@@ -24,7 +24,6 @@ export async function PATCH(request: Request) {
       thread_expand_enabled?: boolean;
       reply_context_enabled?: boolean;
       sync_max_per_run?: number;
-      media_download_per_tick?: number;
       default_x_account_id?: string;
     };
     if (typeof body.default_x_account_id === "string") {
@@ -43,13 +42,9 @@ export async function PATCH(request: Request) {
       await setPaidFlag("reply_context_enabled", body.reply_context_enabled);
       return Response.json({ ok: true });
     }
-    if (
-      typeof body.sync_max_per_run === "number" ||
-      typeof body.media_download_per_tick === "number"
-    ) {
+    if (typeof body.sync_max_per_run === "number") {
       await setSyncLimits({
         syncMaxPerRun: body.sync_max_per_run,
-        mediaDownloadPerTick: body.media_download_per_tick,
       });
       return Response.json({ ok: true });
     }

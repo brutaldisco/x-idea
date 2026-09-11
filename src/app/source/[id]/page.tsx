@@ -61,7 +61,7 @@ export default async function SourcePage({
   const taxonomy = await taxonomyForAccount(source.xAccountId);
   await enqueuePendingArticleFetches(8, source.id);
   if (source.xAccountId) {
-    await enqueuePendingMediaDownloads(source.xAccountId, 16);
+    await enqueuePendingMediaDownloads(source.xAccountId);
   }
   after(() => {
     void (async () => {

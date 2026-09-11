@@ -154,8 +154,8 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 低速回線でのタイムアウトを避けるため、**チャンク分割＋レジューム** を採用する。
 
-1. 「ダウンロード開始」ボタン（ユーザー操作を起点に `requestPermission({ mode: "readwrite" })` で権限再許可）。
-2. キューを **逐次 1 件ずつ** 処理（並列にしない。低速回線での帯域競合とタイムアウトを避ける）。
+1. 「すべて開始」または選んだ行の「選んだ N 件を開始」／「この動画だけ」（ユーザー操作を起点に `requestPermission({ mode: "readwrite" })` で権限再許可）。
+2. 対象（未選択なら queued 全件）を **逐次 1 件ずつ** 処理（並列にしない。低速回線での帯域競合とタイムアウトを避ける）。
 3. 1 件の処理：
    - ルート → `{x_account_id}` →（あれば）フォルダ、の順にディレクトリハンドルを `getDirectoryHandle(..., { create: true })` で解決。
    - ファイル `{tweet_id}_{media_key}.mp4` を `getFileHandle({ create: true })` → `createWritable({ keepExistingData: true })`。
@@ -184,7 +184,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 構成（上から）：
 
-1. **ダウンロードキュー**：件数（`N / 15`）＋「ダウンロード開始」ボタン。各アイテムはサムネイル・投稿抜粋・`@username`・状態（日本語。ダウンロード中は `42%` など）・進捗バー・取消。`failed` は理由と「再試行」。未リンク時は Settings への案内。
+1. **ダウンロードキュー**：件数（`N / 15`）＋「すべて開始」。チェックで対象を選び「選んだ N 件を開始」、各行に「この動画だけ」。各アイテムはサムネイル・投稿抜粋・`@username`・状態（日本語。ダウンロード中は `42%` など）・進捗バー・取消。`failed` は理由と「再試行」。未リンク時は Settings への案内。
 2. **ライブラリ**：フォルダチップ（`すべて / 未分類 / {フォルダ}… / ＋新規フォルダ`）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日。操作メニューに「フォルダ移動」「削除」「X で開く」「Source を開く」。
 3. **プレーヤー**：カードをタップで **黒ベースのモーダル**（ライト／ダークどちらでも `bg-black`。テーマの paper/ink は使わない）。`<video controls playsInline>` に `handle.getFile()` → `URL.createObjectURL()` を渡す（閉じたら `revokeObjectURL`）。シーク・音量はブラウザ標準。全画面はプレーヤー枠（シェル）に対して行い、動画が終わって次へ進んでも、左右キーで前後しても維持する。左右キーはシークせず前後の動画へ。
 
