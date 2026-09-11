@@ -1,32 +1,40 @@
 import { describe, expect, it } from "vitest";
-import {
-  leftoverBackfillCursor,
-  nextBackfillCursor,
-} from "@/lib/sync-backfill";
+import { backfillStep, leftoverBackfillCursor } from "@/lib/sync-backfill";
 
-describe("nextBackfillCursor", () => {
-  it("marks the list as exhausted when X has no next page", () => {
-    expect(nextBackfillCursor(null, { fetched: 12, pageSize: 100 })).toEqual({
-      token: null,
-      exhausted: true,
-    });
-  });
-
-  it("keeps the pagination token when older pages remain", () => {
-    expect(nextBackfillCursor("page-2")).toEqual({
-      token: "page-2",
-      exhausted: false,
-    });
-  });
-
-  it("does not lock out a full page that omitted next_token", () => {
+describe("backfillStep", () => {
+  it("continues when X hands a next_token", () => {
     expect(
-      nextBackfillCursor(null, {
-        fetched: 100,
-        pageSize: 100,
-        previousToken: "page-1",
-      }),
-    ).toEqual({ token: "page-1", exhausted: false });
+      backfillStep({ nextToken: "abc", fetched: 100, pageSize: 100 }),
+    ).toEqual({ action: "continue", token: "abc" });
+  });
+
+  it("probes with a smaller page when a partial page has no token", () => {
+    expect(
+      backfillStep({ nextToken: null, fetched: 80, pageSize: 100 }),
+    ).toEqual({ action: "probe", pageSize: 10 });
+  });
+
+  it("probes even when a full page omits the token", () => {
+    expect(
+      backfillStep({ nextToken: null, fetched: 100, pageSize: 100 }),
+    ).toEqual({ action: "probe", pageSize: 10 });
+  });
+
+  it("is exhausted when the probe size also lacks a token", () => {
+    expect(
+      backfillStep({ nextToken: null, fetched: 10, pageSize: 10 }),
+    ).toEqual({ action: "exhausted" });
+    expect(backfillStep({ nextToken: null, fetched: 3, pageSize: 10 })).toEqual(
+      {
+        action: "exhausted",
+      },
+    );
+  });
+
+  it("is exhausted on an empty page", () => {
+    expect(
+      backfillStep({ nextToken: null, fetched: 0, pageSize: 100 }),
+    ).toEqual({ action: "exhausted" });
   });
 });
 

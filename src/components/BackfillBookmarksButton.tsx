@@ -64,8 +64,8 @@ export function BackfillBookmarksButton({
       </button>
       <p className="mt-2 text-ink-2 text-xs">
         「今すぐ同期」は新着だけです。こちらは X
-        の一覧を古い方へ進めます。1回の件数は下の上限。Owned Read は
-        $0.001/件です。
+        の一覧を古い方へ進めます。1回の件数は下の上限。続きがあるか確かめる読み直しで、同じ上限をもう1回分使うことがあります。Owned
+        Read は $0.001/件です。
       </p>
       {exhausted ? (
         <p className="mt-1 text-ink-2 text-xs">

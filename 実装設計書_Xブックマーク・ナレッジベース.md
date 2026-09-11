@@ -705,7 +705,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 - ユーザーがアプリで削除した tweet は `dismissed_bookmarks` に残し、再取り込みしない。可能なら X のブックマークも外す（ADR-013）。
 - 返信投稿は `settings.save_replies`（既定 保存）。
 - 編集追跡は行わない **[仮定]**。
-- **過去分の手動遡及**（ADR-017）：差分は `last_sync_head_tweet_id` で打ち切るため、初回上限より古いブックマークは残る。Settings の「過去のブックマークを取り込む」は `mode=backfill`。head は動かさず、`x_account.backfill_pagination_token` から古いページを 100 件ずつ読む。既存 tweet は ingest でスキップ。「今すぐ同期」の残り `next_token` は未開始の backfill に渡す。`next_token` が無い短いページで `backfill_exhausted=1`。ボタンは再試行できる。1 回の件数は `sync_max_per_run`。自動同期では走らせない。
+- **過去分の手動遡及**（ADR-017）：差分は `last_sync_head_tweet_id` で打ち切るため、初回上限より古いブックマークは残る。Settings の「過去のブックマークを取り込む」は `mode=backfill`。head は動かさず、`x_account.backfill_pagination_token` から古いページを 100 件ずつ読む。既存 tweet は ingest でスキップ。「今すぐ同期」の残り `next_token` は未開始の backfill に渡す。X は `max_results` 未満のページで `next_token` を落とすことがあるため、token が無いページは同じ位置を 10 件ページで読み直して末尾か確かめる。読み直しでも無ければ `backfill_exhausted=1`。ボタンは再試行できる。1 回の件数は `sync_max_per_run`（読み直しは別枠で同上限）。head 未設定で最新から読んだときは先頭ページの最新 tweet を head にする。自動同期では走らせない。Bookmarks API が返すのは直近約 800 件までで、それより古い分は API からは取れない。
 
 ### 14.4 ブックマークフォルダ連動（P2）
 

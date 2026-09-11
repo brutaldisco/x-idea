@@ -15,10 +15,11 @@ Bookmarks API は新しい順。差分同期は `last_sync_head_tweet_id` に当
 - Settings に「過去のブックマークを取り込む」を置く。`POST /api/sync` に `mode=backfill` と対象アカウントを渡す。
 - backfill は head を書き換えない。新着用の差分カーソルは壊さない。
 - 古い方向の位置は `x_account.backfill_pagination_token` に残す。各ページのあとで保存し、中断しても続きから再開する。
-- `next_token` が無い **短い／空の** ページまで行ったら `backfill_exhausted=1`。満杯ページで token が欠けたときはロックしない。ボタンは再試行できる。
+- `next_token` が無いページに当たってもすぐには諦めない。X は `max_results` 未満のページで token を落とすことがあるため、同じ位置を 10 件ページで読み直す。読み直しでも token が無ければ `backfill_exhausted=1`。ボタンは再試行できる。
 - 「今すぐ同期」が途中で止まったときの `next_token` は、未開始の backfill カーソルに渡す。
-- ページサイズは初回と同じ 100。1 回の上限は `sync_max_per_run`。自動同期では走らせない。
-- 課金は Owned Read（$0.001/リソース）。すでに持っている新しいページを最初に再読する場合がある。
+- ページサイズは初回と同じ 100。1 回の上限は `sync_max_per_run`。末尾確認の読み直し（10 件ページ）も同じ上限を別枠で使う（1 クリック最大 2 倍）。自動同期では走らせない。
+- backfill が最新から始まり head 未設定なら、先頭ページの最新 tweet を head にして、以後の差分同期を 10 件ページに戻す。
+- 課金は Owned Read（$0.001/リソース）。すでに持っている新しいページを最初に再読する場合がある。Bookmarks API が返すのは直近約 800 件までで、それより古い分は API からは取れない。
 
 ## 影響
 

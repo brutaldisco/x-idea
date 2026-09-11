@@ -2,8 +2,9 @@ import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import {
+  BACKFILL_PROBE_PAGE,
+  backfillStep,
   leftoverBackfillCursor,
-  nextBackfillCursor,
 } from "@/lib/sync-backfill";
 import {
   bookmarkPageSize,
@@ -211,13 +212,12 @@ async function syncOneAccountBackfill(
   syncMaxPerRun: number,
 ): Promise<void> {
   const runId = newId();
-  const pageSize = INITIAL_BOOKMARK_PAGE;
-  const maxPages = Math.max(1, Math.ceil(syncMaxPerRun / pageSize));
   const started = new Date().toISOString();
   let pages = 0;
   let resources = 0;
   let created = 0;
   let pagination = account.backfillPaginationToken;
+  const fromNewest = !pagination;
   let remaining: number | null = null;
   let reset: string | null = null;
 
@@ -233,7 +233,21 @@ async function syncOneAccountBackfill(
   try {
     const token = await ensureValidToken(account);
 
-    for (let i = 0; i < maxPages; i += 1) {
+    // X は max_results 未満のページで next_token を落とすことがある。
+    // token が無いときは同じ位置を 10 件ページで読み直し、末尾かどうかを確かめる。
+    // 読み直し分は通常ページとは別枠で syncMaxPerRun まで読む。
+    let pageSize = INITIAL_BOOKMARK_PAGE;
+    let probing = false;
+    let normalBudget = Math.max(1, syncMaxPerRun);
+    let probeBudget = Math.max(1, syncMaxPerRun);
+    const maxIterations =
+      Math.ceil((syncMaxPerRun * 2) / BACKFILL_PROBE_PAGE) + 4;
+    let exhausted = false;
+
+    for (let i = 0; i < maxIterations && !exhausted; i += 1) {
+      if (probing ? probeBudget <= 0 : normalBudget <= 0) {
+        break;
+      }
       const page = await fetchBookmarksPage(
         token,
         account.xUserId,
@@ -244,6 +258,18 @@ async function syncOneAccountBackfill(
       resources += page.resourcesRead;
       remaining = page.rateLimit.remaining;
       reset = page.rateLimit.reset;
+      if (probing) {
+        probeBudget -= page.resourcesRead;
+      } else {
+        normalBudget -= page.resourcesRead;
+      }
+
+      if (fromNewest && pages === 1 && !account.lastSyncHeadTweetId) {
+        const head = page.tweets[0]?.id ?? null;
+        if (head) {
+          await markXAccountSynced(account.id, head);
+        }
+      }
 
       for (const tweet of page.tweets) {
         const result = await ingestBookmark({
@@ -262,15 +288,22 @@ async function syncOneAccountBackfill(
         }
       }
 
-      const cursor = nextBackfillCursor(page.nextToken, {
+      const step = backfillStep({
+        nextToken: page.nextToken,
         fetched: page.tweets.length,
         pageSize,
-        previousToken: pagination,
       });
-      pagination = cursor.token;
-      await markXAccountBackfill(account.id, cursor.token, cursor.exhausted);
-      if (cursor.exhausted) {
-        break;
+      if (step.action === "continue") {
+        pagination = step.token;
+        await markXAccountBackfill(account.id, pagination, false);
+      } else if (step.action === "probe") {
+        probing = true;
+        pageSize = step.pageSize;
+        await markXAccountBackfill(account.id, pagination, false);
+      } else {
+        pagination = null;
+        await markXAccountBackfill(account.id, null, true);
+        exhausted = true;
       }
     }
 
