@@ -61,7 +61,46 @@ export type XApiErrorItem = {
   resource_id?: string;
   resource_type?: string;
   title?: string;
+  type?: string;
 };
+
+export function tweetIdFromError(error: XApiErrorItem): string | null {
+  const id = error.resource_id?.trim();
+  return id ? id : null;
+}
+
+/** X 上で消えた tweet。非公開・権限エラーは含まない。 */
+export function isGoneTweetError(error: XApiErrorItem): boolean {
+  const title = (error.title ?? "").toLowerCase();
+  const type = (error.type ?? "").toLowerCase();
+  if (
+    type.includes("not-authorized") ||
+    type.includes("client-forbidden") ||
+    title.includes("authorization") ||
+    title.includes("forbidden")
+  ) {
+    return false;
+  }
+  return (
+    type.includes("resource-not-found") ||
+    type.includes("not-found") ||
+    type.includes("deleted") ||
+    title.includes("not found") ||
+    title.includes("deleted")
+  );
+}
+
+export function bookmarkErrorAction(
+  error: XApiErrorItem,
+): "purge" | "unavailable" | "ignore" {
+  if (error.resource_type && error.resource_type !== "tweet") {
+    return "ignore";
+  }
+  if (!tweetIdFromError(error)) {
+    return "ignore";
+  }
+  return isGoneTweetError(error) ? "purge" : "unavailable";
+}
 
 export type BookmarksPage = {
   tweets: XTweet[];
@@ -329,12 +368,17 @@ export function parseBookmarksPage(payload: unknown): BookmarksPage {
       if (row) {
         errors.push({
           resource_id:
-            typeof row.resource_id === "string" ? row.resource_id : undefined,
+            typeof row.resource_id === "string"
+              ? row.resource_id
+              : typeof row.value === "string"
+                ? row.value
+                : undefined,
           resource_type:
             typeof row.resource_type === "string"
               ? row.resource_type
               : undefined,
           title: typeof row.title === "string" ? row.title : undefined,
+          type: typeof row.type === "string" ? row.type : undefined,
         });
       }
     }

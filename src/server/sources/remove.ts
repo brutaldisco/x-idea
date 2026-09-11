@@ -51,34 +51,35 @@ async function removeTweetMediaDir(
   }
 }
 
-export async function deleteSource(
-  sourceId: string,
-  ctx: AccountContext,
-): Promise<void> {
-  if (!isDbConfigured()) {
-    throw new AppError("NOT_FOUND", "Source がありません");
-  }
-  await ensureSchema();
-  const scope = sourceScopeSql(contextAccountId(ctx), "s");
-  const found = await getClient().execute({
-    sql: `SELECT s.id, s.x_post_id, s.article_id, s.x_account_id, p.tweet_id
-          FROM sources s
-          LEFT JOIN x_posts p ON p.id = s.x_post_id
-          WHERE s.id = ? AND ${scope.clause}
-          LIMIT 1`,
-    args: [sourceId, ...scope.args],
-  });
-  const row = found.rows[0];
-  if (!row) {
-    throw new AppError("NOT_FOUND", "Source がありません");
-  }
+type FoundSource = {
+  id: string;
+  xPostId: string | null;
+  articleId: string | null;
+  xAccountId: string | null;
+  tweetId: string | null;
+};
 
-  const xPostId = row.x_post_id ? String(row.x_post_id) : null;
-  const tweetId = row.tweet_id ? String(row.tweet_id) : null;
-  const xAccountId = row.x_account_id ? String(row.x_account_id) : null;
+function foundSourceFromRow(row: Record<string, unknown>): FoundSource {
+  return {
+    id: String(row.id),
+    xPostId: row.x_post_id ? String(row.x_post_id) : null,
+    articleId: row.article_id ? String(row.article_id) : null,
+    xAccountId: row.x_account_id ? String(row.x_account_id) : null,
+    tweetId: row.tweet_id ? String(row.tweet_id) : null,
+  };
+}
+
+async function deleteFoundSource(
+  row: FoundSource,
+  fallbackAccountId?: string | null,
+): Promise<void> {
+  const sourceId = row.id;
+  const xPostId = row.xPostId;
+  const tweetId = row.tweetId;
+  const xAccountId = row.xAccountId;
   const articleIds = new Set<string>();
-  if (row.article_id) {
-    articleIds.add(String(row.article_id));
+  if (row.articleId) {
+    articleIds.add(row.articleId);
   }
 
   const linked = await getClient().execute({
@@ -103,7 +104,7 @@ export async function deleteSource(
     item.local_path ? [String(item.local_path)] : [],
   );
 
-  const dismissAccountId = xAccountId ?? contextAccountId(ctx);
+  const dismissAccountId = xAccountId ?? fallbackAccountId ?? null;
   if (tweetId && dismissAccountId) {
     await rememberDismissedBookmark(dismissAccountId, tweetId);
     await tryUnbookmark(dismissAccountId, tweetId);
@@ -159,6 +160,58 @@ export async function deleteSource(
   }
 
   logger.info({ sourceId }, "source deleted");
+}
+
+export async function deleteSource(
+  sourceId: string,
+  ctx: AccountContext,
+): Promise<void> {
+  if (!isDbConfigured()) {
+    throw new AppError("NOT_FOUND", "Source がありません");
+  }
+  await ensureSchema();
+  const scope = sourceScopeSql(contextAccountId(ctx), "s");
+  const found = await getClient().execute({
+    sql: `SELECT s.id, s.x_post_id, s.article_id, s.x_account_id, p.tweet_id
+          FROM sources s
+          LEFT JOIN x_posts p ON p.id = s.x_post_id
+          WHERE s.id = ? AND ${scope.clause}
+          LIMIT 1`,
+    args: [sourceId, ...scope.args],
+  });
+  const row = found.rows[0];
+  if (!row) {
+    throw new AppError("NOT_FOUND", "Source がありません");
+  }
+  await deleteFoundSource(foundSourceFromRow(row), contextAccountId(ctx));
+}
+
+/** X 上で消えた tweet をアプリから消し、ブックマークも外す。Source が無くても外す。 */
+export async function purgeGoneBookmark(
+  accountId: string,
+  tweetId: string,
+): Promise<"deleted" | "unbookmarked"> {
+  if (!isDbConfigured()) {
+    return "unbookmarked";
+  }
+  await ensureSchema();
+  const found = await getClient().execute({
+    sql: `SELECT s.id, s.x_post_id, s.article_id, s.x_account_id, p.tweet_id
+          FROM sources s
+          JOIN x_posts p ON p.id = s.x_post_id
+          WHERE s.x_account_id = ? AND p.tweet_id = ?
+          LIMIT 1`,
+    args: [accountId, tweetId],
+  });
+  const row = found.rows[0];
+  if (row) {
+    await deleteFoundSource(foundSourceFromRow(row), accountId);
+    return "deleted";
+  }
+  await rememberDismissedBookmark(accountId, tweetId);
+  await tryUnbookmark(accountId, tweetId);
+  logger.info({ accountId, tweetId }, "gone bookmark unbookmarked");
+  return "unbookmarked";
 }
 
 async function tryUnbookmark(

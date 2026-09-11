@@ -34,6 +34,9 @@ describe("sql helpers", () => {
     expect(statements.some((sql) => sql.includes("default_x_account_id"))).toBe(
       true,
     );
+    expect(statements.some((sql) => sql.includes("gone_sweep_cursor"))).toBe(
+      true,
+    );
     expect(
       statements.filter((sql) => isOptionalStatement(sql)).length,
     ).toBeGreaterThan(0);

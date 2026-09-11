@@ -701,7 +701,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 ```
 
 - `note_tweet` があれば長文本文を優先。X Articles は `tweet.fields=article` の `title` / `plain_text` を本文として保存する（`text` は t.co だけのことがある）。
-- 削除・非公開は `errors[]` から `sources.availability` を更新。
+- 削除済み tweet は `errors[]` の Not Found で検知し、Source を消して `dismissed_bookmarks` に残す。`bookmark.write` があれば X のブックマークも外す（ADR-018）。Source が未作成でも外す。非公開・権限エラーは `sources.availability` を更新するだけ。保存済みは同期のあと最大 100 件ずつ tweet lookup し、`gone_sweep_cursor` で続きから確認する（Post read $0.005/件）。
 - ユーザーがアプリで削除した tweet は `dismissed_bookmarks` に残し、再取り込みしない。可能なら X のブックマークも外す（ADR-013）。
 - 返信投稿は `settings.save_replies`（既定 保存）。
 - 編集追跡は行わない **[仮定]**。
@@ -1067,6 +1067,7 @@ CREATE TABLE x_account (
   last_synced_at TEXT,
   backfill_pagination_token TEXT,         -- 過去遡及の続き（ADR-017）
   backfill_exhausted INTEGER NOT NULL DEFAULT 0,
+  gone_sweep_cursor TEXT,                 -- 保存済み削除確認の続き（ADR-018）
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1798,7 +1799,8 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | E-01 | X API 429 | reset まで待機・再試行 | なし |
 | E-02 | X トークン失効 | `reauth_required`、同期停止 | Today 赤ピル、Push |
 | E-03 | X 5xx/ネットワーク | バックオフ→sync_runs 失敗 | 連続失敗で SC-09、6h 超で Push |
-| E-04 | 削除/非公開 | availability 更新 | Reader バッジ |
+| E-04 | 削除済み tweet | Source 削除 + dismissed + X ブックマーク解除（ADR-018） | 一覧から消える |
+| E-04b | 非公開・閲覧不可 | availability 更新 | Reader バッジ |
 | E-05 | 記事 404/410 | failed（恒久） | 記事セグメント |
 | E-06 | 記事一時失敗 | 再試行 | 表示のみ |
 | E-07 | ペイウォール/robots | metadata_only | 「概要のみ」 |

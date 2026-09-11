@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  bookmarkErrorAction,
   collectUntilHead,
+  isGoneTweetError,
   isReply,
   parseBookmarksPage,
   tweetText,
@@ -79,5 +81,55 @@ describe("collectUntilHead", () => {
     const cut = collectUntilHead(page.tweets, null);
     expect(cut.hitHead).toBe(false);
     expect(cut.keep).toHaveLength(3);
+  });
+});
+
+describe("gone tweet errors", () => {
+  it("treats Not Found as purge", () => {
+    const error = {
+      resource_id: "123",
+      resource_type: "tweet",
+      title: "Not Found Error",
+      type: "https://api.twitter.com/2/problems/resource-not-found",
+    };
+    expect(isGoneTweetError(error)).toBe(true);
+    expect(bookmarkErrorAction(error)).toBe("purge");
+  });
+
+  it("keeps protected tweets as unavailable", () => {
+    const error = {
+      resource_id: "123",
+      resource_type: "tweet",
+      title: "Authorization Error",
+      type: "https://api.twitter.com/2/problems/not-authorized-to-view",
+    };
+    expect(isGoneTweetError(error)).toBe(false);
+    expect(bookmarkErrorAction(error)).toBe("unavailable");
+  });
+
+  it("ignores non-tweet errors", () => {
+    expect(
+      bookmarkErrorAction({
+        resource_id: "99",
+        resource_type: "user",
+        title: "Not Found Error",
+      }),
+    ).toBe("ignore");
+  });
+
+  it("reads resource_id from value when X omits it", () => {
+    const page = parseBookmarksPage({
+      data: [],
+      errors: [
+        {
+          value: "555",
+          title: "Not Found Error",
+          resource_type: "tweet",
+          type: "https://api.twitter.com/2/problems/resource-not-found",
+        },
+      ],
+    });
+    expect(page.errors[0]?.resource_id).toBe("555");
+    expect(bookmarkErrorAction(page.errors[0] ?? {})).toBe("purge");
   });
 });

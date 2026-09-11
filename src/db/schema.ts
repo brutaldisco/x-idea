@@ -67,6 +67,7 @@ export const xAccount = sqliteTable("x_account", {
   lastSyncedAt: text("last_synced_at"),
   backfillPaginationToken: text("backfill_pagination_token"),
   backfillExhausted: integer("backfill_exhausted").notNull().default(0),
+  goneSweepCursor: text("gone_sweep_cursor"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

@@ -5,7 +5,12 @@ export const USAGE_DAYS = 14;
 export const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const OWNED_READ_MODES = new Set(["initial", "incremental", "backfill"]);
-const POST_READ_MODES = new Set(["parent", "thread", "reply_context"]);
+const POST_READ_MODES = new Set([
+  "parent",
+  "thread",
+  "reply_context",
+  "gone_sweep",
+]);
 
 export type RemainingSource = "live" | "snapshot" | "purchased" | "unknown";
 

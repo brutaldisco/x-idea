@@ -21,7 +21,7 @@ export async function canSpendContext(extraUsd: number): Promise<boolean> {
 
 export async function writeContextRun(input: {
   accountId: string;
-  mode: "parent" | "thread" | "reply_context";
+  mode: "parent" | "thread" | "reply_context" | "gone_sweep";
   resources: number;
   status: string;
   error?: string | null;

@@ -26,6 +26,7 @@ export type XAccountSecret = XAccountPublic & {
   tokenExpiresAt: string;
   lastSyncHeadTweetId: string | null;
   backfillPaginationToken: string | null;
+  goneSweepCursor: string | null;
 };
 
 export async function countXAccounts(): Promise<number> {
@@ -198,12 +199,16 @@ function asSecret(row: Record<string, unknown>): XAccountSecret {
       ? String(row.backfill_pagination_token)
       : null,
     backfillExhausted: Number(row.backfill_exhausted) === 1,
+    goneSweepCursor: row.gone_sweep_cursor
+      ? String(row.gone_sweep_cursor)
+      : null,
   };
 }
 
 const SECRET_COLUMNS = `id, x_user_id, x_username, x_name, status, sync_enabled,
   last_synced_at, access_token, refresh_token, token_expires_at,
-  last_sync_head_tweet_id, backfill_pagination_token, backfill_exhausted`;
+  last_sync_head_tweet_id, backfill_pagination_token, backfill_exhausted,
+  gone_sweep_cursor`;
 
 export async function getXAccountSecret(
   id: string,
@@ -288,6 +293,19 @@ export async function markXAccountBackfill(
       updated_at = datetime('now')
     WHERE id = ?`,
     args: [token, exhausted ? 1 : 0, id],
+  });
+}
+
+export async function markXAccountGoneSweep(
+  id: string,
+  cursor: string | null,
+): Promise<void> {
+  await getClient().execute({
+    sql: `UPDATE x_account SET
+      gone_sweep_cursor = ?,
+      updated_at = datetime('now')
+    WHERE id = ?`,
+    args: [cursor, id],
   });
 }
 

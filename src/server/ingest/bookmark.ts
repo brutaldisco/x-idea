@@ -15,12 +15,16 @@ import { enqueueEnrichBatch } from "@/server/jobs/enrich";
 import { enqueueJob } from "@/server/jobs/queue";
 import { getContextSettings } from "@/server/settings";
 import { isDismissedBookmark } from "@/server/sources/dismiss";
+import { purgeGoneBookmark } from "@/server/sources/remove";
 import {
   type BookmarksPage,
+  bookmarkErrorAction,
   isReply,
   replyToTweetId,
+  tweetIdFromError,
   tweetText,
   tweetUrlEntries,
+  type XApiErrorItem,
   type XTweet,
 } from "@/server/x/parse";
 
@@ -38,6 +42,36 @@ export async function markUnavailable(tweetId: string): Promise<void> {
           WHERE x_post_id = (SELECT id FROM x_posts WHERE tweet_id = ? LIMIT 1)`,
     args: [tweetId],
   });
+}
+
+export async function applyBookmarkPageErrors(
+  accountId: string,
+  errors: XApiErrorItem[],
+): Promise<{ purged: number; unavailable: number }> {
+  let purged = 0;
+  let unavailable = 0;
+  for (const error of errors) {
+    const action = bookmarkErrorAction(error);
+    const tweetId = tweetIdFromError(error);
+    if (action === "ignore" || !tweetId) {
+      continue;
+    }
+    try {
+      if (action === "purge") {
+        await purgeGoneBookmark(accountId, tweetId);
+        purged += 1;
+      } else {
+        await markUnavailable(tweetId);
+        unavailable += 1;
+      }
+    } catch (error) {
+      logger.warn(
+        { err: error, tweetId, action },
+        "bookmark page error apply failed",
+      );
+    }
+  }
+  return { purged, unavailable };
 }
 
 async function upsertFts(sourceId: string, text: string): Promise<void> {

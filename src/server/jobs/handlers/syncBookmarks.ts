@@ -12,14 +12,19 @@ import {
   isAutoSyncDue,
 } from "@/lib/sync-policy";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
-import { ingestBookmark, markUnavailable } from "@/server/ingest/bookmark";
+import {
+  applyBookmarkPageErrors,
+  ingestBookmark,
+} from "@/server/ingest/bookmark";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { getSyncSettings } from "@/server/settings";
+import { runGoneSweepAndRecord } from "@/server/sources/gone-sweep";
 import { estimateCostUsd } from "@/server/usage/estimate";
 import {
   getXAccountSecret,
   listSyncableAccounts,
   markXAccountBackfill,
+  markXAccountGoneSweep,
   markXAccountReauth,
   markXAccountSynced,
   type XAccountSecret,
@@ -91,6 +96,7 @@ async function syncOneAccount(
   let pages = 0;
   let resources = 0;
   let created = 0;
+  let purged = 0;
   let newHead: string | null = null;
   let pagination: string | null = null;
   let lastNext: string | null = null;
@@ -128,15 +134,22 @@ async function syncOneAccount(
           created += 1;
         }
       }
-      for (const error of page.errors) {
-        if (error.resource_type === "tweet" && error.resource_id) {
-          await markUnavailable(error.resource_id);
-        }
-      }
+      const applied = await applyBookmarkPageErrors(account.id, page.errors);
+      purged += applied.purged;
       if (cut.hitHead || !page.nextToken) {
         break;
       }
       pagination = page.nextToken;
+    }
+
+    const swept = await runGoneSweepAndRecord({
+      accountId: account.id,
+      accessToken: token,
+      cursor: account.goneSweepCursor,
+    });
+    purged += swept.purged;
+    if (swept.nextCursor !== account.goneSweepCursor) {
+      await markXAccountGoneSweep(account.id, swept.nextCursor);
     }
 
     const leftover = leftoverBackfillCursor({
@@ -174,7 +187,7 @@ async function syncOneAccount(
       error: null,
     });
     logger.info(
-      { accountId: account.id, created, pages, resources, mode },
+      { accountId: account.id, created, purged, pages, resources, mode },
       "sync_bookmarks done",
     );
   } catch (error) {
@@ -216,6 +229,7 @@ async function syncOneAccountBackfill(
   let pages = 0;
   let resources = 0;
   let created = 0;
+  let purged = 0;
   let pagination = account.backfillPaginationToken;
   const fromNewest = !pagination;
   let remaining: number | null = null;
@@ -282,11 +296,8 @@ async function syncOneAccountBackfill(
           created += 1;
         }
       }
-      for (const error of page.errors) {
-        if (error.resource_type === "tweet" && error.resource_id) {
-          await markUnavailable(error.resource_id);
-        }
-      }
+      const applied = await applyBookmarkPageErrors(account.id, page.errors);
+      purged += applied.purged;
 
       const step = backfillStep({
         nextToken: page.nextToken,
@@ -305,6 +316,16 @@ async function syncOneAccountBackfill(
         await markXAccountBackfill(account.id, null, true);
         exhausted = true;
       }
+    }
+
+    const swept = await runGoneSweepAndRecord({
+      accountId: account.id,
+      accessToken: token,
+      cursor: account.goneSweepCursor,
+    });
+    purged += swept.purged;
+    if (swept.nextCursor !== account.goneSweepCursor) {
+      await markXAccountGoneSweep(account.id, swept.nextCursor);
     }
 
     const settings = await getSyncSettings();
@@ -328,7 +349,7 @@ async function syncOneAccountBackfill(
       error: null,
     });
     logger.info(
-      { accountId: account.id, created, pages, resources },
+      { accountId: account.id, created, purged, pages, resources },
       "bookmark backfill done",
     );
   } catch (error) {

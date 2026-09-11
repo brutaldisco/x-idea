@@ -134,6 +134,26 @@ export async function fetchTweetById(
   accessToken: string,
   tweetId: string,
 ): Promise<BookmarksFetch> {
+  return fetchTweetsByIds(accessToken, [tweetId]);
+}
+
+export async function fetchTweetsByIds(
+  accessToken: string,
+  tweetIds: string[],
+): Promise<BookmarksFetch> {
+  const ids = [...new Set(tweetIds.filter((id) => id.trim()))].slice(0, 100);
+  if (ids.length === 0) {
+    return {
+      tweets: [],
+      users: new Map(),
+      media: new Map(),
+      includedTweets: new Map(),
+      errors: [],
+      nextToken: null,
+      resourcesRead: 0,
+      rateLimit: { remaining: null, reset: null },
+    };
+  }
   if (process.env.MOCK_EXTERNAL === "1") {
     return {
       ...parseTweetLookup(loadFixture("tweet-lookup.json")),
@@ -141,9 +161,10 @@ export async function fetchTweetById(
     };
   }
   const params = tweetQuery();
+  params.set("ids", ids.join(","));
   const { body, rateLimit } = await xGet(
     accessToken,
-    `https://api.x.com/2/tweets/${encodeURIComponent(tweetId)}?${params}`,
+    `https://api.x.com/2/tweets?${params}`,
   );
   return { ...parseTweetLookup(body), rateLimit };
 }
