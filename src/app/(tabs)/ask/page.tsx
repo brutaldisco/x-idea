@@ -3,7 +3,12 @@ import { Suspense } from "react";
 import { AskSearch } from "@/components/AskSearch";
 import { searchKeyword } from "@/server/search/keyword";
 import { countSources } from "@/server/sources/query";
-import { contextLabel, getAccountContext } from "@/server/x/context";
+import { taxonomyForAccount } from "@/server/taxonomy";
+import {
+  contextAccountId,
+  contextLabel,
+  getAccountContext,
+} from "@/server/x/context";
 
 export const instant = false;
 
@@ -16,9 +21,10 @@ async function AskBody({
   const params = await searchParams;
   const q = params.q ?? "";
   const ctx = await getAccountContext();
-  const [count, items] = await Promise.all([
+  const [count, items, taxonomy] = await Promise.all([
     countSources({ ctx }),
     searchKeyword({ q, ctx }),
+    taxonomyForAccount(contextAccountId(ctx)),
   ]);
   const label = contextLabel(ctx);
 
@@ -28,6 +34,8 @@ async function AskBody({
       targetCount={count}
       initialQuery={q}
       initialItems={items}
+      categories={taxonomy.categories}
+      infoTypes={taxonomy.infoTypes}
     />
   );
 }

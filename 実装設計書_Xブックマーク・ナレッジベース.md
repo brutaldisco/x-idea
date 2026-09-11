@@ -336,7 +336,7 @@ UI/UX の判断に迷ったら以下に従う。
   3. **Inbox チップ**：「要確認 2件 →」。0 件なら非表示。
   4. **Echo カード**（P2）：問い1つ＋3ボタン（同意／変わった／不要）。
   5. **Insights**（P2）：今週のテーマ1〜3個。
-  6. **最近の Source**：横スクロールカード（8件、投稿日・3点メニュー）。
+  6. **最近の Source**：横スクロールカード（8件、投稿日・分類バッジ・3点メニュー）。
 - **空状態**：X 未連携→「X と連携して始める」CTA 1つのみ。連携済み・0件→「初回取り込み中… 120/5,000」進捗。複数アカウント時はアカウントごとの進捗を並べる。
 - **アカウントコンテキスト**（v3.3）：`min-[48rem]` 以上は画面左下に現在の `@name` を出す（タブバーの外）。タップで「アカウントを切り替える」と候補一覧。モバイルでは出さない（切替は Settings）。Today の同期ピル・Inbox 件数・最近の Source は選択中アカウントだけに絞る。
 - **キャッシュ**：Briefing/Insights は `use cache`（`cacheTag('today')`）。同期ピルは Suspense で後ストリーム。コンテキスト切替は Cookie なのでキャッシュキーに含める。
@@ -353,10 +353,10 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.3 SC-03 Library（＋ SC-14 Atlas）
 
-- **フィルタバー**：カテゴリ（現在の X アカウントの分類）、情報タイプ（同）、状態（未読/読了/実践予定/実践済/KC化）、タグ、期間、`kind`（投稿/記事/手動）。Lens はフィルタバーにピン留め。カテゴリと情報タイプは Settings の `account_taxonomy` を都度読む（一覧キャッシュには載せない）。Settings でアカウントごとに編集する。
+- **フィルタバー**：カテゴリ（現在の X アカウントの分類）、情報タイプ（同）、状態（未読/読了/実践予定/実践済/KC化）、タグ、期間、`kind`（投稿/記事/手動）。Lens はフィルタバーにピン留め。カテゴリと情報タイプは Settings の `account_taxonomy` を都度読む（一覧キャッシュには載せない）。Settings でアカウントごとに編集する。選んだカテゴリ／情報タイプのチップは Settings の accent 色。
 - **表示**：リスト（密）／グリッド（サムネ重視、**既定**。モバイルは 2 列、`min-[48rem]` 以上は 3 列）／**Atlas**。リスト／グリッド切替でもページ幅は変えない（カードは枠内で折り返す）。並び・フィルタは自前メニューで、開閉時に青いフォーカス枠を出さない。
 - **並び**：既定は投稿日時の新しい順（`posted_at`。取り込み順の `saved_at` ではない）。Library / Inbox は `?sort=` で **新しい順 / 古い順 / 保存が新しい順 / 保存が古い順 / 動画の保存済み** を切り替えられる。動画の保存済みは `video_downloads.status='ready'` を先頭にし、同じグループ内は投稿日時の新しい順。重要度・関連度（Lens 時）は後続。
-- **カード**：投稿者、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。動画サムネは保存状態でバッジを変える（未保存「動画」／`queued`・`downloading`「キュー」／`video_downloads.status='ready'`「保存済」）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Library カードのサムネに出す。Reader ギャラリーはタイル下部だけ（サムネ上は重ねない）。`ready` の動画サムネはタップでアプリ内再生（プレーヤーは **1本リピート** のトグルのみ）。**3 点メニュー**は、投稿に未保存の動画があれば先頭が **動画を保存する**（その投稿の全動画をキューへ。すでに `ready` / `queued` / `downloading` の分は飛ばす。上限 15 件）、続いて「X で開く」、**削除**（DB 行＋ローカル画像/動画ファイル。`dismissed_bookmarks` に残し同期では戻さない。`bookmark.write` があれば X のブックマークも外す。ADR-013）。
+- **カード**：カテゴリ／情報タイプの小さいバッジ（Settings の accent 色）、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。投稿者ハンドルは出さない。動画サムネは保存状態でバッジを変える（未保存「動画」／`queued`・`downloading`「キュー」／`video_downloads.status='ready'`「保存済」）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Library カードのサムネに出す。Reader ギャラリーはタイル下部だけ（サムネ上は重ねない）。`ready` の動画サムネはタップでアプリ内再生（プレーヤーは **1本リピート** のトグルのみ）。**3 点メニュー**は、投稿に未保存の動画があれば先頭が **動画を保存する**（その投稿の全動画をキューへ。すでに `ready` / `queued` / `downloading` の分は飛ばす。上限 15 件）、続いて「X で開く」、**削除**（DB 行＋ローカル画像/動画ファイル。`dismissed_bookmarks` に残し同期では戻さない。`bookmark.write` があれば X のブックマークも外す。ADR-013）。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
 - **ページネーション**：1ページ 60件。`?page=`（1始まり）。前へ／次へに加え、ページ番号で直接移動できる（多いときは省略）。ページャは一覧の下だけ。並び・フィルタを変えると 1 ページ目に戻る。API は `LIMIT 60 OFFSET (page-1)*60`（全件 SELECT 禁止）。Reader 往復は同じ `page` を URL に残す。ページ送りでは前ページの先頭を見せず、スケルトンのあと次ページを出す。
 - **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示・ページの URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。復元は **1 回**。読み込み中にユーザーがスクロールしたら復元を打ち切る。遅延タイマーで `scrollTo` を連打しない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む。読み込み・キャッシュ再編は `docs/design/2026-09-09-library-load-cache.md`。
@@ -377,7 +377,7 @@ UI/UX の判断に迷ったら以下に従う。
 ### 8.5 SC-06 Reader（Source 詳細）
 
 - **戻り**：ヘッダー「← ライブラリ」は直近の Library URL（並び・フィルタ・表示）へ戻す。`/library` 固定にはしない（8.3）。Library 起点では並列ルートで一覧を残す（ADR-016）。Today など別タブへ移ったときは Reader を出さない（スロットが残っても下部に重ねない）。同じ並びの隣へは一覧に戻らず、ヘッダー右の丸いアウトライン（前／次）で進む。並びは直近の Library 一覧（フィルタ・ソート込み）。一覧に無い Source やディープリンクでは出さない。末尾にも同じ導線を残す。`availability` は `available` のときヘッダーに出さない。非公開・取得不可のときだけ日本語バッジ（削除済み／非公開／取得不可）。
-- **ヒーロー**：投稿者アバター・名前・日時。右にカテゴリ／情報タイプ／状態／種類のドロップダウン（変更可。未設定は項目名）。「X で開く」は 3 点メニューと原文カード。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
+- **ヒーロー**：投稿者アバター・名前・日時。右にカテゴリ／情報タイプ／状態／種類のドロップダウン（変更可。未設定は項目名。カテゴリと情報タイプは Settings の accent 色）。「X で開く」は 3 点メニューと原文カード。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。写真はフル画像（`/api/media/{id}`、`name=orig`／ローカル保存）。ヒーローは切り抜き表示し、タップでフルスクリーン拡大（原文ギャラリーと同じ）。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。右端に 3 点メニュー（動画を保存する／X で開く／削除）。
 - **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは Reader で対象ごとに手動取得**し、取得後は折りたたみ（件数つき、既定は展開）。未取得時はボタン、トグル OFF 時は案内。未保存の動画はアプリ内再生せず **サムネイル＋「X で見る」＋「あとで保存」**（ダウンロードキューへ投入、14.6 / SC-15）。`video_downloads.status='ready'` の動画はサムネタップでアプリ内再生（**1本リピート** のトグルのみ。Library カードと同じ）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**（`queued` / `downloading`）は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Reader ギャラリーはタイル下部だけに出し、サムネ上には重ねない。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。本文側に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。Reader 上部に翻訳手順の常時説明は出さない。ボタンはかな優勢の日本語本文では出さず、**漢字だけの中国語など他言語では出す**。記事は投稿 `lang` を使わず、クリック時に Language Detector が本文を見る。X の自動翻訳文は API に無い。原文カラムは書き換えない。
 - **記事**：外部リンクだけにせず、取得できた本文を **アプリ内リーダー**で表示する。タイトル＋本文（sanitize 済み HTML 優先）＋補助の「元の記事を開く」。`fetch_scope` バッジ（全文／一部／概要のみ／失敗）。既存 Source は Reader 表示時に URL を拾ってバックフィルする。モバイルは左右パディングを詰めて本文幅を広げる。
@@ -411,7 +411,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **アカウント**：1 枚のカードにまとめる。見出しは選んだ `@name`（「このアカウントの設定」）。上部で表示するアカウントを 1 件選び、同じ枠内に X 連携と分類を出す。同時に複数アカウントの設定は表示しない。切替は既存の `x_ctx`（Library / Inbox と同じ）。「アカウントを追加」もここ（最大 3）。
 - **既定のアカウント**（ADR-014）：アカウント設定カードの外に、別の設定として置く。見出しは「新しいセッション / 既定のアカウント」。`settings.default_x_account_id`。別ブラウザ・初回に開く。表示中アカウントとは連動しない。選択表示は「既定 / 既定にする」。
 - **X 連携**：選んだアカウントの状態、**同期（課金）トグル**（`x_account.sync_enabled`、既定 OFF）、個別解除。同期ジョブは **グローバル `x_api_enabled` かつ当該アカウントの `sync_enabled`** が両方 ON のときだけ走る。
-- **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除・**ハンドルで並べ替え**）。見出しに `@ハンドル` を出す。初期値は seed カテゴリと既定の情報タイプ。Library の絞り込みと AI enrich がこの一覧の順を使う（`account_taxonomy.sort_order`、ADR-015）。
+- **分類**：選んだアカウントのカテゴリと情報タイプ（追加・改名・削除・**ハンドルで並べ替え**・**accent-01〜09 の色**）。色は選んだら即保存。削除は ×、確認チップのあと実行。見出しに `@ハンドル` を出す。初期値は seed カテゴリと既定の情報タイプ。Library の絞り込みと AI enrich がこの一覧の順を使う（`account_taxonomy.sort_order`、ADR-015）。
 - **同期**：自動は最短 6 時間＋手動（「今すぐ同期」は新着、「過去のブックマークを取り込む」は古い方向。ADR-017）。返信を保存、除外ドメイン。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
@@ -488,6 +488,38 @@ UI/UX の判断に迷ったら以下に従う。
   --color-danger: oklch(58% 0.2 25);
   --color-warn: oklch(75% 0.15 70);
   --color-ok: oklch(65% 0.15 150);
+  /* Accent scale / urgent / primary / destructive（割り当ては後続。既存 semantic は当面維持） */
+  --color-accent-01: #e3e5ff;
+  --color-accent-01-ink: #3e43ca;
+  --color-accent-02: #ccf3ee;
+  --color-accent-02-ink: #1aae9f;
+  --color-accent-03: #fdf8dc;
+  --color-accent-03-ink: #d6a10c;
+  --color-accent-04: #f5e1ef;
+  --color-accent-04-ink: #a33278;
+  --color-accent-05: #eee4f8;
+  --color-accent-05-ink: #7a2cc6;
+  --color-accent-06: #e5f4d8;
+  --color-accent-06-ink: #82b429;
+  --color-accent-07: #dff4fb;
+  --color-accent-07-ink: #1b98c8;
+  --color-accent-08: #fceadb;
+  --color-accent-08-ink: #ef5b45;
+  --color-accent-09: #f7f2d9;
+  --color-accent-09-ink: #c6b52e;
+  --color-urgent-bg: #fee2e2;
+  --color-urgent-fg: #c81e1e;
+  --color-accent-primary-default: #1f69ff;
+  --color-accent-primary-dark: #2351e3;
+  --color-accent-primary-light: #a3c3ff;
+  --color-accent-primary-bg: #edf2ff;
+  --color-accent-primary-bg-emphasis: #dce6ff;
+  --color-accent-primary-light-emphasis: #7da8ff;
+  --color-destructive-bg: var(--color-accent-08);
+  --color-destructive-border: #f5c4b0;
+  --color-destructive-fg: var(--color-accent-08-ink);
+  --color-destructive-bg-emphasis: #f5dcc8;
+  --color-destructive-border-emphasis: #e9957a;
   --radius-card: 1rem;
   --shadow-card: 0 1px 2px oklch(0% 0 0 / 6%), 0 8px 24px -12px oklch(0% 0 0 / 12%);
   --font-sans: "Inter Variable", "Noto Sans JP Variable", system-ui, sans-serif;
@@ -1104,6 +1136,7 @@ CREATE TABLE account_taxonomy (
   kind TEXT NOT NULL CHECK (kind IN ('category', 'info_type')),
   item_id TEXT NOT NULL,
   name TEXT NOT NULL,
+  color TEXT,                                 -- accent-01 … accent-09
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (x_account_id, kind, item_id)

@@ -4,9 +4,14 @@ import { Suspense } from "react";
 import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { SourceCard } from "@/components/SourceCard";
 import { listSources } from "@/server/sources/query";
+import { taxonomyForAccount } from "@/server/taxonomy";
 import { getTodayState } from "@/server/today";
 import { listXAccounts } from "@/server/x/account";
-import { type AccountContext, contextLabel } from "@/server/x/context";
+import {
+  type AccountContext,
+  contextAccountId,
+  contextLabel,
+} from "@/server/x/context";
 
 function formatRelative(iso: string | null): string {
   if (!iso) {
@@ -148,7 +153,10 @@ async function RecentSources({
   ctx: AccountContext;
   label: string;
 }) {
-  const items = await listSources({ ctx, limit: 8 });
+  const [items, taxonomy] = await Promise.all([
+    listSources({ ctx, limit: 8 }),
+    taxonomyForAccount(contextAccountId(ctx)),
+  ]);
   if (items.length === 0) {
     return (
       <article className="rounded-[var(--radius-card)] border border-dashed border-line p-5 text-ink-2 text-sm">
@@ -166,7 +174,10 @@ async function RecentSources({
           <SourceCard
             key={item.id}
             id={item.id}
-            authorUsername={item.authorUsername}
+            categoryId={item.categoryId}
+            infoType={item.infoType}
+            categories={taxonomy.categories}
+            infoTypes={taxonomy.infoTypes}
             summary={item.summary}
             url={item.url}
             mediaId={item.mediaId}

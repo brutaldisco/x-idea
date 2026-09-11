@@ -28,13 +28,18 @@ describe("taxonomyForAccount", () => {
   it("reads taxonomy without asserting the account list", async () => {
     execute.mockResolvedValueOnce({
       rows: [
-        { kind: "category", item_id: "cat_ai", name: "AI" },
-        { kind: "info_type", item_id: "idea", name: "着想" },
+        {
+          kind: "category",
+          item_id: "cat_ai",
+          name: "AI",
+          color: "accent-02",
+        },
+        { kind: "info_type", item_id: "idea", name: "着想", color: null },
       ],
     });
     await expect(taxonomyForAccount("acc_1")).resolves.toEqual({
-      categories: [{ id: "cat_ai", name: "AI" }],
-      infoTypes: [{ id: "idea", name: "着想" }],
+      categories: [{ id: "cat_ai", name: "AI", color: "accent-02" }],
+      infoTypes: [{ id: "idea", name: "着想", color: null }],
     });
     expect(listXAccounts).not.toHaveBeenCalled();
     expect(execute).toHaveBeenCalledTimes(1);

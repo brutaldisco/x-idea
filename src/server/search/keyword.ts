@@ -10,13 +10,18 @@ import {
   SEARCH_LIMIT,
   type SearchFilters,
 } from "@/lib/search-query";
-import { ARTICLE_EXCERPT_SQL, cardSummary } from "@/lib/source-summary";
-import { LIST_MEDIA_SQL, type SourceListItem } from "@/server/sources/query";
+import { ARTICLE_EXCERPT_SQL } from "@/lib/source-summary";
+import {
+  LIST_MEDIA_SQL,
+  mapSourceListItem,
+  type SourceListItem,
+} from "@/server/sources/query";
 import { sourceScopeSql } from "@/server/sources/scope";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 const SELECT_COLS = `s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
-  s.triage_status, p.posted_at, p.author_username, p.text, p.lang, p.url,
+  s.triage_status, s.category_id, s.info_type,
+  p.posted_at, p.author_username, p.text, p.lang, p.url,
   ${ARTICLE_EXCERPT_SQL},
   ${LIST_MEDIA_SQL}`;
 
@@ -33,40 +38,6 @@ async function hasSourcesFts(): Promise<boolean> {
     ftsReady = false;
   }
   return ftsReady;
-}
-
-function mapRow(row: Record<string, unknown>): SourceListItem {
-  const { summary, fromAi } = cardSummary({
-    aiSummary: row.ai_summary ? String(row.ai_summary) : null,
-    postText: row.text ? String(row.text) : null,
-    articleExcerpt: row.article_excerpt ? String(row.article_excerpt) : null,
-  });
-  const postedAt = row.posted_at
-    ? String(row.posted_at)
-    : row.bookmarked_at
-      ? String(row.bookmarked_at)
-      : row.saved_at
-        ? String(row.saved_at)
-        : null;
-  return {
-    id: String(row.id),
-    kind: String(row.kind),
-    summary,
-    savedAt: String(row.saved_at),
-    postedAt,
-    triageStatus: String(row.triage_status),
-    authorUsername: row.author_username ? String(row.author_username) : null,
-    url: row.url ? String(row.url) : null,
-    lang: row.lang ? String(row.lang) : null,
-    summaryFromAi: fromAi,
-    mediaId: row.media_id ? String(row.media_id) : null,
-    mediaType: row.media_type ? String(row.media_type) : null,
-    videoSaveStatus: row.video_save_status
-      ? String(row.video_save_status)
-      : null,
-    videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
-    hasQueueableVideos: Boolean(row.has_queueable_videos),
-  };
 }
 
 function filterSql(filters: SearchFilters): {
@@ -171,7 +142,9 @@ export async function searchKeyword(input: {
               LIMIT ?`,
         args,
       });
-      return result.rows.map((row) => mapRow(row as Record<string, unknown>));
+      return result.rows.map((row) =>
+        mapSourceListItem(row as Record<string, unknown>),
+      );
     }
 
     const allLikes = likeClauses([...like, ...fts]);
@@ -204,7 +177,9 @@ export async function searchKeyword(input: {
         limit,
       ],
     });
-    return result.rows.map((row) => mapRow(row as Record<string, unknown>));
+    return result.rows.map((row) =>
+      mapSourceListItem(row as Record<string, unknown>),
+    );
   } catch (error) {
     logger.warn({ err: error }, "keyword search failed");
     return [];

@@ -5,6 +5,12 @@ import { SourceCardThumb } from "@/components/SourceCardThumb";
 import { VideoBadge } from "@/components/VideoBadge";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
+import { taxonomyAccentClass } from "@/lib/taxonomy-accent";
+import {
+  type TaxonomyChip,
+  type TaxonomyChipItem,
+  taxonomyChip,
+} from "@/lib/taxonomy-chip";
 import { canShowSaveVideosMenu } from "@/lib/video-queue";
 
 function thumbSrc(mediaId: string, mediaType: string | null): string {
@@ -17,9 +23,26 @@ function ThumbPlaceholder({ className }: { className: string }) {
   return <span className={`block bg-paper ${className}`} aria-hidden />;
 }
 
+function MiniTaxonomyBadge({ chip }: { chip: TaxonomyChip }) {
+  const accent = taxonomyAccentClass(chip.color);
+  return (
+    <span
+      title={chip.name}
+      className={`min-w-0 overflow-hidden whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] leading-none ${
+        accent || "bg-paper text-ink-2"
+      }`}
+    >
+      {chip.name}
+    </span>
+  );
+}
+
 export function SourceCard({
   id,
-  authorUsername,
+  categoryId,
+  infoType,
+  categories = [],
+  infoTypes = [],
   summary,
   url,
   mediaId,
@@ -34,7 +57,10 @@ export function SourceCard({
   variant = "list",
 }: {
   id: string;
-  authorUsername: string | null;
+  categoryId?: string | null;
+  infoType?: string | null;
+  categories?: TaxonomyChipItem[];
+  infoTypes?: TaxonomyChipItem[];
   summary: string;
   url: string | null;
   mediaId?: string | null;
@@ -51,6 +77,8 @@ export function SourceCard({
   const textAttrs = translatableProps(lang, summaryFromAi);
   const dateLabel = formatCardDate(postedAt);
   const stacked = variant === "rail" || variant === "grid";
+  const category = taxonomyChip(categoryId, categories);
+  const typeChip = taxonomyChip(infoType, infoTypes, "info_type");
 
   return (
     <li
@@ -135,32 +163,33 @@ export function SourceCard({
           )
         ) : null}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2 leading-none">
-            <div className="flex min-w-0 items-center gap-1.5">
-              {dateLabel ? (
-                <p
-                  className="notranslate shrink-0 text-ink-2 text-xs tabular-nums"
-                  lang="ja"
-                  translate="no"
-                >
-                  {dateLabel}
-                </p>
-              ) : null}
-              {authorUsername ? (
-                <p className="min-w-0 truncate text-ink-2 text-xs">
-                  @{authorUsername}
-                </p>
-              ) : null}
+          <div className="flex items-center gap-1.5 leading-none">
+            {dateLabel ? (
+              <p
+                className="notranslate shrink-0 text-ink-2 text-xs tabular-nums"
+                lang="ja"
+                translate="no"
+              >
+                {dateLabel}
+              </p>
+            ) : null}
+            {category || typeChip ? (
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                {category ? <MiniTaxonomyBadge chip={category} /> : null}
+                {typeChip ? <MiniTaxonomyBadge chip={typeChip} /> : null}
+              </div>
+            ) : null}
+            <div className="ml-auto shrink-0">
+              <SourceCardMenu
+                sourceId={id}
+                url={url}
+                compact={variant === "grid"}
+                canQueueVideos={canShowSaveVideosMenu({
+                  kind,
+                  hasQueueableVideos,
+                })}
+              />
             </div>
-            <SourceCardMenu
-              sourceId={id}
-              url={url}
-              compact={variant === "grid"}
-              canQueueVideos={canShowSaveVideosMenu({
-                kind,
-                hasQueueableVideos,
-              })}
-            />
           </div>
           <div
             className={`mt-1 break-words text-sm ${

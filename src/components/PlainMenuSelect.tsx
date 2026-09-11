@@ -1,6 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { taxonomyAccentClass } from "@/lib/taxonomy-accent";
+
+export type PlainMenuOption = {
+  id: string;
+  label: string;
+  color?: string | null;
+};
 
 export function PlainMenuSelect({
   value,
@@ -13,7 +20,7 @@ export function PlainMenuSelect({
 }: {
   value: string;
   ariaLabel: string;
-  options: { id: string; label: string }[];
+  options: PlainMenuOption[];
   onChange: (value: string) => void;
   className?: string;
   buttonClassName?: string;
@@ -26,6 +33,7 @@ export function PlainMenuSelect({
     null,
   );
   const current = options.find((item) => item.id === value);
+  const currentAccent = taxonomyAccentClass(current?.color);
 
   useEffect(() => {
     if (!open) {
@@ -71,7 +79,11 @@ export function PlainMenuSelect({
           });
           setOpen((currentOpen) => !currentOpen);
         }}
-        className={`truncate rounded-full border border-line bg-paper px-2 py-1.5 text-left text-xs outline-none disabled:opacity-40 ${buttonClassName ?? "max-w-[9.5rem]"}`}
+        className={`truncate rounded-full border px-2 py-1.5 text-left text-xs outline-none disabled:opacity-40 ${
+          currentAccent
+            ? `${currentAccent} border-transparent`
+            : "border-line bg-paper"
+        } ${buttonClassName ?? "max-w-[9.5rem]"}`}
       >
         {current?.label ?? ariaLabel}
       </button>
@@ -85,6 +97,7 @@ export function PlainMenuSelect({
         >
           {options.map((item) => {
             const selected = item.id === value;
+            const accent = taxonomyAccentClass(item.color);
             return (
               <button
                 key={item.id}
@@ -95,7 +108,11 @@ export function PlainMenuSelect({
                   setOpen(false);
                 }}
                 className={`block w-full truncate px-3 py-2 text-left text-xs outline-none ${
-                  selected ? "bg-ink text-paper" : "hover:bg-paper-2"
+                  accent
+                    ? `${accent} ${selected ? "ring-2 ring-ink ring-inset" : ""}`
+                    : selected
+                      ? "bg-ink text-paper"
+                      : "hover:bg-paper-2"
                 }`}
               >
                 {item.label}

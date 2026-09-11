@@ -80,8 +80,8 @@ type Page = {
   count: number | null;
   accountId?: string | null;
   label?: string;
-  categories?: { id: string; name: string }[];
-  infoTypes?: { id: string; name: string }[];
+  categories?: { id: string; name: string; color?: string | null }[];
+  infoTypes?: { id: string; name: string; color?: string | null }[];
 };
 
 async function fetchPage(input: {
@@ -254,7 +254,7 @@ function FilterSelect({
   name: string;
   value: string;
   emptyLabel: string;
-  options: { id: string; label: string }[];
+  options: { id: string; label: string; color?: string | null }[];
   search: string;
 }) {
   const router = useRouter();
@@ -663,6 +663,7 @@ export function LibraryWorkspace({
           options={categories.map((item) => ({
             id: item.id,
             label: item.name,
+            color: item.color,
           }))}
         />
         <FilterSelect
@@ -673,6 +674,7 @@ export function LibraryWorkspace({
           options={infoTypes.map((item) => ({
             id: item.id,
             label: item.name,
+            color: item.color,
           }))}
         />
         <FilterSelect
@@ -714,7 +716,10 @@ export function LibraryWorkspace({
             <SourceCard
               key={item.id}
               id={item.id}
-              authorUsername={item.authorUsername}
+              categoryId={item.categoryId}
+              infoType={item.infoType}
+              categories={categories}
+              infoTypes={infoTypes}
               summary={item.summary}
               url={item.url}
               mediaId={item.mediaId}

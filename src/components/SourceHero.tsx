@@ -1,7 +1,9 @@
 import Image from "next/image";
+import { ExpandablePhoto } from "@/components/PhotoLightbox";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { SourceMetaFields } from "@/components/SourceMetaFields";
 import { VideoBadge } from "@/components/VideoBadge";
+import type { TaxonomyAccentId } from "@/lib/taxonomy-accent";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 import type { MediaItem } from "@/server/sources/detail";
 
@@ -31,8 +33,16 @@ export function SourceHero({
   infoType: string | null;
   readStatus: string;
   kind: string;
-  categories: { id: string; name: string }[];
-  infoTypes: { id: string; name: string }[];
+  categories: {
+    id: string;
+    name: string;
+    color?: TaxonomyAccentId | null;
+  }[];
+  infoTypes: {
+    id: string;
+    name: string;
+    color?: TaxonomyAccentId | null;
+  }[];
 }) {
   const when = postedAt
     ? new Date(postedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
@@ -111,6 +121,16 @@ export function SourceHero({
               className="right-3 bottom-3"
             />
           </SavedVideoThumbButton>
+        ) : hero?.type === "photo" ? (
+          <ExpandablePhoto
+            src={heroSrc}
+            alt={hero.altText ?? ""}
+            width={hero.width ?? 1200}
+            height={hero.height ?? 800}
+            className="max-h-80 w-full object-cover"
+            wrapperClassName="relative mt-4 block w-full overflow-hidden rounded-[var(--radius-card)] bg-paper-2"
+            style={sourceTransitionStyle(sourceId)}
+          />
         ) : (
           <div
             className="relative mt-4 overflow-hidden rounded-[var(--radius-card)] bg-paper-2"
@@ -124,13 +144,11 @@ export function SourceHero({
               unoptimized
               className="max-h-80 w-full object-cover"
             />
-            {hero && hero.type !== "photo" ? (
-              <VideoBadge
-                saveStatus={hero.videoSaveStatus}
-                compact={false}
-                className="right-3 bottom-3"
-              />
-            ) : null}
+            <VideoBadge
+              saveStatus={hero.videoSaveStatus}
+              compact={false}
+              className="right-3 bottom-3"
+            />
           </div>
         )
       ) : null}

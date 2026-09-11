@@ -90,6 +90,7 @@ export const accountTaxonomy = sqliteTable(
     kind: text("kind").notNull(),
     itemId: text("item_id").notNull(),
     name: text("name").notNull(),
+    color: text("color"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull(),
   },

@@ -9,6 +9,7 @@ import {
   removeTaxonomyItem,
   renameTaxonomyItem,
   reorderTaxonomyItems,
+  setTaxonomyItemColor,
   type TaxonomyKind,
 } from "@/server/taxonomy";
 
@@ -109,6 +110,7 @@ export async function PATCH(request: Request) {
       item_id?: string;
       item_ids?: unknown;
       name?: string;
+      color?: string | null;
     };
     if (typeof body.account_id !== "string") {
       throw new AppError("VALIDATION", "アカウントが必要です");
@@ -120,6 +122,15 @@ export async function PATCH(request: Request) {
         itemIds: itemIdsOf(body.item_ids),
       });
       return Response.json({ ok: true, taxonomy });
+    }
+    if ("color" in body) {
+      const item = await setTaxonomyItemColor({
+        accountId: body.account_id,
+        kind: kindOf(body.kind),
+        itemId: itemIdOf(body.item_id),
+        color: body.color ?? null,
+      });
+      return Response.json({ ok: true, item });
     }
     const item = await renameTaxonomyItem({
       accountId: body.account_id,

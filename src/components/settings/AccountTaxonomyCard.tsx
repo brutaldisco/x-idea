@@ -4,8 +4,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { invalidateLibraryTaxonomy } from "@/lib/library-cache";
+import {
+  TAXONOMY_ACCENT_CLASSES,
+  TAXONOMY_ACCENT_IDS,
+  type TaxonomyAccentId,
+} from "@/lib/taxonomy-accent";
 import { moveTaxonomyItem } from "@/lib/taxonomy-order";
-import type { AccountTaxonomy, TaxonomyKind } from "@/server/taxonomy";
+import type {
+  AccountTaxonomy,
+  TaxonomyItem,
+  TaxonomyKind,
+} from "@/server/taxonomy";
 
 export function AccountTaxonomyCard({
   accountId,
@@ -30,12 +39,14 @@ export function AccountTaxonomyCard({
     init: RequestInit,
   ): Promise<{
     ok: boolean;
+    item?: TaxonomyItem;
     taxonomy?: AccountTaxonomy;
     error?: { message?: string };
   }> {
     const res = await fetch(path, init);
     return (await res.json().catch(() => ({}))) as {
       ok: boolean;
+      item?: TaxonomyItem;
       taxonomy?: AccountTaxonomy;
       error?: { message?: string };
     };
@@ -102,11 +113,47 @@ export function AccountTaxonomyCard({
     setTaxonomy((prev) => ({
       ...prev,
       [key]: prev[key].map((row) =>
-        row.id === itemId ? { ...row, name: trimmed } : row,
+        row.id === itemId
+          ? { ...row, name: trimmed, color: body.item?.color ?? row.color }
+          : row,
       ),
     }));
     invalidateLibraryTaxonomy(queryClient);
     router.refresh();
+  }
+
+  async function setColor(
+    kind: TaxonomyKind,
+    itemId: string,
+    color: TaxonomyAccentId,
+  ) {
+    if (!accountId) {
+      return;
+    }
+    const key = kind === "category" ? "categories" : "infoTypes";
+    const previous = taxonomy[key];
+    setTaxonomy((prev) => ({
+      ...prev,
+      [key]: prev[key].map((row) =>
+        row.id === itemId ? { ...row, color } : row,
+      ),
+    }));
+    const body = await request("/api/settings/taxonomy", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        account_id: accountId,
+        kind,
+        item_id: itemId,
+        color,
+      }),
+    });
+    if (!body.ok) {
+      setTaxonomy((prev) => ({ ...prev, [key]: previous }));
+      setMessage(body.error?.message ?? "色を変えられませんでした");
+      return;
+    }
+    invalidateLibraryTaxonomy(queryClient);
   }
 
   async function remove(kind: TaxonomyKind, itemId: string) {
@@ -147,7 +194,7 @@ export function AccountTaxonomyCard({
       ...prev,
       [key]: itemIds
         .map((id) => prev[key].find((row) => row.id === id))
-        .filter((row): row is { id: string; name: string } => Boolean(row)),
+        .filter((row): row is TaxonomyItem => Boolean(row)),
     }));
     setBusy(true);
     setMessage(null);
@@ -210,6 +257,7 @@ export function AccountTaxonomyCard({
           }
           onAdd={() => void add("category")}
           onRename={(id, name) => void rename("category", id, name)}
+          onColor={(id, color) => void setColor("category", id, color)}
           onRemove={(id) => void remove("category", id)}
           onReorder={(itemIds) => void reorder("category", itemIds)}
         />
@@ -224,6 +272,7 @@ export function AccountTaxonomyCard({
           }
           onAdd={() => void add("info_type")}
           onRename={(id, name) => void rename("info_type", id, name)}
+          onColor={(id, color) => void setColor("info_type", id, color)}
           onRemove={(id) => void remove("info_type", id)}
           onReorder={(itemIds) => void reorder("info_type", itemIds)}
         />
@@ -242,17 +291,19 @@ function TaxonomyList({
   onDraftChange,
   onAdd,
   onRename,
+  onColor,
   onRemove,
   onReorder,
 }: {
   accountId: string;
   title: string;
-  items: { id: string; name: string }[];
+  items: TaxonomyItem[];
   draft: string;
   disabled: boolean;
   onDraftChange: (value: string) => void;
   onAdd: () => void;
   onRename: (id: string, name: string) => void;
+  onColor: (id: string, color: TaxonomyAccentId) => void;
   onRemove: (id: string) => void;
   onReorder: (itemIds: string[]) => void;
 }) {
@@ -262,7 +313,32 @@ function TaxonomyList({
   onReorderRef.current = onReorder;
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const canReorder = items.length > 1 && !disabled;
+
+  useEffect(() => {
+    if (!confirmId) {
+      return;
+    }
+    function onPointer(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-taxonomy-confirm]")) {
+        return;
+      }
+      setConfirmId(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setConfirmId(null);
+      }
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [confirmId]);
 
   useEffect(() => {
     if (!draggingId) {
@@ -354,6 +430,7 @@ function TaxonomyList({
                 }
                 event.currentTarget.setPointerCapture(event.pointerId);
                 overRef.current = item.id;
+                setConfirmId(null);
                 setDraggingId(item.id);
                 setOverId(item.id);
               }}
@@ -381,25 +458,64 @@ function TaxonomyList({
             >
               <GripIcon />
             </button>
+            <TaxonomyAccentPicker
+              value={item.color}
+              disabled={disabled || Boolean(draggingId)}
+              ariaLabel={`${item.name}の色`}
+              onOpen={() => setConfirmId(null)}
+              onChange={(color) => onColor(item.id, color)}
+            />
             <input
               defaultValue={item.name}
               disabled={disabled || Boolean(draggingId)}
               maxLength={40}
               aria-label={title}
               onBlur={(event) => onRename(item.id, event.target.value)}
-              className={`min-w-0 flex-1 select-none rounded-lg border border-line bg-paper px-2 py-1.5 text-sm focus:select-text ${
-                draggingId ? "pointer-events-none" : ""
-              }`}
+              className={`min-w-0 flex-1 select-none rounded-lg border px-2 py-1.5 text-sm focus:select-text ${
+                item.color
+                  ? `${TAXONOMY_ACCENT_CLASSES[item.color].bg} ${TAXONOMY_ACCENT_CLASSES[item.color].ink} border-transparent`
+                  : "border-line bg-paper"
+              } ${draggingId ? "pointer-events-none" : ""}`}
             />
-            <button
-              type="button"
-              disabled={disabled || items.length <= 1}
-              aria-label={`${item.name}を削除`}
-              onClick={() => onRemove(item.id)}
-              className="shrink-0 rounded-full border border-line px-2 text-ink-2 text-xs disabled:opacity-40"
-            >
-              削除
-            </button>
+            <div data-taxonomy-confirm className="relative shrink-0">
+              <button
+                type="button"
+                disabled={disabled || items.length <= 1}
+                aria-label={`${item.name}を削除`}
+                aria-expanded={confirmId === item.id}
+                onClick={() =>
+                  setConfirmId((current) =>
+                    current === item.id ? null : item.id,
+                  )
+                }
+                className="grid h-8 w-8 place-items-center rounded-full border border-line text-ink-2 text-sm leading-none disabled:opacity-40"
+              >
+                ×
+              </button>
+              {confirmId === item.id ? (
+                <output className="absolute right-0 bottom-full z-40 mb-1 flex items-center gap-2 whitespace-nowrap rounded-full border border-line bg-paper px-4 py-2.5 text-ink text-xs shadow-card">
+                  削除してよい？
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => {
+                      setConfirmId(null);
+                      onRemove(item.id);
+                    }}
+                    className="font-medium text-destructive-fg underline-offset-2 hover:underline disabled:opacity-40"
+                  >
+                    する
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmId(null)}
+                    className="text-ink-2 hover:underline"
+                  >
+                    やめる
+                  </button>
+                </output>
+              ) : null}
+            </div>
           </li>
         ))}
       </ul>
@@ -449,6 +565,110 @@ function itemIdAtPoint(
     }
   }
   return rows.at(-1)?.dataset.itemId ?? null;
+}
+
+function TaxonomyAccentPicker({
+  value,
+  disabled,
+  ariaLabel,
+  onOpen,
+  onChange,
+}: {
+  value: TaxonomyAccentId | null;
+  disabled: boolean;
+  ariaLabel: string;
+  onOpen?: () => void;
+  onChange: (color: TaxonomyAccentId) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const current = value ? TAXONOMY_ACCENT_CLASSES[value] : null;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onPointer = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative grid h-11 w-8 shrink-0 place-items-center"
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        title="色"
+        onClick={(event) => {
+          onOpen?.();
+          const rect = event.currentTarget.getBoundingClientRect();
+          setCoords({
+            top: rect.bottom + 4,
+            left: Math.min(rect.left, window.innerWidth - 168),
+          });
+          setOpen((currentOpen) => !currentOpen);
+        }}
+        className={`h-8 w-8 leading-none rounded-full border disabled:opacity-40 ${
+          current
+            ? `${current.bg} ${current.ink} border-transparent`
+            : "border-line border-dashed bg-paper"
+        }`}
+      />
+      {open && coords ? (
+        <div
+          role="listbox"
+          aria-label="アクセント色"
+          className="fixed z-50 grid grid-cols-3 gap-1.5 rounded-xl border border-line bg-paper p-2 shadow-card"
+          style={{ top: coords.top, left: coords.left }}
+        >
+          {TAXONOMY_ACCENT_IDS.map((id) => {
+            const tone = TAXONOMY_ACCENT_CLASSES[id];
+            const selected = id === value;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                aria-label={id}
+                onClick={() => {
+                  onChange(id);
+                  setOpen(false);
+                }}
+                className={`h-7 w-7 rounded-full ${tone.bg} ${
+                  selected
+                    ? "ring-2 ring-ink ring-offset-1 ring-offset-paper"
+                    : ""
+                }`}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function GripIcon() {

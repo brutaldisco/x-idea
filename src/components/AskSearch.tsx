@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { SourceCard } from "@/components/SourceCard";
+import type { TaxonomyChipItem } from "@/lib/taxonomy-chip";
 import type { SourceListItem } from "@/server/sources/query";
 
 export function AskSearch({
@@ -11,11 +12,15 @@ export function AskSearch({
   targetCount,
   initialQuery,
   initialItems,
+  categories = [],
+  infoTypes = [],
 }: {
   targetLabel: string;
   targetCount: number;
   initialQuery: string;
   initialItems: SourceListItem[];
+  categories?: TaxonomyChipItem[];
+  infoTypes?: TaxonomyChipItem[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
@@ -137,7 +142,10 @@ export function AskSearch({
             <SourceCard
               key={item.id}
               id={item.id}
-              authorUsername={item.authorUsername}
+              categoryId={item.categoryId}
+              infoType={item.infoType}
+              categories={categories}
+              infoTypes={infoTypes}
               summary={item.summary}
               url={item.url}
               mediaId={item.mediaId}

@@ -39,6 +39,8 @@ export type SourceListItem = {
   postedAt: string | null;
   triageStatus: string;
   authorUsername: string | null;
+  categoryId: string | null;
+  infoType: string | null;
   url: string | null;
   lang: string | null;
   summaryFromAi: boolean;
@@ -79,7 +81,9 @@ export type InboxListItem = SourceListItem & {
   tags: string[];
 };
 
-function mapSourceRow(row: Record<string, unknown>): SourceListItem {
+export function mapSourceListItem(
+  row: Record<string, unknown>,
+): SourceListItem {
   const { summary, fromAi } = cardSummary({
     aiSummary: row.ai_summary ? String(row.ai_summary) : null,
     postText: row.text ? String(row.text) : null,
@@ -100,6 +104,8 @@ function mapSourceRow(row: Record<string, unknown>): SourceListItem {
     postedAt,
     triageStatus: String(row.triage_status),
     authorUsername: row.author_username ? String(row.author_username) : null,
+    categoryId: row.category_id ? String(row.category_id) : null,
+    infoType: row.info_type ? String(row.info_type) : null,
     url: row.url ? String(row.url) : null,
     lang: row.lang ? String(row.lang) : null,
     summaryFromAi: fromAi,
@@ -163,7 +169,8 @@ export async function listSourcesPage(input: {
   }
   const result = await getClient().execute({
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
-                 s.triage_status, p.posted_at, p.author_username, p.text, p.lang,
+                 s.triage_status, s.category_id, s.info_type,
+                 p.posted_at, p.author_username, p.text, p.lang,
                  p.url, ${ARTICLE_EXCERPT_SQL},
                  ${LIST_MEDIA_SQL}
           FROM sources s
@@ -174,7 +181,7 @@ export async function listSourcesPage(input: {
     args: pageArgs,
   });
   const rows = result.rows.map((row) =>
-    mapSourceRow(row as Record<string, unknown>),
+    mapSourceListItem(row as Record<string, unknown>),
   );
   const extra = rows.length > take;
   const items = extra ? rows.slice(0, take) : rows;
@@ -214,7 +221,7 @@ export async function listInbox(input: {
   const result = await getClient().execute({
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
                  s.triage_status, s.ai_uncertainty_reason, s.category_id,
-                 s.category_confidence, s.category_candidates_json,
+                 s.info_type, s.category_confidence, s.category_candidates_json,
                  p.posted_at, p.author_username, p.text, p.lang, p.url,
                  ${ARTICLE_EXCERPT_SQL},
                  ${LIST_MEDIA_SQL}
@@ -240,7 +247,7 @@ export async function listInbox(input: {
         confidence: item.confidence,
       }));
     return {
-      ...mapSourceRow(row as Record<string, unknown>),
+      ...mapSourceListItem(row as Record<string, unknown>),
       uncertaintyReason: row.ai_uncertainty_reason
         ? String(row.ai_uncertainty_reason)
         : null,

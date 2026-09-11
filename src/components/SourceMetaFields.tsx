@@ -2,8 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { PlainMenuSelect } from "@/components/PlainMenuSelect";
+import {
+  type PlainMenuOption,
+  PlainMenuSelect,
+} from "@/components/PlainMenuSelect";
 import { SOURCE_KINDS } from "@/lib/source-filters";
+import type { TaxonomyAccentId } from "@/lib/taxonomy-accent";
 import {
   setReadStatus,
   setSourceKind,
@@ -20,17 +24,22 @@ const READ_LABELS: Record<(typeof READ_STATUSES)[number], string> = {
   knowledged: "KC化",
 };
 
-type TaxonomyOption = { id: string; name: string };
+type TaxonomyOption = {
+  id: string;
+  name: string;
+  color?: TaxonomyAccentId | null;
+};
 
 function withCurrent(
-  options: { id: string; label: string }[],
+  options: PlainMenuOption[],
   id: string,
   label: string,
-): { id: string; label: string }[] {
+  color?: TaxonomyAccentId | null,
+): PlainMenuOption[] {
   if (!id || options.some((item) => item.id === id)) {
     return options;
   }
-  return [{ id, label }, ...options];
+  return [{ id, label, color }, ...options];
 }
 
 export function SourceMetaFields({
@@ -92,17 +101,24 @@ export function SourceMetaFields({
   }
 
   const categoryOptions = withCurrent(
-    categories.map((item) => ({ id: item.id, label: item.name })),
+    categories.map((item) => ({
+      id: item.id,
+      label: item.name,
+      color: item.color,
+    })),
     category,
     categoryName ?? category,
+    categories.find((item) => item.id === category)?.color,
   );
   const infoOptions = withCurrent(
     infoTypes.map((item) => ({
       id: item.id,
       label: infoTypeLabel(item.id, infoTypes),
+      color: item.color,
     })),
     info,
     infoTypeLabel(info, infoTypes),
+    infoTypes.find((item) => item.id === info)?.color,
   );
   const kindOptions = withCurrent(
     SOURCE_KINDS.map((item) => ({ id: item.id, label: item.label })),

@@ -4,6 +4,11 @@ import { SEED_CATEGORIES } from "@/db/seed";
 import { AppError } from "@/lib/errors";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
+import {
+  isTaxonomyAccentId,
+  nextTaxonomyAccent,
+  type TaxonomyAccentId,
+} from "@/lib/taxonomy-accent";
 import { isTaxonomyItemId } from "@/lib/taxonomy-id";
 import { taxonomySortOrders } from "@/lib/taxonomy-order";
 import { INFO_TYPE_LABELS, INFO_TYPES } from "@/server/ai/info-types";
@@ -15,6 +20,7 @@ export type TaxonomyKind = (typeof TAXONOMY_KINDS)[number];
 export type TaxonomyItem = {
   id: string;
   name: string;
+  color: TaxonomyAccentId | null;
 };
 
 export type AccountTaxonomy = {
@@ -39,10 +45,12 @@ export function defaultAccountTaxonomy(): AccountTaxonomy {
     categories: SEED_CATEGORIES.map((row) => ({
       id: row.id,
       name: row.name,
+      color: null,
     })),
     infoTypes: INFO_TYPES.map((id) => ({
       id,
       name: INFO_TYPE_LABELS[id],
+      color: null,
     })),
   };
 }
@@ -91,17 +99,26 @@ export async function addTaxonomyItem(input: {
     throw new AppError("VALIDATION", "同じ名前がすでにあります");
   }
   const sortOrder = list.length * 10 + 10;
+  const color = nextTaxonomyAccent(list.map((row) => row.color));
   const itemId =
     input.kind === "category"
       ? await insertCategory(name, sortOrder)
       : infoTypeId();
   await getClient().execute({
     sql: `INSERT INTO account_taxonomy
-            (id, x_account_id, kind, item_id, name, sort_order, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
-    args: [newId(), input.accountId, input.kind, itemId, name, sortOrder],
+            (id, x_account_id, kind, item_id, name, color, sort_order, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    args: [
+      newId(),
+      input.accountId,
+      input.kind,
+      itemId,
+      name,
+      color,
+      sortOrder,
+    ],
   });
-  return { id: itemId, name };
+  return { id: itemId, name, color };
 }
 
 export async function renameTaxonomyItem(input: {
@@ -148,7 +165,43 @@ export async function renameTaxonomyItem(input: {
       });
     }
   }
-  return { id: input.itemId, name };
+  return { id: input.itemId, name, color: currentColor(list, input.itemId) };
+}
+
+export async function setTaxonomyItemColor(input: {
+  accountId: string;
+  kind: TaxonomyKind;
+  itemId: string;
+  color: string | null;
+}): Promise<TaxonomyItem> {
+  await ensureSchema();
+  await assertAccount(input.accountId);
+  await ensureAccountTaxonomy(input.accountId);
+  const color =
+    input.color == null || input.color === ""
+      ? null
+      : isTaxonomyAccentId(input.color)
+        ? input.color
+        : null;
+  if (input.color && !color) {
+    throw new AppError("VALIDATION", "色が不正です");
+  }
+  const current = await readAccountTaxonomy(input.accountId);
+  const list =
+    input.kind === "category" ? current.categories : current.infoTypes;
+  const row = list.find((item) => item.id === input.itemId);
+  if (!row) {
+    throw new AppError("NOT_FOUND", "項目が見つかりません");
+  }
+  const result = await getClient().execute({
+    sql: `UPDATE account_taxonomy SET color = ?
+          WHERE x_account_id = ? AND kind = ? AND item_id = ?`,
+    args: [color, input.accountId, input.kind, input.itemId],
+  });
+  if (Number(result.rowsAffected ?? 0) === 0) {
+    throw new AppError("NOT_FOUND", "項目が見つかりません");
+  }
+  return { id: input.itemId, name: row.name, color };
 }
 
 export async function reorderTaxonomyItems(input: {
@@ -252,7 +305,7 @@ async function readAccountTaxonomy(
   accountId: string,
 ): Promise<AccountTaxonomy> {
   const result = await getClient().execute({
-    sql: `SELECT kind, item_id, name
+    sql: `SELECT kind, item_id, name, color
           FROM account_taxonomy
           WHERE x_account_id = ?
           ORDER BY kind, sort_order, name
@@ -262,7 +315,12 @@ async function readAccountTaxonomy(
   const categories: TaxonomyItem[] = [];
   const infoTypes: TaxonomyItem[] = [];
   for (const row of result.rows) {
-    const item = { id: String(row.item_id), name: String(row.name) };
+    const colorRaw = row.color ? String(row.color) : "";
+    const item = {
+      id: String(row.item_id),
+      name: String(row.name),
+      color: isTaxonomyAccentId(colorRaw) ? colorRaw : null,
+    };
     if (row.kind === "info_type") {
       infoTypes.push(item);
     } else if (row.kind === "category") {
@@ -308,6 +366,13 @@ async function insertCategory(
 
 function infoTypeId(): string {
   return `it_${newId().toLowerCase().slice(0, 16)}`;
+}
+
+function currentColor(
+  list: TaxonomyItem[],
+  itemId: string,
+): TaxonomyAccentId | null {
+  return list.find((row) => row.id === itemId)?.color ?? null;
 }
 
 export { isTaxonomyItemId };

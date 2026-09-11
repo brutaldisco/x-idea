@@ -32,6 +32,7 @@ const MIGRATION_FILES = [
   "0011_bookmark_backfill.sql",
   "0012_gone_sweep.sql",
   "0013_reset_gone_sweep.sql",
+  "0014_taxonomy_color.sql",
 ];
 
 export function loadInitSql(): string {

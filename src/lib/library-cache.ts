@@ -11,8 +11,8 @@ export const LIBRARY_TAXONOMY_KEY = "taxonomy";
 export const LIBRARY_STALE_MS = 5 * 60_000;
 
 export type LibraryTaxonomy = {
-  categories: { id: string; name: string }[];
-  infoTypes: { id: string; name: string }[];
+  categories: { id: string; name: string; color?: string | null }[];
+  infoTypes: { id: string; name: string; color?: string | null }[];
 };
 
 export function libraryTaxonomyQueryKey(accountId: string) {

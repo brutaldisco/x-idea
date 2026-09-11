@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { PhotoLightbox } from "@/components/PhotoLightbox";
 import { QueueBadge } from "@/components/QueueBadge";
 import { SavedBadge } from "@/components/SavedBadge";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
@@ -37,20 +38,7 @@ export function MediaGallery({
         ))}
       </div>
       {lightbox ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-8"
-          onClick={() => setLightbox(null)}
-        >
-          <Image
-            src={lightbox}
-            alt=""
-            width={1600}
-            height={1200}
-            unoptimized
-            className="max-h-full max-w-full rounded-lg object-contain"
-          />
-        </button>
+        <PhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />
       ) : null}
     </div>
   );
