@@ -1,4 +1,4 @@
-import type { SourceSort } from "@/lib/source-sort";
+import { type SourceSort, VIDEO_SAVED_SORT_KEY_SQL } from "@/lib/source-sort";
 
 export const SOURCE_PAGE_SIZE = 30;
 export const SOURCE_PAGE_MAX = 100;
@@ -43,6 +43,9 @@ export function decodeSourceCursor(
 }
 
 export function sourceSortKeySql(sort: SourceSort): string {
+  if (sort === "video_saved") {
+    return VIDEO_SAVED_SORT_KEY_SQL;
+  }
   return sort.startsWith("saved_")
     ? "s.saved_at"
     : "COALESCE(p.posted_at, s.bookmarked_at, s.saved_at)";
@@ -55,9 +58,17 @@ export function sourceCursorSql(sort: SourceSort): string {
 }
 
 export function sourceCursorKey(
-  item: { postedAt: string | null; savedAt: string },
+  item: {
+    postedAt: string | null;
+    savedAt: string;
+    videoSaveStatus?: string | null;
+  },
   sort: SourceSort,
 ): string {
+  if (sort === "video_saved") {
+    const ready = item.videoSaveStatus === "ready" ? "1" : "0";
+    return `${ready}|${item.postedAt ?? item.savedAt}`;
+  }
   if (sort.startsWith("saved_")) {
     return item.savedAt;
   }

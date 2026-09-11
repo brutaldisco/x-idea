@@ -25,11 +25,17 @@ describe("source cursor", () => {
     expect(clampSourceLimit("0")).toBe(1);
     expect(sourceCursorSql("posted_desc")).toContain("< ?");
     expect(sourceCursorSql("saved_asc")).toContain("> ?");
+    expect(sourceCursorSql("video_saved")).toContain("vd.status = 'ready'");
+    expect(sourceCursorSql("video_saved")).toContain("< ?");
   });
 
   it("uses saved_at only for saved sorts", () => {
     const item = { postedAt: "2026-01-01", savedAt: "2026-02-02" };
     expect(sourceCursorKey(item, "posted_desc")).toBe("2026-01-01");
     expect(sourceCursorKey(item, "saved_asc")).toBe("2026-02-02");
+    expect(
+      sourceCursorKey({ ...item, videoSaveStatus: "ready" }, "video_saved"),
+    ).toBe("1|2026-01-01");
+    expect(sourceCursorKey(item, "video_saved")).toBe("0|2026-01-01");
   });
 });

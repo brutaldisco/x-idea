@@ -5,6 +5,7 @@ describe("parseSourceSort", () => {
   it("defaults to newest posted and accepts known ids", () => {
     expect(parseSourceSort(undefined)).toBe("posted_desc");
     expect(parseSourceSort("saved_asc")).toBe("saved_asc");
+    expect(parseSourceSort("video_saved")).toBe("video_saved");
     expect(parseSourceSort("drop table")).toBe("posted_desc");
   });
 });
@@ -14,5 +15,7 @@ describe("sourceSortSql", () => {
     expect(sourceSortSql("posted_desc")).toContain("posted_at");
     expect(sourceSortSql("posted_desc")).toContain("DESC");
     expect(sourceSortSql("saved_asc")).toContain("s.saved_at ASC");
+    expect(sourceSortSql("video_saved")).toContain("vd.status = 'ready'");
+    expect(sourceSortSql("video_saved")).toContain("DESC");
   });
 });
