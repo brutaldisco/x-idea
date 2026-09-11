@@ -10,7 +10,7 @@ import {
 } from "@/server/sources/dismiss";
 import { sourceScopeSql } from "@/server/sources/scope";
 import { getXAccountSecret } from "@/server/x/account";
-import { removeBookmark } from "@/server/x/client";
+import { removeBookmark, XApiError } from "@/server/x/client";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 import { hasOauthScope } from "@/server/x/pkce";
 import { ensureValidToken } from "@/server/x/token";
@@ -240,6 +240,20 @@ async function tryUnbookmark(
     await removeBookmark(token, account.xUserId, tweetId);
     logger.info({ accountId, tweetId }, "x bookmark removed");
   } catch (error) {
+    if (error instanceof XApiError && error.status === 401) {
+      try {
+        const token = await ensureValidToken({
+          ...account,
+          tokenExpiresAt: "1970-01-01T00:00:00.000Z",
+        });
+        await removeBookmark(token, account.xUserId, tweetId);
+        logger.info({ accountId, tweetId }, "x bookmark removed");
+        return;
+      } catch (retryError) {
+        logger.warn({ err: retryError, tweetId }, "unbookmark failed");
+        return;
+      }
+    }
     logger.warn({ err: error, tweetId }, "unbookmark failed");
   }
 }

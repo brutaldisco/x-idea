@@ -205,5 +205,6 @@ export async function removeBookmark(
     accessToken,
     `https://api.x.com/2/users/${encodeURIComponent(xUserId)}/bookmarks/${encodeURIComponent(tweetId)}`,
     "DELETE",
+    [404],
   );
 }

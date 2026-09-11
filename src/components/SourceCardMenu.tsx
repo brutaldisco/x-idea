@@ -3,7 +3,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { removeSourceFromLibraryQueries } from "@/lib/library-cache";
+import {
+  LIBRARY_SOURCES_KEY,
+  removeSourceFromLibraryQueries,
+} from "@/lib/library-cache";
+import { rememberDeletedSource } from "@/lib/library-deleted";
 import { readLibraryHref } from "@/lib/library-scroll";
 
 export function SourceCardMenu({
@@ -56,7 +60,9 @@ export function SourceCardMenu({
         return;
       }
       setOpen(false);
+      rememberDeletedSource(sourceId);
       removeSourceFromLibraryQueries(queryClient, sourceId);
+      void queryClient.invalidateQueries({ queryKey: [LIBRARY_SOURCES_KEY] });
       if (pathname.startsWith("/source/")) {
         router.push(readLibraryHref() ?? "/library", { scroll: false });
         return;

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatGoneSweepCursor, parseGoneSweepCursor } from "./gone-sweep";
+import {
+  formatGoneSweepCursor,
+  parseGoneSweepCursor,
+  shouldRestartGoneSweep,
+} from "./gone-sweep";
 
 describe("gone sweep cursor", () => {
   it("round-trips saved_at and source id", () => {
@@ -14,5 +18,15 @@ describe("gone sweep cursor", () => {
     expect(parseGoneSweepCursor(null)).toBeNull();
     expect(parseGoneSweepCursor("no-tab")).toBeNull();
     expect(parseGoneSweepCursor("\tonly-id")).toBeNull();
+  });
+
+  it("restarts from the beginning after a full pass", () => {
+    expect(
+      shouldRestartGoneSweep({ savedAt: "2026-09-11", sourceId: "01ABC" }, 0),
+    ).toBe(true);
+    expect(shouldRestartGoneSweep(null, 0)).toBe(false);
+    expect(
+      shouldRestartGoneSweep({ savedAt: "2026-09-11", sourceId: "01ABC" }, 10),
+    ).toBe(false);
   });
 });

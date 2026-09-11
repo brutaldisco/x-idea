@@ -36,6 +36,14 @@ export function formatGoneSweepCursor(
   return `${savedAt}\t${sourceId}`;
 }
 
+/** 一周したら先頭から再開する。カーソル末尾のまま止まらない。 */
+export function shouldRestartGoneSweep(
+  cursor: GoneSweepCursor | null,
+  rowCount: number,
+): boolean {
+  return Boolean(cursor) && rowCount === 0;
+}
+
 export async function listSavedTweetsForSweep(
   accountId: string,
   cursor: GoneSweepCursor | null,
@@ -92,7 +100,10 @@ export async function sweepGoneSavedBookmarks(input: {
   nextCursor: string | null;
 }> {
   const parsed = parseGoneSweepCursor(input.cursor);
-  const rows = await listSavedTweetsForSweep(input.accountId, parsed);
+  let rows = await listSavedTweetsForSweep(input.accountId, parsed);
+  if (shouldRestartGoneSweep(parsed, rows.length)) {
+    rows = await listSavedTweetsForSweep(input.accountId, null);
+  }
   if (rows.length === 0) {
     return {
       purged: 0,

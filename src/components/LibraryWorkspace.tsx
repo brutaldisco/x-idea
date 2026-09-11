@@ -18,6 +18,7 @@ import {
   libraryListNeedsMore,
   libraryQueryKey,
 } from "@/lib/library-cache";
+import { readDeletedSourceIds } from "@/lib/library-deleted";
 import { writeLibraryNeighbors } from "@/lib/library-neighbors";
 import {
   applyLibraryVisit,
@@ -207,7 +208,11 @@ export function LibraryWorkspace({
     hasNextPage: Boolean(query.hasNextPage),
     isFetchingNextPage: query.isFetchingNextPage,
   };
-  const rows = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const deletedIds = readDeletedSourceIds();
+  const rows =
+    query.data?.pages
+      .flatMap((page) => page.items)
+      .filter((item) => !deletedIds.has(item.id)) ?? [];
   const neighborIdsRef = useRef<string[]>([]);
   useEffect(() => {
     const ids =
