@@ -358,9 +358,9 @@ UI/UX の判断に迷ったら以下に従う。
 - **並び**：既定は投稿日時の新しい順（`posted_at`。取り込み順の `saved_at` ではない）。Library / Inbox は `?sort=` で **新しい順 / 古い順 / 保存が新しい順 / 保存が古い順 / 動画の保存済み** を切り替えられる。動画の保存済みは `video_downloads.status='ready'` を先頭にし、同じグループ内は投稿日時の新しい順。重要度・関連度（Lens 時）は後続。
 - **カード**：投稿者、**投稿日**（`posted_at`、なければ `bookmarked_at` / `saved_at`）、要約、サムネ。動画サムネは保存状態でバッジを変える（未保存「動画」／`queued`・`downloading`「キュー」／`video_downloads.status='ready'`「保存済」）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Library カードのサムネに出す。Reader ギャラリーはタイル下部だけ（サムネ上は重ねない）。`ready` の動画サムネはタップでアプリ内再生（プレーヤーは **1本リピート** のトグルのみ）。**3 点メニュー**から「X で開く」と **削除**（DB 行＋ローカル画像/動画ファイル。`dismissed_bookmarks` に残し同期では戻さない。`bookmark.write` があれば X のブックマークも外す。ADR-013）。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
-- **カーソルページネーション**：30件、Intersection Observer で追加読み込み。追加読み込み済みのページは Reader 往復後も保持する。
-- **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示の URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。復元は **1 回**（高さが足りなければ追加ページを待ってから）。読み込み中にユーザーがスクロールしたら復元を打ち切る。遅延タイマーで `scrollTo` を連打しない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む。読み込み・キャッシュ再編は `docs/design/2026-09-09-library-load-cache.md`。
-- **削除**：一覧はキャッシュから当該行を外し、ページ全体の再取得はしない。
+- **ページネーション**：1ページ 60件。`?page=`（1始まり）。前へ／次へ。並び・フィルタを変えると 1 ページ目に戻る。API は `LIMIT 60 OFFSET (page-1)*60`（全件 SELECT 禁止）。Reader 往復は同じ `page` を URL に残す。
+- **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示・ページの URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。復元は **1 回**。読み込み中にユーザーがスクロールしたら復元を打ち切る。遅延タイマーで `scrollTo` を連打しない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む。読み込み・キャッシュ再編は `docs/design/2026-09-09-library-load-cache.md`。
+- **削除**：一覧はキャッシュから当該行を外し、消した ID は再表示しない。
 - **Atlas（P2）**：`<canvas>`（`d3-force` + `d3-zoom`、または `pixi.js`）。ノード＝Source（最大 3,000 表示、超過は代表点に集約）。座標はサーバーで週次計算（PCA→UMAP 相当の近似、`source_layout` テーブル）。クラスタ命名は Flash-Lite。タップ→クラスタ内リスト、ロングタップ→そのクラスタを Lens 化。タイムスライダーで `saved_at` によるフェード。PC 優先、モバイルは簡易（ピンチズームのみ）。
 
 ### 8.4 SC-04 Ask
@@ -587,7 +587,7 @@ UI/UX の判断に迷ったら以下に従う。
 | ランタイム | **Node.js 24 LTS**、**pnpm 10** | Vercel 対応 |
 | フレームワーク | **Next.js 16.3.x**（App Router、Turbopack、`cacheComponents: true`、`partialPrefetching: true`、React Compiler） | `middleware.ts` は **`proxy.ts`** に置換。ナビゲーション回帰は `@next/playwright` の `instant()` で検査 |
 | UI | **React 19.2**、**Tailwind CSS v4**、**shadcn/ui**（最新）、`framer-motion`、`sonner`、`cmdk`、`lucide-react` | `<ViewTransition>` / `<Activity>` / `useOptimistic` |
-| データ取得 | RSC + Server Actions を基本。クライアント側の一覧・無限スクロールは **TanStack Query v5**（`persistQueryClient` で IndexedDB 永続化、直近 8 ページ、ADR-016） | オフライン閲覧に寄与 |
+| データ取得 | RSC + Server Actions を基本。クライアント側の Library は **TanStack Query v5**（`persistQueryClient` で IndexedDB 永続化、番号ページごと、ADR-016） | オフライン閲覧に寄与 |
 | ホスティング | **Vercel Hobby**（Fluid compute、Functions 最大 300 秒、リージョン **hnd1**） | 個人非商用 $0 |
 | DB | **Turso Free（libSQL）** `libsql://x-idea-brutaldisco.aws-ap-northeast-1.turso.io` | 5GB / 500M rows read / 10M rows written / 月。**超過時ブロック** |
 | DB クライアント / ORM | **`@libsql/client`** + **Drizzle ORM 1.0**（`drizzle-kit` で SQL マイグレーション） | Turso ダッシュボードが `turso://` URL を配る場合は `@tursodatabase/serverless` を使用可（`libsql://` のままなら `@libsql/client`） |
@@ -1639,7 +1639,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | GET/POST | `/api/settings/video-folder` | 動画保存フォルダ名の共有。ハンドルはブラウザごと | 同一オリジン | P1 |
 | GET/POST/PATCH/DELETE | `/api/settings/taxonomy` | アカウント別カテゴリ／情報タイプ。PATCH は改名または `item_ids` で並べ替え | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
-| GET | `/api/sources` | 一覧（フィルタ・カーソル `?cursor=saved_at,id&limit=30`） | 同一オリジン | P1 |
+| GET | `/api/sources` | 一覧（フィルタ・`?page=1&limit=60`。互換で `cursor` も可） | 同一オリジン | P1 |
 | GET | `/api/sources/:id` | 詳細（原文・記事・要約・タグ・関連） | 同一オリジン | P1 |
 | DELETE | `/api/sources/:id` | Source 削除（除外記録＋可能なら X ブックマーク解除・孤立記事・ローカルメディア） | 同一オリジン | P1 |
 | GET | `/api/search` | `?q=&mode=keyword|hybrid&filters=` | 同一オリジン | P1（hybrid は P2） |
@@ -1661,7 +1661,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 
 ### 21.3 共通規約
 
-- 一覧はカーソルページネーション（既定 `COALESCE(posted_at, bookmarked_at, saved_at) DESC, id DESC`、`limit` 既定 30、最大 100）。**全件 SELECT 禁止**。
+- 一覧はページネーション（既定 `COALESCE(posted_at, bookmarked_at, saved_at) DESC, id DESC`、`limit` 既定 60、最大 100、`page` は OFFSET）。**全件 SELECT 禁止**。
 - エラー形：`{ error: { code, message, retryable } }`。
 - 変更系はクライアント楽観更新＋失敗時ロールバック。
 - `/api/jobs/tick` 以外の内部 API に同一オリジンチェック（`Origin`/`Sec-Fetch-Site`）。
@@ -1979,7 +1979,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-203 | `feedback_examples` 蓄積（confirm/update 時の差分検出） | `src/server/actions/sources.ts` | T-202 | 修正で 1 行追加 |
 | T-204 | Server Actions 一式（confirm/archive/snooze/bulk/update/readStatus/note/reenrich、`updateTag` + `refresh()`） | `src/server/actions/*` | T-105 | 単体＋統合 |
 | T-205 | Inbox SC-02（SwipeCard、候補チップ、迷い理由、Undo、一括、キーボード、`useOptimistic`） | `src/app/(tabs)/inbox/*`, `components/SwipeCard.tsx` | T-204 | 実機 375px で操作完結 |
-| T-206 | Library SC-03（フィルタ、リスト/グリッド、カーソル無限スクロール、TanStack Query 永続化） | `src/app/(tabs)/library/*`, `/api/sources` | T-204 | rows read < 200/ページ |
+| T-206 | Library SC-03（フィルタ、リスト/グリッド、60件ページネーション、TanStack Query 永続化） | `src/app/(tabs)/library/*`, `/api/sources` | T-204 | rows read < 200/ページ |
 | T-207 | Reader SC-06（ヒーロー ViewTransition、セグメント、原文/記事/要約、メモ、状態バー、再処理） | `src/app/source/[id]/*` | T-204 | A-04 目視、共有要素遷移 |
 | T-208 | FTS 検索 `/api/search`（trigram、短語 LIKE、bm25 重み、フィルタ）＋ `/api/search/suggest` ＋ Ask SC-04（キーワードモード） | `src/server/search/keyword.ts`, `src/app/(tabs)/ask/*` | T-105 | 日本語 2/3/4 文字クエリでヒット |
 | T-209 | Today SC-01（同期ピル、新着サマリー、Inbox チップ、最近。Briefing/Echo/Insights はプレースホルダ） | `src/app/(tabs)/today/*` | T-204 | `use cache` + Suspense、空状態 3 種 |
@@ -1990,7 +1990,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-214 | 任意ゲート（`APP_PASSCODE` / Google、`proxy.ts`、Cookie 1 年） | `src/proxy.ts` | T-001 | 未設定でオープン、設定で `/unlock` |
 | T-215 | 評価セット 50 件と `pnpm eval:enrich`、README（環境変数・運用手順・枠監視） | `eval/`, `README.md` | T-202 | S3 初期値記録 |
 | T-216 | Library 往復で persist 復元中に一覧を消さない。SW `/api/sources` に 10 分 TTL | `src/components/LibraryWorkspace.tsx`, `public/sw.js` | T-206, T-212 | キャッシュありで「読み込み中…」が出ない（`docs/design/2026-09-09-library-load-cache.md`） |
-| T-217 | Library persist を IndexedDB + buster + 最大 8 ページ。queryKey は sort/filters（アカウントは切替時に破棄） | `src/components/LibraryQueryProvider.tsx` | T-216 | リロード後も直近 visit が残る。タブ再訪で取り直さない |
+| T-217 | Library persist を IndexedDB + buster。queryKey は sort/filters/page（アカウントは切替時に破棄） | `src/components/LibraryQueryProvider.tsx` | T-216 | リロード後も直近 visit が残る。タブ再訪で取り直さない |
 | T-218 | 共通シェル + Reader 並列ルート。Library↔Reader で一覧をアンマウントしない | `src/app/(shell)/*` または同等 | T-216 | ギャラリー途中→記事→戻るで同じ位置 |
 | T-219 | 過去ブックマークの手動遡及（`mode=backfill`、ページカーソル、Settings ボタン） | `src/server/jobs/handlers/syncBookmarks.ts`, Settings | T-104, T-106 | 今すぐ同期では増えない古い件が、ボタン連打で古い方へ増える。head は新着用のまま |
 

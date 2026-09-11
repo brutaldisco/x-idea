@@ -1,7 +1,8 @@
 import { type SourceSort, VIDEO_SAVED_SORT_KEY_SQL } from "@/lib/source-sort";
 
-export const SOURCE_PAGE_SIZE = 30;
+export const SOURCE_PAGE_SIZE = 60;
 export const SOURCE_PAGE_MAX = 100;
+export const SOURCE_PAGE_INDEX_MAX = 1000;
 
 export type SourceCursor = {
   key: string;
@@ -14,6 +15,41 @@ export function clampSourceLimit(raw: string | null | undefined): number {
     return SOURCE_PAGE_SIZE;
   }
   return Math.min(SOURCE_PAGE_MAX, Math.max(1, Math.floor(n)));
+}
+
+export function clampSourcePage(raw: string | null | undefined): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    return 1;
+  }
+  return Math.min(SOURCE_PAGE_INDEX_MAX, Math.max(1, Math.floor(n)));
+}
+
+export function sourcePageOffset(
+  page: number,
+  limit = SOURCE_PAGE_SIZE,
+): number {
+  return (Math.max(1, page) - 1) * Math.max(1, limit);
+}
+
+export function sourcePageCount(
+  total: number,
+  pageSize = SOURCE_PAGE_SIZE,
+): number {
+  if (total <= 0) {
+    return 1;
+  }
+  return Math.ceil(total / pageSize);
+}
+
+export function withLibraryPage(search: string, page: number): string {
+  const next = new URLSearchParams(search);
+  if (page <= 1) {
+    next.delete("page");
+  } else {
+    next.set("page", String(page));
+  }
+  return next.toString();
 }
 
 export function encodeSourceCursor(key: string, id: string): string {

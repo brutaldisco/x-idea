@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useRef } from "react";
 import { LibraryWorkspace } from "@/components/LibraryWorkspace";
 import { readLibraryHref } from "@/lib/library-scroll";
+import { clampSourcePage } from "@/lib/source-cursor";
 import { parseLibraryFilters, parseLibraryView } from "@/lib/source-filters";
 import { parseSourceSort } from "@/lib/source-sort";
 
@@ -33,6 +34,7 @@ export function LibraryClient() {
       sort={parseSourceSort(params.get("sort"))}
       view={parseLibraryView(params.get("view"))}
       filters={parseLibraryFilters(params)}
+      page={clampSourcePage(params.get("page"))}
       search={search}
     />
   );

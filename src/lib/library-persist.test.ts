@@ -8,38 +8,41 @@ describe("library persist", () => {
       nextCursor: index < 11 ? String(index + 1) : null,
       count: index === 0 ? 12 : null,
     }));
-    const trimmed = trimPersistedSources({
-      timestamp: 1,
-      buster: "t",
-      clientState: {
-        mutations: [],
-        queries: [
-          {
-            queryKey: ["sources", "posted_desc", "{}"],
-            queryHash: "x",
-            state: {
-              data: {
-                pages,
-                pageParams: pages.map((_, index) =>
-                  index === 0 ? undefined : String(index),
-                ),
+    const trimmed = trimPersistedSources(
+      {
+        timestamp: 1,
+        buster: "t",
+        clientState: {
+          mutations: [],
+          queries: [
+            {
+              queryKey: ["sources", "posted_desc", "{}"],
+              queryHash: "x",
+              state: {
+                data: {
+                  pages,
+                  pageParams: pages.map((_, index) =>
+                    index === 0 ? undefined : String(index),
+                  ),
+                },
+                dataUpdateCount: 1,
+                dataUpdatedAt: 1,
+                error: null,
+                errorUpdateCount: 0,
+                errorUpdatedAt: 0,
+                fetchFailureCount: 0,
+                fetchFailureReason: null,
+                fetchMeta: null,
+                isInvalidated: false,
+                status: "success",
+                fetchStatus: "idle",
               },
-              dataUpdateCount: 1,
-              dataUpdatedAt: 1,
-              error: null,
-              errorUpdateCount: 0,
-              errorUpdatedAt: 0,
-              fetchFailureCount: 0,
-              fetchFailureReason: null,
-              fetchMeta: null,
-              isInvalidated: false,
-              status: "success",
-              fetchStatus: "idle",
             },
-          },
-        ],
+          ],
+        },
       },
-    });
+      8,
+    );
     const data = trimmed.clientState.queries[0]?.state.data as {
       pages: unknown[];
       pageParams: unknown[];

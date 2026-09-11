@@ -2,8 +2,8 @@
 
 import {
   keepPreviousData,
-  useInfiniteQuery,
   useIsRestoring,
+  useQuery,
 } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
@@ -11,11 +11,8 @@ import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import {
-  isLibrarySourcesData,
   LIBRARY_STALE_MS,
   libraryFilterKey,
-  libraryListInconsistent,
-  libraryListNeedsMore,
   libraryQueryKey,
 } from "@/lib/library-cache";
 import { readDeletedSourceIds } from "@/lib/library-deleted";
@@ -39,6 +36,11 @@ import {
   sourceIdFromHref,
   writeLibraryScroll,
 } from "@/lib/library-scroll";
+import {
+  SOURCE_PAGE_SIZE,
+  sourcePageCount,
+  withLibraryPage,
+} from "@/lib/source-cursor";
 import {
   hasLibraryFilters,
   type LibraryFilters,
@@ -70,14 +72,17 @@ type Page = {
 async function fetchPage(input: {
   sort: SourceSort;
   filters: LibraryFilters;
-  cursor?: string;
+  page: number;
 }): Promise<Page> {
   const params = new URLSearchParams();
+  params.set("limit", String(SOURCE_PAGE_SIZE));
+  if (input.page > 1) {
+    params.set("page", String(input.page));
+  } else {
+    params.set("page", "1");
+  }
   if (input.sort !== "posted_desc") {
     params.set("sort", input.sort);
-  }
-  if (input.cursor) {
-    params.set("cursor", input.cursor);
   }
   if (input.filters.categoryId) {
     params.set("category", input.filters.categoryId);
@@ -125,6 +130,7 @@ function FilterSelect({
       options={[{ id: "", label: emptyLabel }, ...options]}
       onChange={(nextValue) => {
         const next = new URLSearchParams(search);
+        next.delete("page");
         if (nextValue) {
           next.set(name, nextValue);
         } else {
@@ -141,31 +147,31 @@ export function LibraryWorkspace({
   sort,
   view,
   filters,
+  page,
   search,
 }: {
   sort: SourceSort;
   view: LibraryView;
   filters: LibraryFilters;
+  page: number;
   search: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const sentinel = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
   const userMoved = useRef(false);
   const programmaticScroll = useRef(false);
-  const pageCountRef = useRef(0);
-  const loadMoreRef = useRef({
-    fetchNextPage: (() => undefined) as () => void,
-    hasNextPage: false,
-    isFetchingNextPage: false,
-  });
   const filterKey = libraryFilterKey(filters);
   const queryKey = useMemo(
-    () => libraryQueryKey(sort, filterKey),
-    [filterKey, sort],
+    () => libraryQueryKey(sort, filterKey, page),
+    [filterKey, page, sort],
   );
-  const scrollKey = libraryScrollKey({ sort, filters: filterKey, view });
+  const scrollKey = libraryScrollKey({
+    sort,
+    filters: filterKey,
+    view,
+    page,
+  });
   const returnHref = libraryHref(search);
   const prevScrollKey = useRef(scrollKey);
   if (prevScrollKey.current !== scrollKey) {
@@ -175,61 +181,69 @@ export function LibraryWorkspace({
   }
 
   const restoring = useIsRestoring();
-  const query = useInfiniteQuery({
+  const query = useQuery({
     queryKey,
-    queryFn: ({ pageParam }) =>
-      fetchPage({
-        sort,
-        filters,
-        cursor: pageParam,
-      }),
+    queryFn: () => fetchPage({ sort, filters, page }),
     enabled: !restoring,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchOnMount: (entry) => {
-      if (entry.state.data == null) {
-        return true;
-      }
-      return (
-        isLibrarySourcesData(entry.state.data) &&
-        libraryListInconsistent(entry.state.data)
-      );
-    },
+    refetchOnMount: (entry) => entry.state.data == null,
     refetchOnReconnect: false,
     placeholderData: keepPreviousData,
     staleTime: LIBRARY_STALE_MS,
   });
 
-  pageCountRef.current = query.data?.pages.length ?? 0;
-  loadMoreRef.current = {
-    fetchNextPage: () => {
-      void query.fetchNextPage();
-    },
-    hasNextPage: Boolean(query.hasNextPage),
-    isFetchingNextPage: query.isFetchingNextPage,
-  };
   const deletedIds = readDeletedSourceIds();
-  const rows =
-    query.data?.pages
-      .flatMap((page) => page.items)
-      .filter((item) => !deletedIds.has(item.id)) ?? [];
+  const rows = (query.data?.items ?? []).filter(
+    (item) => !deletedIds.has(item.id),
+  );
   const neighborIdsRef = useRef<string[]>([]);
+  const itemIds = (query.data?.items ?? []).map((item) => item.id).join(",");
   useEffect(() => {
-    const ids =
-      query.data?.pages.flatMap((page) => page.items.map((item) => item.id)) ??
-      [];
+    const ids = itemIds ? itemIds.split(",") : [];
     neighborIdsRef.current = ids;
     if (ids.length > 0) {
       writeLibraryNeighbors(ids);
     }
-  }, [query.data]);
-  const first = query.data?.pages[0];
-  const total = first?.count ?? rows.length;
-  const repairedKey = useRef("");
-  const queryKeyStr = queryKey.join("\0");
-  const label = first?.label ?? "ライブラリ";
-  const categories = first?.categories ?? [];
-  const infoTypes = first?.infoTypes ?? [];
+  }, [itemIds]);
+
+  const total = query.data?.count ?? rows.length;
+  const totalPages = sourcePageCount(total);
+  const safePage = Math.min(page, totalPages);
+  const label = query.data?.label ?? "ライブラリ";
+  const categories = query.data?.categories ?? [];
+  const infoTypes = query.data?.infoTypes ?? [];
+  const rangeStart = total === 0 ? 0 : (safePage - 1) * SOURCE_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(total, safePage * SOURCE_PAGE_SIZE);
+
+  useEffect(() => {
+    if (query.isFetching || query.isError || total === 0) {
+      return;
+    }
+    if (page > totalPages) {
+      const href = withLibraryPage(search, totalPages);
+      const base = pathname.startsWith("/library") ? pathname : "/library";
+      router.replace(href ? `${base}?${href}` : base, { scroll: false });
+    }
+  }, [
+    page,
+    pathname,
+    query.isError,
+    query.isFetching,
+    router,
+    search,
+    total,
+    totalPages,
+  ]);
+
+  const prevPage = useRef(page);
+  useEffect(() => {
+    if (prevPage.current === page) {
+      return;
+    }
+    prevPage.current = page;
+    if (!peekLibraryReturn()) {
+      window.scrollTo(0, 0);
+    }
+  }, [page]);
 
   useLayoutEffect(() => {
     lockBrowserScrollRestoration();
@@ -269,8 +283,7 @@ export function LibraryWorkspace({
         saved,
         document.documentElement.scrollHeight,
         window.innerHeight,
-      ) ||
-      !query.hasNextPage
+      )
     ) {
       programmaticScroll.current = true;
       if (applyLibraryVisit(saved)) {
@@ -282,87 +295,7 @@ export function LibraryWorkspace({
         });
       });
     }
-  }, [pathname, query.hasNextPage, returnHref, router, rows.length, scrollKey]);
-
-  useEffect(() => {
-    if (restoring || query.isFetching || query.isError) {
-      return;
-    }
-    if (!query.data || !libraryListInconsistent(query.data)) {
-      return;
-    }
-    if (repairedKey.current === queryKeyStr) {
-      return;
-    }
-    repairedKey.current = queryKeyStr;
-    void query.refetch();
-  }, [
-    query.data,
-    query.isError,
-    query.isFetching,
-    query.refetch,
-    queryKeyStr,
-    restoring,
-  ]);
-
-  useEffect(() => {
-    if (
-      restoring ||
-      query.isFetchingNextPage ||
-      query.isFetching ||
-      query.isError
-    ) {
-      return;
-    }
-    if (!query.data || !libraryListNeedsMore(query.data)) {
-      return;
-    }
-    void query.fetchNextPage();
-  }, [
-    query.data,
-    query.fetchNextPage,
-    query.isError,
-    query.isFetching,
-    query.isFetchingNextPage,
-    restoring,
-  ]);
-
-  useEffect(() => {
-    if (
-      !pathname.startsWith("/library") ||
-      restored.current ||
-      userMoved.current ||
-      query.isFetchingNextPage ||
-      restoring
-    ) {
-      return;
-    }
-    const saved = readLibraryVisit();
-    if (!saved || (saved.key !== scrollKey && saved.href !== returnHref)) {
-      return;
-    }
-    const pages = query.data?.pages.length ?? 0;
-    const needPages = saved.pageCount != null && pages < saved.pageCount;
-    const needHeight =
-      query.hasNextPage &&
-      !canApplyLibraryVisit(
-        saved,
-        document.documentElement.scrollHeight,
-        window.innerHeight,
-      );
-    if (needPages || needHeight) {
-      void query.fetchNextPage();
-    }
-  }, [
-    pathname,
-    query.data?.pages.length,
-    query.fetchNextPage,
-    query.hasNextPage,
-    query.isFetchingNextPage,
-    restoring,
-    returnHref,
-    scrollKey,
-  ]);
+  }, [pathname, returnHref, router, rows.length, scrollKey]);
 
   useEffect(() => {
     lockBrowserScrollRestoration();
@@ -378,9 +311,7 @@ export function LibraryWorkspace({
       if (!restored.current && !userMoved.current && y < 8) {
         return;
       }
-      writeLibraryScroll(scrollKey, y, returnHref, {
-        pageCount: pageCountRef.current,
-      });
+      writeLibraryScroll(scrollKey, y, returnHref, { pageCount: 1 });
     }
     function markUserMoved() {
       if (!pathname.startsWith("/library")) {
@@ -444,7 +375,7 @@ export function LibraryWorkspace({
         href: returnHref,
         sourceId:
           sourceIdFromHref(link.getAttribute("href") ?? link.href) ?? undefined,
-        pageCount: pageCountRef.current,
+        pageCount: 1,
       });
       if (neighborIdsRef.current.length > 0) {
         writeLibraryNeighbors(neighborIdsRef.current);
@@ -472,29 +403,11 @@ export function LibraryWorkspace({
     };
   }, [pathname, returnHref, scrollKey]);
 
-  const hasRows = rows.length > 0;
-  const observerKey = `${hasRows}:${query.hasNextPage}:${rows.length}`;
-  useEffect(() => {
-    const node = sentinel.current;
-    if (!node || !observerKey.startsWith("true:")) {
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const loadMore = loadMoreRef.current;
-        if (
-          entries[0]?.isIntersecting &&
-          loadMore.hasNextPage &&
-          !loadMore.isFetchingNextPage
-        ) {
-          void loadMore.fetchNextPage();
-        }
-      },
-      { rootMargin: "240px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [observerKey]);
+  function goToPage(nextPage: number) {
+    const href = withLibraryPage(search, nextPage);
+    const base = pathname.startsWith("/library") ? pathname : "/library";
+    router.push(href ? `${base}?${href}` : base);
+  }
 
   function setView(next: LibraryView) {
     const params = new URLSearchParams(search);
@@ -540,9 +453,7 @@ export function LibraryWorkspace({
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-ink-2 text-xs">
         <span>
           {label} ·{" "}
-          {rows.length > 0 && rows.length < total
-            ? `${rows.length} / ${total}件`
-            : `${total}件`}
+          {total > 0 ? `${rangeStart}–${rangeEnd} / ${total}件` : `${total}件`}
         </span>
         <div className="flex items-center gap-2">
           <SourceSortSelect value={sort} search={search} />
@@ -645,39 +556,37 @@ export function LibraryWorkspace({
           ))}
         </ul>
       )}
-      <div ref={sentinel} className="h-8" />
-      <p
-        className={`py-3 text-center text-ink-2 text-xs ${
-          query.isFetchingNextPage ? "" : "invisible"
-        }`}
-      >
-        読み込み中…
-      </p>
-      {query.hasNextPage && !query.isFetchingNextPage ? (
-        <button
-          type="button"
-          className="mx-auto block py-2 text-ink-2 text-xs underline"
-          onClick={() => {
-            void query.fetchNextPage();
-          }}
+
+      {totalPages > 1 ? (
+        <nav
+          aria-label="ページ"
+          className="mt-6 flex items-center justify-center gap-3 text-ink-2 text-xs"
         >
-          続きを読み込む
-        </button>
+          <button
+            type="button"
+            disabled={safePage <= 1 || query.isFetching}
+            className="min-h-8 rounded-full border border-line px-3 disabled:opacity-40"
+            onClick={() => goToPage(safePage - 1)}
+          >
+            前へ
+          </button>
+          <span>
+            {safePage} / {totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={safePage >= totalPages || query.isFetching}
+            className="min-h-8 rounded-full border border-line px-3 disabled:opacity-40"
+            onClick={() => goToPage(safePage + 1)}
+          >
+            次へ
+          </button>
+        </nav>
       ) : null}
-      {rows.length < total && !query.hasNextPage && !query.isFetching ? (
-        <button
-          type="button"
-          className="mx-auto block py-2 text-ink-2 text-xs underline"
-          onClick={() => {
-            void query.refetch();
-          }}
-        >
-          一覧を再読み込み
-        </button>
-      ) : null}
+
       {query.isError ? (
         <p className="py-3 text-center text-ink-2 text-xs">
-          続きを読めませんでした。
+          一覧を読めませんでした。
         </p>
       ) : null}
     </div>

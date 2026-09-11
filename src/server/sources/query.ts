@@ -131,6 +131,7 @@ export async function listSourcesPage(input: {
   limit: number;
   sort?: SourceSort | string;
   cursor?: string | null;
+  offset?: number;
   filters?: LibraryFilters;
 }): Promise<{ items: SourceListItem[]; nextCursor: string | null }> {
   if (!isDbConfigured()) {
@@ -141,13 +142,17 @@ export async function listSourcesPage(input: {
   const { clause, args } = listWhere(input.ctx, input);
   const where = [clause];
   const pageArgs = [...args];
-  const cursor = decodeSourceCursor(input.cursor);
+  const offset = Math.max(0, Math.floor(input.offset ?? 0));
+  const cursor = offset > 0 ? null : decodeSourceCursor(input.cursor);
   if (cursor) {
     where.push(sourceCursorSql(sort));
     pageArgs.push(cursor.key, cursor.key, cursor.id);
   }
   const take = Math.min(100, Math.max(1, input.limit));
   pageArgs.push(take + 1);
+  if (offset > 0) {
+    pageArgs.push(offset);
+  }
   const result = await getClient().execute({
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
                  s.triage_status, p.posted_at, p.author_username, p.text, p.lang,
@@ -157,7 +162,7 @@ export async function listSourcesPage(input: {
           LEFT JOIN x_posts p ON p.id = s.x_post_id
           WHERE ${where.join(" AND ")}
           ORDER BY ${sourceSortSql(sort)}
-          LIMIT ?`,
+          LIMIT ?${offset > 0 ? " OFFSET ?" : ""}`,
     args: pageArgs,
   });
   const rows = result.rows.map((row) =>

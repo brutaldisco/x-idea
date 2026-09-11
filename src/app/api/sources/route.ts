@@ -1,7 +1,11 @@
 import { connection } from "next/server";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
-import { clampSourceLimit } from "@/lib/source-cursor";
+import {
+  clampSourceLimit,
+  clampSourcePage,
+  sourcePageOffset,
+} from "@/lib/source-cursor";
 import { parseLibraryFilters } from "@/lib/source-filters";
 import { parseSourceSort } from "@/lib/source-sort";
 import { countSources, listSourcesPage } from "@/server/sources/query";
@@ -28,23 +32,27 @@ export async function GET(request: Request) {
     const sort = parseSourceSort(url.searchParams.get("sort"));
     const filters = parseLibraryFilters(url.searchParams);
     const limit = clampSourceLimit(url.searchParams.get("limit"));
+    const pageRaw = url.searchParams.get("page");
     const cursor = url.searchParams.get("cursor");
+    const numbered = pageRaw != null || !cursor;
+    const page = clampSourcePage(pageRaw);
     const accountId = contextAccountId(ctx);
-    const [page, count, taxonomy] = await Promise.all([
+    const [list, count, taxonomy] = await Promise.all([
       listSourcesPage({
         ctx,
         limit,
         sort,
-        cursor,
+        cursor: numbered ? null : cursor,
+        offset: numbered ? sourcePageOffset(page, limit) : 0,
         filters,
       }),
-      cursor ? Promise.resolve(null) : countSources({ ctx, filters }),
-      cursor ? Promise.resolve(null) : taxonomyForAccount(accountId),
+      numbered ? countSources({ ctx, filters }) : Promise.resolve(null),
+      numbered ? taxonomyForAccount(accountId) : Promise.resolve(null),
     ]);
     return Response.json({
       ok: true,
-      items: page.items,
-      nextCursor: page.nextCursor,
+      items: list.items,
+      nextCursor: list.nextCursor,
       count,
       accountId,
       ...(taxonomy

@@ -108,8 +108,10 @@ export function libraryScrollKey(input: {
   sort: string;
   filters: string;
   view: string;
+  page?: number;
 }): string {
-  return `${input.sort}|${input.filters}|${input.view}`;
+  const page = input.page && input.page > 1 ? input.page : 1;
+  return `${input.sort}|${input.filters}|${input.view}|${page}`;
 }
 
 export function parseLibraryVisit(raw: string | null): LibraryVisit | null {

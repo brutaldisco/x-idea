@@ -2,11 +2,10 @@ import type {
   PersistedClient,
   Persister,
 } from "@tanstack/react-query-persist-client";
-import { isLibrarySourcesData } from "@/lib/library-cache";
 
 export const LIBRARY_PERSIST_KEY = "x-idea.library.v6";
-export const LIBRARY_PERSIST_BUSTER = "2026-09-11-delete";
-export const LIBRARY_PERSIST_MAX_PAGES = 8;
+export const LIBRARY_PERSIST_BUSTER = "2026-09-11-paged";
+export const LIBRARY_PERSIST_MAX_PAGES = 1;
 const LEGACY_KEYS = ["marginalia.library.v5", "marginalia.library.v6"];
 
 const DB_NAME = "x-idea";
@@ -38,7 +37,11 @@ export function trimPersistedSources(
           return query;
         }
         const data = query.state.data;
-        if (!isLibrarySourcesData(data) || data.pages.length <= maxPages) {
+        if (!data || typeof data !== "object") {
+          return query;
+        }
+        const pages = (data as { pages?: unknown }).pages;
+        if (!Array.isArray(pages) || pages.length <= maxPages) {
           return query;
         }
         return {
@@ -47,8 +50,15 @@ export function trimPersistedSources(
             ...query.state,
             data: {
               ...data,
-              pages: data.pages.slice(0, maxPages),
-              pageParams: data.pageParams.slice(0, maxPages),
+              pages: pages.slice(0, maxPages),
+              pageParams: Array.isArray(
+                (data as { pageParams?: unknown }).pageParams,
+              )
+                ? (data as { pageParams: unknown[] }).pageParams.slice(
+                    0,
+                    maxPages,
+                  )
+                : [],
             },
           },
         };

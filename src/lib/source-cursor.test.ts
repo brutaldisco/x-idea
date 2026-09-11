@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   clampSourceLimit,
+  clampSourcePage,
   decodeSourceCursor,
   encodeSourceCursor,
   SOURCE_PAGE_SIZE,
   sourceCursorKey,
   sourceCursorSql,
+  sourcePageCount,
+  sourcePageOffset,
+  withLibraryPage,
 } from "@/lib/source-cursor";
 
 describe("source cursor", () => {
@@ -20,9 +24,22 @@ describe("source cursor", () => {
   });
 
   it("clamps page size and builds a keyset predicate", () => {
+    expect(SOURCE_PAGE_SIZE).toBe(60);
     expect(clampSourceLimit(undefined)).toBe(SOURCE_PAGE_SIZE);
     expect(clampSourceLimit("200")).toBe(100);
     expect(clampSourceLimit("0")).toBe(1);
+    expect(clampSourcePage(undefined)).toBe(1);
+    expect(clampSourcePage("0")).toBe(1);
+    expect(clampSourcePage("3")).toBe(3);
+    expect(sourcePageOffset(1)).toBe(0);
+    expect(sourcePageOffset(2)).toBe(60);
+    expect(sourcePageCount(0)).toBe(1);
+    expect(sourcePageCount(60)).toBe(1);
+    expect(sourcePageCount(61)).toBe(2);
+    expect(withLibraryPage("sort=saved_desc&page=3", 1)).toBe(
+      "sort=saved_desc",
+    );
+    expect(withLibraryPage("", 2)).toBe("page=2");
     expect(sourceCursorSql("posted_desc")).toContain("< ?");
     expect(sourceCursorSql("saved_asc")).toContain("> ?");
     expect(sourceCursorSql("video_saved")).toContain("vd.status = 'ready'");

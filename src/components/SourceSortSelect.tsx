@@ -30,6 +30,7 @@ export function SourceSortSelect({
         }))}
         onChange={(sort) => {
           const next = new URLSearchParams(search);
+          next.delete("page");
           if (sort === "posted_desc") {
             next.delete("sort");
           } else {

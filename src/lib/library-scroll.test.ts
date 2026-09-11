@@ -41,7 +41,15 @@ describe("library scroll", () => {
         filters: "{}",
         view: "grid",
       }),
-    ).toBe("posted_desc|{}|grid");
+    ).toBe("posted_desc|{}|grid|1");
+    expect(
+      libraryScrollKey({
+        sort: "posted_desc",
+        filters: "{}",
+        view: "grid",
+        page: 3,
+      }),
+    ).toBe("posted_desc|{}|grid|3");
   });
 
   it("reads a matching saved offset", () => {
