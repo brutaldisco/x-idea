@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextResponse } from "next/server";
 import {
   gateCookieName,
   gateCookieOptions,
@@ -10,6 +9,7 @@ import { safeInternalPath } from "@/lib/pwa";
 import {
   appUrl,
   beginGoogleOauth,
+  callbackUriForRequest,
   GOOGLE_OAUTH_COOKIE,
 } from "@/server/auth/google";
 
@@ -24,27 +24,30 @@ export async function GET(request: Request) {
   fail.searchParams.set("error", "google");
 
   if (!googleGateConfigured()) {
-    return Response.redirect(fail);
+    return NextResponse.redirect(fail);
   }
 
   if (process.env.MOCK_EXTERNAL === "1") {
-    const jar = await cookies();
-    jar.set(gateCookieName(), await signGate(), gateCookieOptions());
-    return Response.redirect(new URL(next, appUrl()));
+    const res = NextResponse.redirect(new URL(next, appUrl()));
+    res.cookies.set(gateCookieName(), await signGate(), gateCookieOptions());
+    return res;
   }
 
   try {
-    const { url: oauthUrl, cookie } = beginGoogleOauth(next);
-    const jar = await cookies();
-    jar.set(GOOGLE_OAUTH_COOKIE, cookie, {
+    const { url: oauthUrl, cookie } = beginGoogleOauth(
+      next,
+      callbackUriForRequest(request.url),
+    );
+    const res = NextResponse.redirect(oauthUrl);
+    res.cookies.set(GOOGLE_OAUTH_COOKIE, cookie, {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 600,
     });
-    return Response.redirect(oauthUrl);
+    return res;
   } catch {
-    return Response.redirect(fail);
+    return NextResponse.redirect(fail);
   }
 }

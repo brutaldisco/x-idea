@@ -13,6 +13,8 @@ export const logger = pino({
       "GEMINI_API_KEY",
       "X_CLIENT_SECRET",
       "X_BEARER_TOKEN",
+      "GOOGLE_CLIENT_SECRET",
+      "SESSION_SECRET",
     ],
     remove: true,
   },

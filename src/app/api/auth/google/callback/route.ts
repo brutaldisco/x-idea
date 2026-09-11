@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextResponse } from "next/server";
 import { gateCookieName, gateCookieOptions, signGate } from "@/lib/gate";
+import { logger } from "@/lib/logger";
 import { safeInternalPath } from "@/lib/pwa";
 import {
   appUrl,
@@ -17,7 +18,7 @@ function unlockRedirect(next: string, error: string): Response {
   const fail = new URL("/unlock", appUrl());
   fail.searchParams.set("next", next);
   fail.searchParams.set("error", error);
-  return Response.redirect(fail);
+  return NextResponse.redirect(fail);
 }
 
 export async function GET(request: Request) {
@@ -27,26 +28,41 @@ export async function GET(request: Request) {
   const state = url.searchParams.get("state");
   const denied = url.searchParams.get("error");
   const jar = await cookies();
-  const payload = decryptGooglePayload(jar.get(GOOGLE_OAUTH_COOKIE)?.value);
+  const payload =
+    decryptGooglePayload(state ?? undefined) ??
+    decryptGooglePayload(jar.get(GOOGLE_OAUTH_COOKIE)?.value);
   jar.delete(GOOGLE_OAUTH_COOKIE);
   const next = safeInternalPath(payload?.next);
 
   if (denied) {
     return unlockRedirect(next, "denied");
   }
-  if (!code || !state || !payload || payload.state !== state) {
+  if (!code || !payload) {
+    logger.warn(
+      { hasCode: Boolean(code), hasPayload: Boolean(payload) },
+      "google.oauth.callback rejected",
+    );
     return unlockRedirect(next, "google");
   }
 
   try {
-    const accessToken = await exchangeGoogleCode(code, payload.verifier);
+    const accessToken = await exchangeGoogleCode(
+      code,
+      payload.verifier,
+      payload.redirectUri,
+    );
     const identity = await fetchGoogleIdentity(accessToken);
     if (!googleIdentityAllowed(identity)) {
       return unlockRedirect(next, "mismatch");
     }
-    jar.set(gateCookieName(), await signGate(), gateCookieOptions());
-    return Response.redirect(new URL(next, appUrl()));
-  } catch {
+    const res = NextResponse.redirect(new URL(next, appUrl()));
+    res.cookies.set(gateCookieName(), await signGate(), gateCookieOptions());
+    return res;
+  } catch (error) {
+    logger.warn(
+      { err: error instanceof Error ? error.message : "google callback" },
+      "google.oauth.callback failed",
+    );
     return unlockRedirect(next, "google");
   }
 }

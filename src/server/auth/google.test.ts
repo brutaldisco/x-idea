@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildGoogleAuthorizeUrl, googleIdentityAllowed } from "./google";
+import {
+  beginGoogleOauth,
+  buildGoogleAuthorizeUrl,
+  callbackUriForRequest,
+  decryptGooglePayload,
+  googleIdentityAllowed,
+} from "./google";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -22,6 +28,41 @@ describe("buildGoogleAuthorizeUrl", () => {
     expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
     expect(parsed.searchParams.get("login_hint")).toBe("you@example.com");
     expect(parsed.searchParams.get("prompt")).toBe("select_account");
+  });
+});
+
+describe("callbackUriForRequest", () => {
+  it("keeps localhost and falls back off unknown hosts", () => {
+    vi.stubEnv("APP_URL", "https://x-idea.vercel.app");
+    vi.stubEnv("GOOGLE_REDIRECT_URI", "");
+    expect(
+      callbackUriForRequest("http://localhost:3344/api/auth/google/start"),
+    ).toBe("http://localhost:3344/api/auth/google/callback");
+    expect(
+      callbackUriForRequest(
+        "https://x-idea-preview.vercel.app/api/auth/google/start",
+      ),
+    ).toBe("https://x-idea.vercel.app/api/auth/google/callback");
+  });
+});
+
+describe("beginGoogleOauth", () => {
+  it("puts a decryptable PKCE payload in the OAuth state", () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "cid");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "secret");
+    vi.stubEnv("ALLOWED_GOOGLE_EMAIL", "you@example.com");
+    vi.stubEnv("SESSION_SECRET", "test-secret");
+    const started = beginGoogleOauth(
+      "/library",
+      "https://x-idea.vercel.app/api/auth/google/callback",
+    );
+    const parsed = new URL(started.url);
+    const state = parsed.searchParams.get("state");
+    expect(state).toBe(started.cookie);
+    expect(decryptGooglePayload(state ?? undefined)).toMatchObject({
+      next: "/library",
+      redirectUri: "https://x-idea.vercel.app/api/auth/google/callback",
+    });
   });
 });
 

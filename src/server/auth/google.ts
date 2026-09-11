@@ -5,17 +5,17 @@ import {
   randomBytes,
 } from "node:crypto";
 import { emailAllowed, googleGateConfigured } from "@/lib/gate";
-import { challengeS256, createState, createVerifier } from "@/server/x/pkce";
+import { challengeS256, createVerifier } from "@/server/x/pkce";
 
 export const GOOGLE_OAUTH_COOKIE = "g_oauth";
 const TTL_MS = 10 * 60 * 1000;
 const SCOPES = "openid email";
 
 export type GoogleOauthPayload = {
-  state: string;
   verifier: string;
   exp: number;
   next?: string;
+  redirectUri?: string;
 };
 
 export type GoogleIdentity = {
@@ -62,7 +62,7 @@ export function decryptGooglePayload(
       decipher.final(),
     ]).toString("utf8");
     const parsed = JSON.parse(json) as GoogleOauthPayload;
-    if (!parsed.state || !parsed.verifier || parsed.exp < Date.now()) {
+    if (!parsed.verifier || parsed.exp < Date.now()) {
       return null;
     }
     return parsed;
@@ -80,6 +80,41 @@ export function googleRedirectUri(): string {
 
 export function appUrl(): string {
   return process.env.APP_URL ?? "https://x-idea.vercel.app";
+}
+
+export function allowedGoogleOrigins(): Set<string> {
+  const origins = new Set<string>([
+    "http://localhost:3344",
+    "http://127.0.0.1:3344",
+  ]);
+  for (const raw of [process.env.APP_URL, process.env.GOOGLE_REDIRECT_URI]) {
+    if (!raw) {
+      continue;
+    }
+    try {
+      origins.add(new URL(raw).origin);
+    } catch {
+      // ignore bad env
+    }
+  }
+  try {
+    origins.add(new URL(googleRedirectUri()).origin);
+  } catch {
+    origins.add("https://x-idea.vercel.app");
+  }
+  return origins;
+}
+
+export function callbackUriForRequest(requestUrl: string): string {
+  try {
+    const origin = new URL(requestUrl).origin;
+    if (allowedGoogleOrigins().has(origin)) {
+      return `${origin}/api/auth/google/callback`;
+    }
+  } catch {
+    // fall through
+  }
+  return googleRedirectUri();
 }
 
 export function buildGoogleAuthorizeUrl(input: {
@@ -106,7 +141,10 @@ export function buildGoogleAuthorizeUrl(input: {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-export function beginGoogleOauth(next?: string): {
+export function beginGoogleOauth(
+  next?: string,
+  redirectUri?: string,
+): {
   url: string;
   cookie: string;
 } {
@@ -115,32 +153,34 @@ export function beginGoogleOauth(next?: string): {
     throw new Error("Google gate is not configured");
   }
   const verifier = createVerifier();
-  const state = createState();
+  const callback = redirectUri ?? googleRedirectUri();
+  const cookie = encryptGooglePayload({
+    verifier,
+    exp: Date.now() + TTL_MS,
+    next,
+    redirectUri: callback,
+  });
   return {
     url: buildGoogleAuthorizeUrl({
       clientId,
-      redirectUri: googleRedirectUri(),
-      state,
+      redirectUri: callback,
+      state: cookie,
       challenge: challengeS256(verifier),
       loginHint: process.env.ALLOWED_GOOGLE_EMAIL ?? null,
     }),
-    cookie: encryptGooglePayload({
-      state,
-      verifier,
-      exp: Date.now() + TTL_MS,
-      next,
-    }),
+    cookie,
   };
 }
 
 export async function exchangeGoogleCode(
   code: string,
   verifier: string,
+  redirectUri?: string,
 ): Promise<string> {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
-    redirect_uri: googleRedirectUri(),
+    redirect_uri: redirectUri ?? googleRedirectUri(),
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
     client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
     code_verifier: verifier,
