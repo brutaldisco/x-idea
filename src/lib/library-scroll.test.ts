@@ -17,6 +17,7 @@ import {
   parseLibraryVisit,
   peekLibraryReturn,
   resetLibraryScrollLocks,
+  shouldRetryLibraryRestore,
   sourceIdFromHref,
   writeLibraryVisit,
 } from "@/lib/library-scroll";
@@ -106,6 +107,18 @@ describe("library scroll", () => {
     expect(keepSavedScrollY(640, 900)).toBe(false);
     beginLibraryLeave();
     expect(keepSavedScrollY(3, 1200)).toBe(true);
+  });
+
+  it("does not retry restore after success or user scroll", () => {
+    expect(
+      shouldRetryLibraryRestore({ restored: false, userMoved: false }),
+    ).toBe(true);
+    expect(
+      shouldRetryLibraryRestore({ restored: true, userMoved: false }),
+    ).toBe(false);
+    expect(
+      shouldRetryLibraryRestore({ restored: false, userMoved: true }),
+    ).toBe(false);
   });
 
   it("stops the restore lock after the user cancels", () => {

@@ -198,6 +198,13 @@ export function canRestoreLibraryScroll(
   return y <= Math.max(0, scrollHeight - viewportHeight) + 80;
 }
 
+export function shouldRetryLibraryRestore(input: {
+  restored: boolean;
+  userMoved: boolean;
+}): boolean {
+  return !input.restored && !input.userMoved;
+}
+
 function storageGet(): string | null {
   if (typeof sessionStorage === "undefined") {
     return null;

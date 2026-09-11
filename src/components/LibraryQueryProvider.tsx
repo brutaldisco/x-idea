@@ -1,11 +1,12 @@
 "use client";
 
-import {
-  defaultShouldDehydrateQuery,
-  QueryClient,
-} from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { type ReactNode, useState } from "react";
+import {
+  LIBRARY_STALE_MS,
+  shouldPersistLibraryQuery,
+} from "@/lib/library-cache";
 import {
   createLibraryPersister,
   dropLegacyLibraryPersist,
@@ -20,8 +21,10 @@ export function LibraryQueryProvider({ children }: { children: ReactNode }) {
     return new QueryClient({
       defaultOptions: {
         queries: {
-          staleTime: 15_000,
+          staleTime: LIBRARY_STALE_MS,
           gcTime: 1000 * 60 * 60 * 24,
+          refetchOnMount: false,
+          refetchOnReconnect: false,
           refetchOnWindowFocus: false,
         },
       },
@@ -36,9 +39,7 @@ export function LibraryQueryProvider({ children }: { children: ReactNode }) {
         buster: LIBRARY_PERSIST_BUSTER,
         maxAge: 1000 * 60 * 60 * 24,
         dehydrateOptions: {
-          shouldDehydrateQuery: (query) =>
-            query.queryKey[0] === "sources" &&
-            defaultShouldDehydrateQuery(query),
+          shouldDehydrateQuery: shouldPersistLibraryQuery,
         },
       }}
     >

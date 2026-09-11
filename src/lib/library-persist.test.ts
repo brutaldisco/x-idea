@@ -15,7 +15,7 @@ describe("library persist", () => {
         mutations: [],
         queries: [
           {
-            queryKey: ["sources", "acc", "posted_desc", "{}"],
+            queryKey: ["sources", "posted_desc", "{}"],
             queryHash: "x",
             state: {
               data: {

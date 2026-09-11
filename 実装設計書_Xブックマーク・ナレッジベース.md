@@ -1988,7 +1988,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-214 | 任意ゲート（`APP_PASSCODE` / Google、`proxy.ts`、Cookie 1 年） | `src/proxy.ts` | T-001 | 未設定でオープン、設定で `/unlock` |
 | T-215 | 評価セット 50 件と `pnpm eval:enrich`、README（環境変数・運用手順・枠監視） | `eval/`, `README.md` | T-202 | S3 初期値記録 |
 | T-216 | Library 往復で persist 復元中に一覧を消さない。SW `/api/sources` に 10 分 TTL | `src/components/LibraryWorkspace.tsx`, `public/sw.js` | T-206, T-212 | キャッシュありで「読み込み中…」が出ない（`docs/design/2026-09-09-library-load-cache.md`） |
-| T-217 | Library persist を IndexedDB + buster + 最大 8 ページ。queryKey にアカウント | `src/components/LibraryQueryProvider.tsx` | T-216 | リロード後も直近 visit が残る。localStorage `v5` を削除 |
+| T-217 | Library persist を IndexedDB + buster + 最大 8 ページ。queryKey は sort/filters（アカウントは切替時に破棄） | `src/components/LibraryQueryProvider.tsx` | T-216 | リロード後も直近 visit が残る。タブ再訪で取り直さない |
 | T-218 | 共通シェル + Reader 並列ルート。Library↔Reader で一覧をアンマウントしない | `src/app/(shell)/*` または同等 | T-216 | ギャラリー途中→記事→戻るで同じ位置 |
 | T-219 | 過去ブックマークの手動遡及（`mode=backfill`、ページカーソル、Settings ボタン） | `src/server/jobs/handlers/syncBookmarks.ts`, Settings | T-104, T-106 | 今すぐ同期では増えない古い件が、ボタン連打で古い方へ増える。head は新着用のまま |
 

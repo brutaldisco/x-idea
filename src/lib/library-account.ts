@@ -31,6 +31,10 @@ export function writeLibraryAccountId(id: string | null | undefined): void {
   }
   const next = id ?? "";
   try {
+    const prev = sessionStorage.getItem(STORAGE_KEY) ?? "";
+    if (prev === next) {
+      return;
+    }
     if (!next) {
       sessionStorage.removeItem(STORAGE_KEY);
     } else {

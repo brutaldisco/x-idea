@@ -6,23 +6,15 @@ import {
   useIsRestoring,
 } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import {
-  getLibraryAccountServerSnapshot,
-  getLibraryAccountSnapshot,
-  subscribeLibraryAccount,
-  writeLibraryAccountId,
-} from "@/lib/library-account";
-import { LIBRARY_SOURCES_KEY } from "@/lib/library-cache";
+  LIBRARY_STALE_MS,
+  libraryFilterKey,
+  libraryQueryKey,
+} from "@/lib/library-cache";
 import { writeLibraryNeighbors } from "@/lib/library-neighbors";
 import {
   applyLibraryVisit,
@@ -39,6 +31,7 @@ import {
   markLibraryReturn,
   peekLibraryReturn,
   readLibraryVisit,
+  shouldRetryLibraryRestore,
   sourceIdFromHref,
   writeLibraryScroll,
 } from "@/lib/library-scroll";
@@ -103,11 +96,7 @@ async function fetchPage(input: {
   if (!res.ok) {
     throw new Error("一覧を読めませんでした");
   }
-  const page = (await res.json()) as Page;
-  if (page.accountId) {
-    writeLibraryAccountId(page.accountId);
-  }
-  return page;
+  return (await res.json()) as Page;
 }
 
 function FilterSelect({
@@ -157,19 +146,20 @@ export function LibraryWorkspace({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const accountId = useSyncExternalStore(
-    subscribeLibraryAccount,
-    getLibraryAccountSnapshot,
-    getLibraryAccountServerSnapshot,
-  );
   const sentinel = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
   const userMoved = useRef(false);
   const programmaticScroll = useRef(false);
-  const filterKey = JSON.stringify(filters);
+  const pageCountRef = useRef(0);
+  const loadMoreRef = useRef({
+    fetchNextPage: (() => undefined) as () => void,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+  });
+  const filterKey = libraryFilterKey(filters);
   const queryKey = useMemo(
-    () => [LIBRARY_SOURCES_KEY, accountId || "anon", sort, filterKey] as const,
-    [accountId, filterKey, sort],
+    () => libraryQueryKey(sort, filterKey),
+    [filterKey, sort],
   );
   const scrollKey = libraryScrollKey({ sort, filters: filterKey, view });
   const returnHref = libraryHref(search);
@@ -195,19 +185,17 @@ export function LibraryWorkspace({
     refetchOnMount: (entry) => entry.state.data == null,
     refetchOnReconnect: false,
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: LIBRARY_STALE_MS,
   });
 
-  useEffect(() => {
-    if (restoring || query.data || query.isFetching || query.isError) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void query.refetch();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [query.data, query.isError, query.isFetching, query.refetch, restoring]);
-
+  pageCountRef.current = query.data?.pages.length ?? 0;
+  loadMoreRef.current = {
+    fetchNextPage: () => {
+      void query.fetchNextPage();
+    },
+    hasNextPage: Boolean(query.hasNextPage),
+    isFetchingNextPage: query.isFetchingNextPage,
+  };
   const rows = query.data?.pages.flatMap((page) => page.items) ?? [];
   const neighborIdsRef = useRef<string[]>([]);
   useEffect(() => {
@@ -233,7 +221,12 @@ export function LibraryWorkspace({
       clearLibraryRestoreCancel();
       return;
     }
-    if (userMoved.current) {
+    if (
+      !shouldRetryLibraryRestore({
+        restored: restored.current,
+        userMoved: userMoved.current,
+      })
+    ) {
       restored.current = true;
       return;
     }
@@ -313,7 +306,6 @@ export function LibraryWorkspace({
   useEffect(() => {
     lockBrowserScrollRestoration();
     let frame = 0;
-    const pageCount = query.data?.pages.length;
     function persist(leaving: boolean) {
       if (!pathname.startsWith("/library")) {
         return;
@@ -325,13 +317,16 @@ export function LibraryWorkspace({
       if (!restored.current && !userMoved.current && y < 8) {
         return;
       }
-      writeLibraryScroll(scrollKey, y, returnHref, { pageCount });
+      writeLibraryScroll(scrollKey, y, returnHref, {
+        pageCount: pageCountRef.current,
+      });
     }
     function markUserMoved() {
-      if (!pathname.startsWith("/library") || restored.current) {
+      if (!pathname.startsWith("/library")) {
         return;
       }
       userMoved.current = true;
+      restored.current = true;
       cancelLibraryRestore();
     }
     function onScroll() {
@@ -388,7 +383,7 @@ export function LibraryWorkspace({
         href: returnHref,
         sourceId:
           sourceIdFromHref(link.getAttribute("href") ?? link.href) ?? undefined,
-        pageCount,
+        pageCount: pageCountRef.current,
       });
       if (neighborIdsRef.current.length > 0) {
         writeLibraryNeighbors(neighborIdsRef.current);
@@ -414,28 +409,30 @@ export function LibraryWorkspace({
       cancelAnimationFrame(frame);
       persist(true);
     };
-  }, [pathname, query.data?.pages.length, returnHref, scrollKey]);
+  }, [pathname, returnHref, scrollKey]);
 
+  const hasRows = rows.length > 0;
   useEffect(() => {
     const node = sentinel.current;
-    if (!node) {
+    if (!node || !hasRows) {
       return;
     }
     const observer = new IntersectionObserver(
       (entries) => {
+        const loadMore = loadMoreRef.current;
         if (
           entries[0]?.isIntersecting &&
-          query.hasNextPage &&
-          !query.isFetchingNextPage
+          loadMore.hasNextPage &&
+          !loadMore.isFetchingNextPage
         ) {
-          void query.fetchNextPage();
+          void loadMore.fetchNextPage();
         }
       },
       { rootMargin: "240px" },
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [query.fetchNextPage, query.hasNextPage, query.isFetchingNextPage]);
+  }, [hasRows]);
 
   function setView(next: LibraryView) {
     const params = new URLSearchParams(search);
@@ -560,8 +557,8 @@ export function LibraryWorkspace({
         <ul
           className={
             view === "grid"
-              ? "mt-4 grid min-w-0 grid-cols-2 gap-2 min-[48rem]:grid-cols-3"
-              : "mt-4 grid min-w-0 grid-cols-1 gap-3"
+              ? "mt-4 grid min-w-0 grid-cols-2 gap-2 text-wrap min-[48rem]:grid-cols-3"
+              : "mt-4 grid min-w-0 grid-cols-1 gap-3 text-wrap"
           }
         >
           {rows.map((item) => (
@@ -584,9 +581,13 @@ export function LibraryWorkspace({
         </ul>
       )}
       <div ref={sentinel} className="h-8" />
-      {query.isFetchingNextPage ? (
-        <p className="py-3 text-center text-ink-2 text-xs">読み込み中…</p>
-      ) : null}
+      <p
+        className={`py-3 text-center text-ink-2 text-xs ${
+          query.isFetchingNextPage ? "" : "invisible"
+        }`}
+      >
+        読み込み中…
+      </p>
       {query.isError ? (
         <p className="py-3 text-center text-ink-2 text-xs">
           続きを読めませんでした。

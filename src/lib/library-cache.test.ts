@@ -1,12 +1,23 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import {
+  LIBRARY_SOURCES_KEY,
+  libraryFilterKey,
+  libraryQueryKey,
   removeSourceFromLibraryPages,
   removeSourceFromLibraryQueries,
   resetLibraryQueries,
 } from "@/lib/library-cache";
 
 describe("library cache", () => {
+  it("keeps the list key stable without an account segment", () => {
+    expect(libraryQueryKey("posted_desc", libraryFilterKey({}))).toEqual([
+      LIBRARY_SOURCES_KEY,
+      "posted_desc",
+      "{}",
+    ]);
+  });
+
   it("removes the row and decrements the first-page count", () => {
     const next = removeSourceFromLibraryPages(
       {

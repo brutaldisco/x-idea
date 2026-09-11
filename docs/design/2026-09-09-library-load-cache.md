@@ -143,10 +143,10 @@ P2 完了後、`LibraryWorkspace` の 8 段タイマー復元は **フルリロ�
 ### 5.3 persist（P1）
 
 - `@tanstack/query-async-storage-persister` + IndexedDB（`idb-keyval` で足りる）。
-- key: `x-idea.library.v6`、`buster: "2026-09-10"`（スキーマを変えたら buster だけ上げ、旧 `marginalia.library.v5` / `v6` は起動時に `localStorage.removeItem`）。
+- key: `x-idea.library.v6`、`buster: "2026-09-11"`（スキーマを変えたら buster だけ上げ、旧 `marginalia.library.v5` / `v6` は起動時に `localStorage.removeItem`）。
 - `shouldDehydrateQuery`: 成功した `sources` のみ。**pages は最大 8**。超過は末尾を切る（スクロール復元に必要な `pageCount` と揃える）。
 - quota / IDB 失敗は `console` に出さず、Today 相当の静かな失敗（再取得するだけ）。成功フラグをメモリに持ち、失敗時は persist を止める。
-- queryKey に **アカウント ID**（`x_ctx`）を足す。切替後に他人の一覧が一瞬出ない。`resetLibraryQueries` は残す。
+- queryKey は `["sources", sort, filters]`。アカウントは入れない（SSR で `anon` になり毎回ミスする）。切替・手動同期は `resetLibraryQueries`。
 
 ### 5.4 復元中の UI（P0、先にやる）
 
@@ -184,7 +184,7 @@ P2 後:
 | ID | 内容 | 依存 | DoD |
 | --- | --- | --- | --- |
 | T-216 | 復元中に一覧を消さない。Suspense 境界を 1 つに。SW sources に 10 分 TTL。v5 失敗時は捨てる | T-206, T-212 | Reader 往復で「読み込み中…」が一瞬でも出ない（キャッシュあり）。PWA / ブラウザ |
-| T-217 | persist を IndexedDB + buster + 最大 8 ページ。queryKey にアカウント。同期/切替で SW sources を破棄 | T-216 | リロード後も直近 visit のページが残る。localStorage `v5` は起動時削除 |
+| T-217 | persist を IndexedDB + buster + 最大 8 ページ。queryKey は sort/filters。同期/切替で SW sources を破棄 | T-216 | リロード後も直近 visit のページが残る。タブ再訪で取り直さない |
 | T-218 | 共通シェル + Reader 並列ルート（5.2A）。往復では Library をアンマウントしない。scroll 復元をフォールバック化 | T-216, T-213 の Activity と同時でも可 | ギャラリー途中 → 記事 → 戻るで **ピクセル単位で同じ位置**。並びは URL のまま |
 
 T-213（Activity + Instant Navigations）はタブ同士の話。T-218 は Library↔Reader。両方必要で、**T-218 の方が今回のバグに効く**。

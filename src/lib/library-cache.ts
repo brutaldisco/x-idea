@@ -1,6 +1,29 @@
-import type { InfiniteData, QueryClient } from "@tanstack/react-query";
+import {
+  defaultShouldDehydrateQuery,
+  type InfiniteData,
+  type Query,
+  type QueryClient,
+} from "@tanstack/react-query";
+import type { LibraryFilters } from "@/lib/source-filters";
+import type { SourceSort } from "@/lib/source-sort";
 
 export const LIBRARY_SOURCES_KEY = "sources";
+export const LIBRARY_STALE_MS = 5 * 60_000;
+
+export function libraryFilterKey(filters: LibraryFilters): string {
+  return JSON.stringify(filters);
+}
+
+export function libraryQueryKey(sort: SourceSort, filterKey: string) {
+  return [LIBRARY_SOURCES_KEY, sort, filterKey] as const;
+}
+
+export function shouldPersistLibraryQuery(query: Query): boolean {
+  return (
+    query.queryKey[0] === LIBRARY_SOURCES_KEY &&
+    defaultShouldDehydrateQuery(query)
+  );
+}
 
 export type LibrarySourcesPage = {
   items: Array<{ id: string }>;
