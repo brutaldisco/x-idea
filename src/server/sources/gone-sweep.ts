@@ -1,6 +1,6 @@
 import { getClient } from "@/db/client";
 import { logger } from "@/lib/logger";
-import { applyBookmarkPageErrors } from "@/server/ingest/bookmark";
+import { applyTweetLookupGaps } from "@/server/ingest/bookmark";
 import { fetchTweetsByIds } from "@/server/x/client";
 import { writeContextRun } from "@/server/x/context-spend";
 
@@ -101,11 +101,13 @@ export async function sweepGoneSavedBookmarks(input: {
       nextCursor: input.cursor,
     };
   }
-  const page = await fetchTweetsByIds(
-    input.accessToken,
-    rows.map((row) => row.tweetId),
+  const requestedIds = rows.map((row) => row.tweetId);
+  const page = await fetchTweetsByIds(input.accessToken, requestedIds);
+  const applied = await applyTweetLookupGaps(
+    input.accountId,
+    requestedIds,
+    page,
   );
-  const applied = await applyBookmarkPageErrors(input.accountId, page.errors);
   const last = rows[rows.length - 1];
   const nextCursor = formatGoneSweepCursor(last.savedAt, last.sourceId);
   logger.info(

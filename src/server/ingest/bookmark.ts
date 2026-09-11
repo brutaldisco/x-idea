@@ -20,6 +20,7 @@ import {
   type BookmarksPage,
   bookmarkErrorAction,
   isReply,
+  lookupGapActions,
   replyToTweetId,
   tweetIdFromError,
   tweetText,
@@ -68,6 +69,32 @@ export async function applyBookmarkPageErrors(
       logger.warn(
         { err: error, tweetId, action },
         "bookmark page error apply failed",
+      );
+    }
+  }
+  return { purged, unavailable };
+}
+
+export async function applyTweetLookupGaps(
+  accountId: string,
+  requestedIds: string[],
+  page: BookmarksPage,
+): Promise<{ purged: number; unavailable: number }> {
+  let purged = 0;
+  let unavailable = 0;
+  for (const item of lookupGapActions(requestedIds, page)) {
+    try {
+      if (item.action === "purge") {
+        await purgeGoneBookmark(accountId, item.tweetId);
+        purged += 1;
+      } else {
+        await markUnavailable(item.tweetId);
+        unavailable += 1;
+      }
+    } catch (error) {
+      logger.warn(
+        { err: error, tweetId: item.tweetId, action: item.action },
+        "tweet lookup gap apply failed",
       );
     }
   }

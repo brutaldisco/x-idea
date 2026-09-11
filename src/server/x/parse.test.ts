@@ -6,6 +6,7 @@ import {
   collectUntilHead,
   isGoneTweetError,
   isReply,
+  lookupGapActions,
   parseBookmarksPage,
   tweetText,
   tweetUrls,
@@ -131,5 +132,22 @@ describe("gone tweet errors", () => {
     });
     expect(page.errors[0]?.resource_id).toBe("555");
     expect(bookmarkErrorAction(page.errors[0] ?? {})).toBe("purge");
+  });
+
+  it("treats lookup IDs missing from data as gone", () => {
+    const page = parseBookmarksPage({
+      data: [{ id: "keep", text: "ok" }],
+      errors: [
+        {
+          resource_id: "priv",
+          resource_type: "tweet",
+          title: "Authorization Error",
+        },
+      ],
+    });
+    expect(lookupGapActions(["keep", "gone", "priv"], page)).toEqual([
+      { tweetId: "gone", action: "purge" },
+      { tweetId: "priv", action: "unavailable" },
+    ]);
   });
 });

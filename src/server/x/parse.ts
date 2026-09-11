@@ -102,6 +102,37 @@ export function bookmarkErrorAction(
   return isGoneTweetError(error) ? "purge" : "unavailable";
 }
 
+/**
+ * tweet lookup は削除済みを errors に出さず data からだけ省くことがある。
+ * 要求した ID が本文に無く、非公開エラーでもなければ消えたとみなす。
+ */
+export function lookupGapActions(
+  requestedIds: string[],
+  page: BookmarksPage,
+): { tweetId: string; action: "purge" | "unavailable" }[] {
+  const found = new Set(page.tweets.map((tweet) => tweet.id));
+  const errorsById = new Map<string, XApiErrorItem>();
+  for (const error of page.errors) {
+    const id = tweetIdFromError(error);
+    if (id) {
+      errorsById.set(id, error);
+    }
+  }
+  const actions: { tweetId: string; action: "purge" | "unavailable" }[] = [];
+  for (const tweetId of requestedIds) {
+    if (!tweetId || found.has(tweetId)) {
+      continue;
+    }
+    const error = errorsById.get(tweetId);
+    if (error && bookmarkErrorAction(error) === "unavailable") {
+      actions.push({ tweetId, action: "unavailable" });
+      continue;
+    }
+    actions.push({ tweetId, action: "purge" });
+  }
+  return actions;
+}
+
 export type BookmarksPage = {
   tweets: XTweet[];
   users: Map<string, XUser>;

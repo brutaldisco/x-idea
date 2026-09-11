@@ -61,6 +61,7 @@ async function xRequest(
   accessToken: string,
   url: string,
   method: "GET" | "DELETE",
+  allowStatuses: number[] = [],
 ): Promise<{ body: unknown; rateLimit: RateLimit }> {
   return withRetry(
     async () => {
@@ -70,7 +71,7 @@ async function xRequest(
         cache: "no-store",
       });
       const rateLimit = readRateLimit(res.headers);
-      if (!res.ok) {
+      if (!res.ok && !allowStatuses.includes(res.status)) {
         throw new XApiError(res.status, `x api failed (${res.status})`);
       }
       const body: unknown =
@@ -162,9 +163,11 @@ export async function fetchTweetsByIds(
   }
   const params = tweetQuery();
   params.set("ids", ids.join(","));
-  const { body, rateLimit } = await xGet(
+  const { body, rateLimit } = await xRequest(
     accessToken,
     `https://api.x.com/2/tweets?${params}`,
+    "GET",
+    [404],
   );
   return { ...parseTweetLookup(body), rateLimit };
 }
