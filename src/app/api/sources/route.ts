@@ -4,11 +4,7 @@ import { isSameOrigin } from "@/lib/origin";
 import { clampSourceLimit } from "@/lib/source-cursor";
 import { parseLibraryFilters } from "@/lib/source-filters";
 import { parseSourceSort } from "@/lib/source-sort";
-import {
-  countSources,
-  listCategories,
-  listSourcesPage,
-} from "@/server/sources/query";
+import { countSources, listSourcesPage } from "@/server/sources/query";
 import { taxonomyForAccount } from "@/server/taxonomy";
 import {
   contextAccountId,
@@ -34,7 +30,7 @@ export async function GET(request: Request) {
     const limit = clampSourceLimit(url.searchParams.get("limit"));
     const cursor = url.searchParams.get("cursor");
     const accountId = contextAccountId(ctx);
-    const [page, count, categories, taxonomy] = await Promise.all([
+    const [page, count, taxonomy] = await Promise.all([
       listSourcesPage({
         ctx,
         limit,
@@ -43,7 +39,6 @@ export async function GET(request: Request) {
         filters,
       }),
       cursor ? Promise.resolve(null) : countSources({ ctx, filters }),
-      cursor ? Promise.resolve([]) : listCategories(accountId),
       cursor ? Promise.resolve(null) : taxonomyForAccount(accountId),
     ]);
     return Response.json({
@@ -55,7 +50,7 @@ export async function GET(request: Request) {
       ...(taxonomy
         ? {
             label: contextLabel(ctx),
-            categories,
+            categories: taxonomy.categories,
             infoTypes: taxonomy.infoTypes,
           }
         : {}),

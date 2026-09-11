@@ -25,14 +25,17 @@ export function cardSummary(input: {
 
 export const ARTICLE_EXCERPT_SQL = `(SELECT substr(
   CASE
+    WHEN length(COALESCE(a.description, '')) >= 40 THEN a.description
     WHEN a.title IS NOT NULL AND length(a.title) > 0
-      AND instr(a.content_text, a.title) != 1
-    THEN a.title || char(10) || a.content_text
-    ELSE a.content_text
+      AND instr(substr(COALESCE(a.content_text, ''), 1, 240), a.title) != 1
+    THEN a.title || char(10) || substr(COALESCE(a.content_text, ''), 1, 240)
+    ELSE substr(COALESCE(a.content_text, ''), 1, 240)
   END, 1, 240)
   FROM source_articles sa
   JOIN articles a ON a.id = sa.article_id
   WHERE sa.source_id = s.id
-    AND length(COALESCE(a.content_text, '')) >= 40
-  ORDER BY length(a.content_text) DESC
+    AND (
+      length(COALESCE(a.description, '')) >= 40
+      OR length(substr(COALESCE(a.content_text, ''), 1, 40)) >= 40
+    )
   LIMIT 1) AS article_excerpt`;

@@ -45,6 +45,8 @@ export function SourceCardThumb({
       width={imageWidth}
       height={imageHeight}
       unoptimized
+      loading="lazy"
+      decoding="async"
       className={imageClassName}
     />
   );

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { newId } from "@/lib/ids";
@@ -150,7 +151,9 @@ export async function accountHasBookmarkWrite(id: string): Promise<boolean> {
   );
 }
 
-export async function listXAccounts(): Promise<XAccountPublic[]> {
+export const listXAccounts = cache(async function listXAccounts(): Promise<
+  XAccountPublic[]
+> {
   if (!isDbConfigured()) {
     return [];
   }
@@ -169,7 +172,7 @@ export async function listXAccounts(): Promise<XAccountPublic[]> {
     lastSyncedAt: row.last_synced_at ? String(row.last_synced_at) : null,
     backfillExhausted: Number(row.backfill_exhausted) === 1,
   }));
-}
+});
 
 export async function getXAccountPublic(): Promise<XAccountPublic | null> {
   const list = await listXAccounts();

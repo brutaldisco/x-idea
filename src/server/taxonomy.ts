@@ -205,13 +205,15 @@ export async function removeTaxonomyItem(input: {
   }
 }
 
+/** 一覧・Reader 用の軽量読み取り。未シードならデフォルトを返す（Settings の getAccountTaxonomy がシードする）。 */
 export async function taxonomyForAccount(
   accountId: string | null,
 ): Promise<AccountTaxonomy> {
-  if (!accountId) {
+  if (!accountId || !isDbConfigured()) {
     return defaultAccountTaxonomy();
   }
-  return getAccountTaxonomy(accountId);
+  await ensureSchema();
+  return readAccountTaxonomy(accountId);
 }
 
 async function ensureAccountTaxonomy(accountId: string): Promise<void> {

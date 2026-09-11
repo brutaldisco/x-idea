@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { getDefaultXAccountId } from "@/server/settings";
 import { listXAccounts, type XAccountPublic } from "@/server/x/account";
 import { X_CTX_COOKIE } from "@/server/x/context-const";
@@ -32,12 +33,16 @@ export function pickAccount(
   return { kind: "account", account: accounts[0] };
 }
 
-export async function getAccountContext(): Promise<AccountContext> {
-  const accounts = await listXAccounts();
-  const jar = await cookies();
-  const defaultId = await getDefaultXAccountId();
-  return pickAccount(accounts, jar.get(X_CTX_COOKIE)?.value, defaultId);
-}
+export const getAccountContext = cache(
+  async function getAccountContext(): Promise<AccountContext> {
+    const [accounts, defaultId, jar] = await Promise.all([
+      listXAccounts(),
+      getDefaultXAccountId(),
+      cookies(),
+    ]);
+    return pickAccount(accounts, jar.get(X_CTX_COOKIE)?.value, defaultId);
+  },
+);
 
 export async function setAccountContext(value: string): Promise<void> {
   const accounts = await listXAccounts();
