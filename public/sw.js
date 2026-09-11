@@ -1,4 +1,4 @@
-const VERSION = "x-idea-v4";
+const VERSION = "x-idea-v5";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const SOURCES = `${VERSION}-sources`;

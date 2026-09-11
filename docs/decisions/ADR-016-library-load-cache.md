@@ -17,6 +17,6 @@ Library と Reader が別レイアウトだったため、記事を開くたび�
 
 ## 影響
 
-- TabBar / Dock は `AppChrome` に寄せる。intercept 中は tabs 側の children を `hidden` にして Reader を出す。
+- TabBar / Dock は `AppChrome` に寄せる。intercept 中は tabs 側の children を `hidden` にして Reader を出す。`/source/` 以外のタブでは並列スロットが残っていても Reader を描画しない。
 - 設計書 12 章の IndexedDB 記述と実装が一致する。
-- Serwist は使わない（ADR-008 維持）。バージョンは `x-idea-v4`。
+- Serwist は使わない（ADR-008 維持）。バージョンは `x-idea-v5`。

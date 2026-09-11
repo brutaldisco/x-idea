@@ -8,13 +8,17 @@ const ACCENT = "#4B6FD6";
 
 function svg(size: number, padRatio: number): Buffer {
   const pad = size * padRatio;
-  const font = Math.round((size - pad * 2) * 0.72);
-  const markW = Math.round((size - pad * 2) * 0.22);
-  const markH = Math.max(4, Math.round(size * 0.03));
-  const markY = Math.round(size * 0.72);
+  const inner = size - pad * 2;
+  const font = Math.round(inner * 0.48);
+  const tracking = Math.round(font * 0.05);
+  const markW = Math.round(inner * 0.5);
+  const markH = Math.max(3, Math.round(size * 0.028));
+  const markY = Math.round(size * 0.685);
   const markup = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <rect width="${size}" height="${size}" fill="${PAPER}"/>
-  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, 'Times New Roman', serif" font-size="${font}" font-weight="600" fill="${INK}">M</text>
+  <g transform="translate(${-tracking / 2} 0)">
+    <text x="50%" y="51%" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, 'Times New Roman', Times, serif" font-size="${font}" font-weight="600" letter-spacing="${tracking}" fill="${INK}">XI</text>
+  </g>
   <rect x="${(size - markW) / 2}" y="${markY}" width="${markW}" height="${markH}" rx="${markH / 2}" fill="${ACCENT}"/>
 </svg>`;
   return Buffer.from(markup);
@@ -35,4 +39,5 @@ await writePng(path.join(icons, "maskable-192.png"), 192, 0.2);
 await writePng(path.join(icons, "maskable-512.png"), 512, 0.2);
 await writePng(path.join(app, "icon.png"), 32, 0.1);
 await writePng(path.join(app, "apple-icon.png"), 180, 0.12);
+await writePng(path.join(root, "public/apple-touch-icon.png"), 180, 0.12);
 console.log("wrote PWA icons");

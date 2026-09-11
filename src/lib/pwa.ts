@@ -1,4 +1,4 @@
-export const PWA_CACHE_VERSION = "x-idea-v4";
+export const PWA_CACHE_VERSION = "x-idea-v5";
 export const PWA_READER_CACHE_LIMIT = 100;
 export const PWA_SOURCES_CACHE_LIMIT = 200;
 export const PWA_SOURCES_MAX_AGE_MS = 10 * 60 * 1000;

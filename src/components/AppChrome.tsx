@@ -6,6 +6,7 @@ import { BottomDock, DockProvider } from "@/components/BottomDock";
 import { InstallHint } from "@/components/pwa/InstallHint";
 import { TabBar } from "@/components/TabBar";
 import { TickOnMount } from "@/components/TickOnMount";
+import { isReaderSlotActive } from "@/lib/reader-slot";
 
 export function AppChrome({
   children,
@@ -21,7 +22,7 @@ export function AppChrome({
   wide?: boolean;
 }) {
   const pathname = usePathname();
-  const readerOpen = Boolean(reader) && pathname.startsWith("/source/");
+  const readerOpen = Boolean(reader) && isReaderSlotActive(pathname);
   const useWide = wide || readerOpen;
 
   return (
@@ -35,7 +36,7 @@ export function AppChrome({
       >
         <TickOnMount />
         <div hidden={readerOpen}>{children}</div>
-        {reader}
+        {readerOpen ? reader : null}
         {account}
         {installHint ? <InstallHint /> : null}
         <BottomDock>
