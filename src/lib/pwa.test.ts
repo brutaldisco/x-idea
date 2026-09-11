@@ -18,6 +18,7 @@ describe("isPwaPublicPath", () => {
     expect(isPwaPublicPath("/offline")).toBe(true);
     expect(isPwaPublicPath("/manifest.webmanifest")).toBe(true);
     expect(isPwaPublicPath("/icons/icon-192.png")).toBe(true);
+    expect(isPwaPublicPath("/apple-touch-icon-xi.png")).toBe(true);
   });
 
   it("does not open the app itself", () => {

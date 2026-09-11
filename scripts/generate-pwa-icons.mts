@@ -40,4 +40,5 @@ await writePng(path.join(icons, "maskable-512.png"), 512, 0.2);
 await writePng(path.join(app, "icon.png"), 32, 0.1);
 await writePng(path.join(app, "apple-icon.png"), 180, 0.12);
 await writePng(path.join(root, "public/apple-touch-icon.png"), 180, 0.12);
+await writePng(path.join(root, "public/apple-touch-icon-xi.png"), 180, 0.12);
 console.log("wrote PWA icons");

@@ -62,7 +62,7 @@ Library の query オプション:
 - 戻ったあとのスクロールは 1 回だけ戻す（高さが足りなければ追加ページを待つ）。読み込み中にユーザーがスクロールしたら打ち切る。遅延タイマーの `scrollTo` 連打はしない。
 - タブの `<Activity>`（T-213）は未実装。View Transition（`source-{id}`）だけ入っている。
 
-### 2.4 Service Worker（ADR-008 / `x-idea-v5`）
+### 2.4 Service Worker（ADR-008 / `x-idea-v6`）
 
 | 対象 | 戦略 | 問題 |
 | --- | --- | --- |

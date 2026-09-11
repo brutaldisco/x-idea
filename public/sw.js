@@ -1,4 +1,4 @@
-const VERSION = "x-idea-v5";
+const VERSION = "x-idea-v6";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const SOURCES = `${VERSION}-sources`;
@@ -11,8 +11,8 @@ const SOURCES_MAX_AGE_MS = 10 * 60 * 1000;
 const PRECACHE_URLS = [
   "/offline",
   "/manifest.webmanifest",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
+  "/icons/icon-192.png?v=xi",
+  "/icons/icon-512.png?v=xi",
 ];
 
 function bypass(request, url) {

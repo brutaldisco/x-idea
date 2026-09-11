@@ -1,4 +1,10 @@
-export const PWA_CACHE_VERSION = "x-idea-v5";
+export const PWA_CACHE_VERSION = "x-idea-v6";
+export const PWA_ICON_REVISION = "xi";
+export const PWA_APPLE_TOUCH_ICON = "/apple-touch-icon-xi.png";
+
+export function pwaIconSrc(path: string): string {
+  return `${path}?v=${PWA_ICON_REVISION}`;
+}
 export const PWA_READER_CACHE_LIMIT = 100;
 export const PWA_SOURCES_CACHE_LIMIT = 200;
 export const PWA_SOURCES_MAX_AGE_MS = 10 * 60 * 1000;
@@ -22,6 +28,7 @@ export function isPwaPublicPath(pathname: string): boolean {
     pathname === "/manifest.webmanifest" ||
     pathname.startsWith("/icons/") ||
     pathname === "/apple-touch-icon.png" ||
+    pathname === "/apple-touch-icon-xi.png" ||
     pathname === "/icon" ||
     pathname.startsWith("/icon/") ||
     pathname === "/apple-icon" ||

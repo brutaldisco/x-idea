@@ -6,6 +6,7 @@ import {
   PWA_SHORT_NAME,
   PWA_START_URL,
   PWA_THEME_COLOR,
+  pwaIconSrc,
 } from "@/lib/pwa";
 
 export default function manifest(): MetadataRoute.Manifest {
@@ -24,25 +25,25 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ["productivity", "education"],
     icons: [
       {
-        src: "/icons/icon-192.png",
+        src: pwaIconSrc("/icons/icon-192.png"),
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icons/icon-512.png",
+        src: pwaIconSrc("/icons/icon-512.png"),
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icons/maskable-192.png",
+        src: pwaIconSrc("/icons/maskable-192.png"),
         sizes: "192x192",
         type: "image/png",
         purpose: "maskable",
       },
       {
-        src: "/icons/maskable-512.png",
+        src: pwaIconSrc("/icons/maskable-512.png"),
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

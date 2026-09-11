@@ -13,6 +13,7 @@ describe("web app manifest", () => {
     expect(sizes.has("192x192")).toBe(true);
     expect(sizes.has("512x512")).toBe(true);
     expect(data.icons?.some((icon) => icon.purpose === "maskable")).toBe(true);
+    expect(data.icons?.every((icon) => icon.src.includes("v=xi"))).toBe(true);
     expect(data.share_target?.action).toBe("/capture");
   });
 });

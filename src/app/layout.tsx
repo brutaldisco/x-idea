@@ -5,10 +5,12 @@ import { LibraryQueryProvider } from "@/components/LibraryQueryProvider";
 import { OfflineBanner } from "@/components/pwa/OfflineBanner";
 import { PwaRuntime } from "@/components/pwa/PwaRuntime";
 import {
+  PWA_APPLE_TOUCH_ICON,
   PWA_BACKGROUND_COLOR,
   PWA_BACKGROUND_COLOR_DARK,
   PWA_DESCRIPTION,
   PWA_NAME,
+  pwaIconSrc,
 } from "@/lib/pwa";
 import "./globals.css";
 
@@ -36,6 +38,18 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "default",
     title: PWA_NAME,
+  },
+  icons: {
+    icon: [
+      {
+        url: pwaIconSrc("/icons/icon-192.png"),
+        sizes: "192x192",
+        type: "image/png",
+      },
+    ],
+    apple: [
+      { url: PWA_APPLE_TOUCH_ICON, sizes: "180x180", type: "image/png" },
+    ],
   },
   formatDetection: {
     telephone: false,
