@@ -7,7 +7,34 @@ import type { LibraryFilters } from "@/lib/source-filters";
 import type { SourceSort } from "@/lib/source-sort";
 
 export const LIBRARY_SOURCES_KEY = "sources";
+export const LIBRARY_TAXONOMY_KEY = "taxonomy";
 export const LIBRARY_STALE_MS = 5 * 60_000;
+
+export type LibraryTaxonomy = {
+  categories: { id: string; name: string }[];
+  infoTypes: { id: string; name: string }[];
+};
+
+export function libraryTaxonomyQueryKey(accountId: string) {
+  return [LIBRARY_TAXONOMY_KEY, accountId] as const;
+}
+
+export async function fetchLibraryTaxonomy(
+  accountId: string,
+): Promise<LibraryTaxonomy> {
+  const res = await fetch(
+    `/api/settings/taxonomy?account_id=${encodeURIComponent(accountId)}`,
+    { credentials: "same-origin", cache: "no-store" },
+  );
+  if (!res.ok) {
+    throw new Error("分類を読めませんでした");
+  }
+  const body = (await res.json()) as { taxonomy?: LibraryTaxonomy };
+  return {
+    categories: body.taxonomy?.categories ?? [],
+    infoTypes: body.taxonomy?.infoTypes ?? [],
+  };
+}
 
 export function libraryFilterKey(filters: LibraryFilters): string {
   return JSON.stringify(filters);
@@ -71,4 +98,9 @@ export function removeSourceFromLibraryQueries(
 
 export function resetLibraryQueries(client: QueryClient): void {
   client.removeQueries({ queryKey: [LIBRARY_SOURCES_KEY] });
+  client.removeQueries({ queryKey: [LIBRARY_TAXONOMY_KEY] });
+}
+
+export function invalidateLibraryTaxonomy(client: QueryClient): void {
+  void client.invalidateQueries({ queryKey: [LIBRARY_TAXONOMY_KEY] });
 }

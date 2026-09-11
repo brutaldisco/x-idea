@@ -44,6 +44,9 @@ function bypass(request, url) {
   if (path.startsWith("/api/mcp")) {
     return true;
   }
+  if (path.startsWith("/api/settings")) {
+    return true;
+  }
   if (path.startsWith("/_next/webpack")) {
     return true;
   }

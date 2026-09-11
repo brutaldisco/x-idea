@@ -35,6 +35,9 @@ describe("shouldBypassServiceWorker", () => {
     expect(shouldBypassServiceWorker("/api/auth/google/start", "GET")).toBe(
       true,
     );
+    expect(shouldBypassServiceWorker("/api/settings/taxonomy", "GET")).toBe(
+      true,
+    );
     expect(shouldBypassServiceWorker("/today", "GET")).toBe(false);
   });
 });

@@ -6,14 +6,28 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import {
+  getLibraryAccountServerSnapshot,
+  readLibraryAccountId,
+  subscribeLibraryAccount,
+  writeLibraryAccountId,
+} from "@/lib/library-account";
+import {
+  fetchLibraryTaxonomy,
   LIBRARY_STALE_MS,
   libraryFilterKey,
   libraryQueryKey,
+  libraryTaxonomyQueryKey,
 } from "@/lib/library-cache";
 import { readDeletedSourceIds } from "@/lib/library-deleted";
 import { writeLibraryNeighbors } from "@/lib/library-neighbors";
@@ -303,6 +317,11 @@ export function LibraryWorkspace({
   }
 
   const restoring = useIsRestoring();
+  const storedAccountId = useSyncExternalStore(
+    subscribeLibraryAccount,
+    readLibraryAccountId,
+    getLibraryAccountServerSnapshot,
+  );
   const query = useQuery({
     queryKey,
     queryFn: () => fetchPage({ sort, filters, page }),
@@ -311,6 +330,17 @@ export function LibraryWorkspace({
     refetchOnReconnect: false,
     placeholderData: keepPreviousData,
     staleTime: LIBRARY_STALE_MS,
+  });
+  const accountId = storedAccountId || query.data?.accountId || "";
+  const taxonomyQuery = useQuery({
+    queryKey: libraryTaxonomyQueryKey(accountId),
+    queryFn: () => fetchLibraryTaxonomy(accountId),
+    enabled: !restoring && Boolean(accountId),
+    staleTime: 0,
+    gcTime: 5 * 60_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   const deletedIds = readDeletedSourceIds();
@@ -335,10 +365,18 @@ export function LibraryWorkspace({
   const totalPages = sourcePageCount(total);
   const safePage = Math.min(page, totalPages);
   const label = query.data?.label ?? "ライブラリ";
-  const categories = query.data?.categories ?? [];
-  const infoTypes = query.data?.infoTypes ?? [];
+  const categories =
+    taxonomyQuery.data?.categories ?? query.data?.categories ?? [];
+  const infoTypes =
+    taxonomyQuery.data?.infoTypes ?? query.data?.infoTypes ?? [];
   const rangeStart = total === 0 ? 0 : (safePage - 1) * SOURCE_PAGE_SIZE + 1;
   const rangeEnd = Math.min(total, safePage * SOURCE_PAGE_SIZE);
+
+  useEffect(() => {
+    if (query.data?.accountId) {
+      writeLibraryAccountId(query.data.accountId);
+    }
+  }, [query.data?.accountId]);
 
   useEffect(() => {
     if (query.isFetching || query.isError || total === 0) {

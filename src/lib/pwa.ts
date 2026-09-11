@@ -64,6 +64,9 @@ export function shouldBypassServiceWorker(
   if (pathname.startsWith("/api/mcp")) {
     return true;
   }
+  if (pathname.startsWith("/api/settings")) {
+    return true;
+  }
   if (pathname.startsWith("/_next/webpack")) {
     return true;
   }

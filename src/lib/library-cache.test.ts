@@ -2,8 +2,10 @@ import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import {
   LIBRARY_SOURCES_KEY,
+  LIBRARY_TAXONOMY_KEY,
   libraryFilterKey,
   libraryQueryKey,
+  libraryTaxonomyQueryKey,
   removeSourceFromLibraryPage,
   removeSourceFromLibraryQueries,
   resetLibraryQueries,
@@ -50,7 +52,14 @@ describe("library cache", () => {
     expect(
       client.getQueryData<{ items: Array<{ id: string }> }>(key)?.items,
     ).toEqual([{ id: "b" }]);
+    const taxKey = libraryTaxonomyQueryKey("acc1");
+    client.setQueryData(taxKey, {
+      categories: [{ id: "c1", name: "旧" }],
+      infoTypes: [],
+    });
     resetLibraryQueries(client);
     expect(client.getQueryData(key)).toBeUndefined();
+    expect(client.getQueryData(taxKey)).toBeUndefined();
+    expect(taxKey[0]).toBe(LIBRARY_TAXONOMY_KEY);
   });
 });

@@ -1,7 +1,9 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { invalidateLibraryTaxonomy } from "@/lib/library-cache";
 import { moveTaxonomyItem } from "@/lib/taxonomy-order";
 import type { AccountTaxonomy, TaxonomyKind } from "@/server/taxonomy";
 
@@ -15,6 +17,7 @@ export function AccountTaxonomyCard({
   initial: AccountTaxonomy | null;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [taxonomy, setTaxonomy] = useState<AccountTaxonomy>(
     initial ?? { categories: [], infoTypes: [] },
   );
@@ -56,6 +59,7 @@ export function AccountTaxonomyCard({
       return;
     }
     setDraft((current) => ({ ...current, [kind]: "" }));
+    invalidateLibraryTaxonomy(queryClient);
     router.refresh();
     const next = await fetch(
       `/api/settings/taxonomy?account_id=${encodeURIComponent(accountId)}`,
@@ -101,6 +105,7 @@ export function AccountTaxonomyCard({
         row.id === itemId ? { ...row, name: trimmed } : row,
       ),
     }));
+    invalidateLibraryTaxonomy(queryClient);
     router.refresh();
   }
 
@@ -128,6 +133,7 @@ export function AccountTaxonomyCard({
       ...prev,
       [key]: prev[key].filter((row) => row.id !== itemId),
     }));
+    invalidateLibraryTaxonomy(queryClient);
     router.refresh();
   }
 
@@ -163,6 +169,7 @@ export function AccountTaxonomyCard({
     if (body.taxonomy) {
       setTaxonomy(body.taxonomy);
     }
+    invalidateLibraryTaxonomy(queryClient);
     router.refresh();
   }
 
