@@ -11,8 +11,11 @@ import { PlainMenuSelect } from "@/components/PlainMenuSelect";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import {
+  isLibrarySourcesData,
   LIBRARY_STALE_MS,
   libraryFilterKey,
+  libraryListInconsistent,
+  libraryListNeedsMore,
   libraryQueryKey,
 } from "@/lib/library-cache";
 import { writeLibraryNeighbors } from "@/lib/library-neighbors";
@@ -182,7 +185,15 @@ export function LibraryWorkspace({
     enabled: !restoring,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchOnMount: (entry) => entry.state.data == null,
+    refetchOnMount: (entry) => {
+      if (entry.state.data == null) {
+        return true;
+      }
+      return (
+        isLibrarySourcesData(entry.state.data) &&
+        libraryListInconsistent(entry.state.data)
+      );
+    },
     refetchOnReconnect: false,
     placeholderData: keepPreviousData,
     staleTime: LIBRARY_STALE_MS,
@@ -209,6 +220,8 @@ export function LibraryWorkspace({
   }, [query.data]);
   const first = query.data?.pages[0];
   const total = first?.count ?? rows.length;
+  const repairedKey = useRef("");
+  const queryKeyStr = queryKey.join("\0");
   const label = first?.label ?? "ライブラリ";
   const categories = first?.categories ?? [];
   const infoTypes = first?.infoTypes ?? [];
@@ -265,6 +278,49 @@ export function LibraryWorkspace({
       });
     }
   }, [pathname, query.hasNextPage, returnHref, router, rows.length, scrollKey]);
+
+  useEffect(() => {
+    if (restoring || query.isFetching || query.isError) {
+      return;
+    }
+    if (!query.data || !libraryListInconsistent(query.data)) {
+      return;
+    }
+    if (repairedKey.current === queryKeyStr) {
+      return;
+    }
+    repairedKey.current = queryKeyStr;
+    void query.refetch();
+  }, [
+    query.data,
+    query.isError,
+    query.isFetching,
+    query.refetch,
+    queryKeyStr,
+    restoring,
+  ]);
+
+  useEffect(() => {
+    if (
+      restoring ||
+      query.isFetchingNextPage ||
+      query.isFetching ||
+      query.isError
+    ) {
+      return;
+    }
+    if (!query.data || !libraryListNeedsMore(query.data)) {
+      return;
+    }
+    void query.fetchNextPage();
+  }, [
+    query.data,
+    query.fetchNextPage,
+    query.isError,
+    query.isFetching,
+    query.isFetchingNextPage,
+    restoring,
+  ]);
 
   useEffect(() => {
     if (
@@ -412,9 +468,10 @@ export function LibraryWorkspace({
   }, [pathname, returnHref, scrollKey]);
 
   const hasRows = rows.length > 0;
+  const observerKey = `${hasRows}:${query.hasNextPage}:${rows.length}`;
   useEffect(() => {
     const node = sentinel.current;
-    if (!node || !hasRows) {
+    if (!node || !observerKey.startsWith("true:")) {
       return;
     }
     const observer = new IntersectionObserver(
@@ -432,7 +489,7 @@ export function LibraryWorkspace({
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasRows]);
+  }, [observerKey]);
 
   function setView(next: LibraryView) {
     const params = new URLSearchParams(search);
@@ -477,7 +534,10 @@ export function LibraryWorkspace({
     <div className="mt-4 min-w-0 max-w-full">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-ink-2 text-xs">
         <span>
-          {label} · {total}件
+          {label} ·{" "}
+          {rows.length > 0 && rows.length < total
+            ? `${rows.length} / ${total}件`
+            : `${total}件`}
         </span>
         <div className="flex items-center gap-2">
           <SourceSortSelect value={sort} search={search} />
@@ -588,6 +648,28 @@ export function LibraryWorkspace({
       >
         読み込み中…
       </p>
+      {query.hasNextPage && !query.isFetchingNextPage ? (
+        <button
+          type="button"
+          className="mx-auto block py-2 text-ink-2 text-xs underline"
+          onClick={() => {
+            void query.fetchNextPage();
+          }}
+        >
+          続きを読み込む
+        </button>
+      ) : null}
+      {rows.length < total && !query.hasNextPage && !query.isFetching ? (
+        <button
+          type="button"
+          className="mx-auto block py-2 text-ink-2 text-xs underline"
+          onClick={() => {
+            void query.refetch();
+          }}
+        >
+          一覧を再読み込み
+        </button>
+      ) : null}
       {query.isError ? (
         <p className="py-3 text-center text-ink-2 text-xs">
           続きを読めませんでした。

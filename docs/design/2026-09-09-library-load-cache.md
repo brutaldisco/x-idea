@@ -143,7 +143,7 @@ P2 完了後、`LibraryWorkspace` の 8 段タイマー復元は **フルリロ�
 ### 5.3 persist（P1）
 
 - `@tanstack/query-async-storage-persister` + IndexedDB（`idb-keyval` で足りる）。
-- key: `x-idea.library.v6`、`buster: "2026-09-11"`（スキーマを変えたら buster だけ上げ、旧 `marginalia.library.v5` / `v6` は起動時に `localStorage.removeItem`）。
+- key: `x-idea.library.v6`、`buster: "2026-09-11-pages"`（スキーマを変えたら buster だけ上げ、旧 `marginalia.library.v5` / `v6` は起動時に `localStorage.removeItem`）。
 - `shouldDehydrateQuery`: 成功した `sources` のみ。**pages は最大 8**。超過は末尾を切る（スクロール復元に必要な `pageCount` と揃える）。
 - quota / IDB 失敗は `console` に出さず、Today 相当の静かな失敗（再取得するだけ）。成功フラグをメモリに持ち、失敗時は persist を止める。
 - queryKey は `["sources", sort, filters]`。アカウントは入れない（SSR で `anon` になり毎回ミスする）。切替・手動同期は `resetLibraryQueries`。

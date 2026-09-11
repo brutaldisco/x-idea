@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   LIBRARY_SOURCES_KEY,
   libraryFilterKey,
+  libraryListInconsistent,
+  libraryListNeedsMore,
   libraryQueryKey,
   removeSourceFromLibraryPages,
   removeSourceFromLibraryQueries,
@@ -10,6 +12,60 @@ import {
 } from "@/lib/library-cache";
 
 describe("library cache", () => {
+  it("detects a count that cannot page further", () => {
+    expect(
+      libraryListInconsistent({
+        pageParams: [undefined],
+        pages: [
+          {
+            items: Array.from({ length: 9 }, (_, i) => ({ id: String(i) })),
+            nextCursor: null,
+            count: 76,
+          },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      libraryListInconsistent({
+        pageParams: [undefined],
+        pages: [
+          {
+            items: Array.from({ length: 30 }, (_, i) => ({ id: String(i) })),
+            nextCursor: "c2",
+            count: 76,
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("auto-fills only when the last page is short", () => {
+    expect(
+      libraryListNeedsMore({
+        pageParams: [undefined],
+        pages: [
+          {
+            items: Array.from({ length: 9 }, (_, i) => ({ id: String(i) })),
+            nextCursor: "c2",
+            count: 76,
+          },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      libraryListNeedsMore({
+        pageParams: [undefined],
+        pages: [
+          {
+            items: Array.from({ length: 30 }, (_, i) => ({ id: String(i) })),
+            nextCursor: "c2",
+            count: 76,
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it("keeps the list key stable without an account segment", () => {
     expect(libraryQueryKey("posted_desc", libraryFilterKey({}))).toEqual([
       LIBRARY_SOURCES_KEY,

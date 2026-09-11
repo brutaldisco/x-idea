@@ -4,6 +4,7 @@ import {
   type Query,
   type QueryClient,
 } from "@tanstack/react-query";
+import { SOURCE_PAGE_SIZE } from "@/lib/source-cursor";
 import type { LibraryFilters } from "@/lib/source-filters";
 import type { SourceSort } from "@/lib/source-sort";
 
@@ -19,10 +20,14 @@ export function libraryQueryKey(sort: SourceSort, filterKey: string) {
 }
 
 export function shouldPersistLibraryQuery(query: Query): boolean {
-  return (
-    query.queryKey[0] === LIBRARY_SOURCES_KEY &&
-    defaultShouldDehydrateQuery(query)
-  );
+  if (
+    query.queryKey[0] !== LIBRARY_SOURCES_KEY ||
+    !defaultShouldDehydrateQuery(query)
+  ) {
+    return false;
+  }
+  const data = query.state.data;
+  return !isLibrarySourcesData(data) || !libraryListInconsistent(data);
 }
 
 export type LibrarySourcesPage = {
@@ -39,6 +44,54 @@ export function isLibrarySourcesData(
   }
   const pages = (value as InfiniteData<LibrarySourcesPage>).pages;
   return Array.isArray(pages);
+}
+
+export function libraryLoadedCount(
+  data: InfiniteData<LibrarySourcesPage> | undefined,
+): number {
+  return data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? 0;
+}
+
+export function libraryReportedCount(
+  data: InfiniteData<LibrarySourcesPage> | undefined,
+): number | null {
+  const count = data?.pages[0]?.count;
+  return typeof count === "number" && Number.isFinite(count) ? count : null;
+}
+
+/** 件数はあるのに nextCursor が切れて続きを取れない（壊れた persist など）。 */
+export function libraryListInconsistent(
+  data: InfiniteData<LibrarySourcesPage> | undefined,
+): boolean {
+  if (!data?.pages.length) {
+    return false;
+  }
+  const total = libraryReportedCount(data);
+  if (total == null) {
+    return false;
+  }
+  const loaded = libraryLoadedCount(data);
+  const last = data.pages[data.pages.length - 1];
+  return loaded < total && !last?.nextCursor;
+}
+
+/** 最終ページが1ページ分に満たず、まだ続きがある。 */
+export function libraryListNeedsMore(
+  data: InfiniteData<LibrarySourcesPage> | undefined,
+): boolean {
+  if (!data?.pages.length) {
+    return false;
+  }
+  const total = libraryReportedCount(data);
+  if (total == null) {
+    return false;
+  }
+  const last = data.pages[data.pages.length - 1];
+  return (
+    libraryLoadedCount(data) < total &&
+    Boolean(last?.nextCursor) &&
+    last.items.length < SOURCE_PAGE_SIZE
+  );
 }
 
 export function removeSourceFromLibraryPages(
