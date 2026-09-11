@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   hasLibraryFilters,
+  isSourceKind,
   libraryFilterSql,
   parseLibraryFilters,
   parseLibraryView,
@@ -26,6 +27,9 @@ describe("library filters", () => {
     expect(parseLibraryView("list")).toBe("list");
     expect(parseLibraryView(undefined)).toBe("grid");
     expect(parseLibraryView("atlas")).toBe("grid");
+    expect(isSourceKind("x_post")).toBe(true);
+    expect(isSourceKind("note")).toBe(true);
+    expect(isSourceKind("bookmark")).toBe(false);
   });
 
   it("builds bounded SQL", () => {

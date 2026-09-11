@@ -1,6 +1,6 @@
 import Image from "next/image";
-import { OpenInX } from "@/components/OpenInX";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
+import { SourceMetaFields } from "@/components/SourceMetaFields";
 import { VideoBadge } from "@/components/VideoBadge";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 import type { MediaItem } from "@/server/sources/detail";
@@ -11,16 +11,28 @@ export function SourceHero({
   authorUsername,
   authorAvatarUrl,
   postedAt,
-  url,
   media,
+  categoryId,
+  categoryName,
+  infoType,
+  readStatus,
+  kind,
+  categories,
+  infoTypes,
 }: {
   sourceId: string;
   authorName: string | null;
   authorUsername: string | null;
   authorAvatarUrl: string | null;
   postedAt: string | null;
-  url: string;
   media: MediaItem[];
+  categoryId: string | null;
+  categoryName: string | null;
+  infoType: string | null;
+  readStatus: string;
+  kind: string;
+  categories: { id: string; name: string }[];
+  infoTypes: { id: string; name: string }[];
 }) {
   const when = postedAt
     ? new Date(postedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
@@ -31,7 +43,7 @@ export function SourceHero({
 
   return (
     <header className="mt-5">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 min-[40rem]:flex-row min-[40rem]:items-start min-[40rem]:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           {authorAvatarUrl ? (
             // Remote X avatars are not in next/image remotePatterns.
@@ -66,9 +78,16 @@ export function SourceHero({
             ) : null}
           </div>
         </div>
-        <span className="notranslate shrink-0" lang="ja" translate="no">
-          <OpenInX url={url} />
-        </span>
+        <SourceMetaFields
+          id={sourceId}
+          categoryId={categoryId}
+          categoryName={categoryName}
+          infoType={infoType}
+          readStatus={readStatus}
+          kind={kind}
+          categories={categories}
+          infoTypes={infoTypes}
+        />
       </div>
       {heroSrc ? (
         hero && hero.type !== "photo" && hero.videoSaveStatus === "ready" ? (

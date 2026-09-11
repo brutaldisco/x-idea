@@ -46,6 +46,7 @@ export type SourceDetail = {
   availability: string;
   triageStatus: string;
   readStatus: string;
+  kind: string;
   categoryId: string | null;
   categoryName: string | null;
   categoryConfidence: number | null;
@@ -181,7 +182,7 @@ export async function getSourceDetail(
   const scope = sourceScopeSql(contextAccountId(ctx), "s");
   const result = await getClient().execute({
     sql: `SELECT s.id, s.x_account_id, s.availability, s.triage_status,
-                 s.read_status, s.category_id, s.info_type, s.ai_importance,
+                 s.read_status, s.kind, s.category_id, s.info_type, s.ai_importance,
                  s.category_confidence, s.user_note, s.ai_summary,
                  c.name AS category_name,
                  p.id AS post_id, p.tweet_id, p.url, p.text, p.lang,
@@ -306,6 +307,7 @@ export async function getSourceDetail(
     availability: String(row.availability),
     triageStatus: String(row.triage_status),
     readStatus: String(row.read_status ?? "unread"),
+    kind: row.kind ? String(row.kind) : "x_post",
     categoryId: row.category_id ? String(row.category_id) : null,
     categoryName: row.category_name ? String(row.category_name) : null,
     categoryConfidence:

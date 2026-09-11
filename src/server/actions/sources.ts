@@ -12,6 +12,7 @@ import {
   restoreSource as restoreSourceRow,
   saveNote as saveNoteRow,
   setReadStatus as setReadStatusRow,
+  setSourceKind as setSourceKindRow,
   snoozeSource as snoozeSourceRow,
   updateSource as updateSourceRow,
 } from "@/server/sources/mutate";
@@ -198,6 +199,25 @@ export async function setReadStatus(input: {
     );
     const ctx = await getAccountContext();
     return finish(await setReadStatusRow(body.id, ctx, body.status));
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function setSourceKind(input: {
+  id: string;
+  kind: string;
+}): Promise<ActionResult<{ id: string; kind: string }>> {
+  try {
+    const body = parse(
+      z.object({
+        id: idSchema,
+        kind: z.enum(["x_post", "article", "note"]),
+      }),
+      input,
+    );
+    const ctx = await getAccountContext();
+    return finish(await setSourceKindRow(body.id, ctx, body.kind));
   } catch (error) {
     return fail(error);
   }

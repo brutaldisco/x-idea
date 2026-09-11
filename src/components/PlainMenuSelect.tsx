@@ -8,12 +8,16 @@ export function PlainMenuSelect({
   options,
   onChange,
   className,
+  buttonClassName,
+  disabled = false,
 }: {
   value: string;
   ariaLabel: string;
   options: { id: string; label: string }[];
   onChange: (value: string) => void;
   className?: string;
+  buttonClassName?: string;
+  disabled?: boolean;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -53,12 +57,21 @@ export function PlainMenuSelect({
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls={listId}
+        disabled={disabled}
+        title={current?.label ?? ariaLabel}
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
-          setCoords({ top: rect.bottom + 4, left: rect.left });
-          setOpen((value) => !value);
+          const menuWidth = 144;
+          setCoords({
+            top: rect.bottom + 4,
+            left: Math.min(
+              rect.left,
+              Math.max(8, window.innerWidth - menuWidth - 8),
+            ),
+          });
+          setOpen((currentOpen) => !currentOpen);
         }}
-        className="max-w-[9.5rem] truncate rounded-full border border-line bg-paper px-2 py-1.5 text-left text-xs outline-none"
+        className={`truncate rounded-full border border-line bg-paper px-2 py-1.5 text-left text-xs outline-none disabled:opacity-40 ${buttonClassName ?? "max-w-[9.5rem]"}`}
       >
         {current?.label ?? ariaLabel}
       </button>

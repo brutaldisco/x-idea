@@ -17,6 +17,11 @@ export type LibraryFilters = SearchFilters & {
 };
 
 const KIND_IDS = new Set<string>(SOURCE_KINDS.map((item) => item.id));
+
+export function isSourceKind(value: string): value is SourceKind {
+  return KIND_IDS.has(value);
+}
+
 const READ_IDS = new Set<string>(READ_STATUSES);
 
 function pick(

@@ -21,6 +21,15 @@ vi.mock("@/lib/ids", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
+vi.mock("@/server/taxonomy", () => ({
+  taxonomyForAccount: async () => ({
+    categories: [{ id: "cat_ai", name: "AI" }],
+    infoTypes: [
+      { id: "idea", name: "着想" },
+      { id: "it_custom1", name: "カスタム" },
+    ],
+  }),
+}));
 
 import {
   archiveSource,
@@ -28,7 +37,9 @@ import {
   reenrichSource,
   saveNote,
   setReadStatus,
+  setSourceKind,
   snoozeSource,
+  updateSource,
 } from "@/server/sources/mutate";
 import type { AccountContext } from "@/server/x/context";
 
@@ -160,6 +171,22 @@ describe("inbox mutations", () => {
     const read = await setReadStatus("src1", ctx, "to_practice");
     expect(read.status).toBe("to_practice");
 
+    const kind = await setSourceKind("src1", ctx, "article");
+    expect(kind.kind).toBe("article");
+    await expect(setSourceKind("src1", ctx, "bookmark")).rejects.toMatchObject({
+      code: "VALIDATION",
+    });
+    expect(
+      execute.mock.calls.some((call) => {
+        const query = call[0] as { sql?: string; args?: unknown[] };
+        return (
+          typeof query === "object" &&
+          query.sql?.includes("kind = ?") &&
+          query.args?.[0] === "article"
+        );
+      }),
+    ).toBe(true);
+
     await reenrichSource("src1", ctx);
     expect(
       execute.mock.calls.some((call) =>
@@ -167,5 +194,34 @@ describe("inbox mutations", () => {
       ),
     ).toBe(true);
     expect(enqueueEnrichBatch).toHaveBeenCalledOnce();
+  });
+});
+
+describe("updateSource", () => {
+  it("accepts a custom info type and can clear it", async () => {
+    await updateSource("src1", ctx, { infoType: "it_custom1" });
+    expect(
+      execute.mock.calls.some((call) => {
+        const query = call[0] as { sql?: string; args?: unknown[] };
+        return (
+          typeof query === "object" &&
+          query.sql?.includes("info_type = COALESCE") &&
+          query.args?.includes("it_custom1")
+        );
+      }),
+    ).toBe(true);
+
+    await updateSource("src1", ctx, { infoType: null });
+    expect(
+      execute.mock.calls.some((call) =>
+        sqlOf(call[0]).includes("info_type = NULL"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects an unknown info type", async () => {
+    await expect(
+      updateSource("src1", ctx, { infoType: "nope" }),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
   });
 });

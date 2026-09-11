@@ -167,13 +167,11 @@ function LibraryPager({
   totalPages,
   busy,
   onGoToPage,
-  ariaLabel,
 }: {
   page: number;
   totalPages: number;
   busy: boolean;
   onGoToPage: (page: number) => void;
-  ariaLabel: string;
 }) {
   if (totalPages <= 1) {
     return null;
@@ -181,7 +179,7 @@ function LibraryPager({
   const slots = libraryPageSlots(page, totalPages);
   return (
     <nav
-      aria-label={ariaLabel}
+      aria-label="ページ"
       className="flex flex-wrap items-center justify-center gap-1.5 text-ink-2 text-xs"
     >
       <button
@@ -658,16 +656,6 @@ export function LibraryWorkspace({
         />
       </div>
 
-      <div className="mt-4">
-        <LibraryPager
-          page={safePage}
-          totalPages={totalPages}
-          busy={query.isFetching}
-          onGoToPage={goToPage}
-          ariaLabel="ページ（上）"
-        />
-      </div>
-
       {paging ? (
         <LibraryPageSkeleton view={view} />
       ) : rows.length === 0 ? (
@@ -712,7 +700,6 @@ export function LibraryWorkspace({
           totalPages={totalPages}
           busy={query.isFetching}
           onGoToPage={goToPage}
-          ariaLabel="ページ（下）"
         />
       </div>
 

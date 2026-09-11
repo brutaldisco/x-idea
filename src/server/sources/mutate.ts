@@ -3,6 +3,7 @@ import { ensureSchema } from "@/db/ensure";
 import { AppError } from "@/lib/errors";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
+import { isSourceKind } from "@/lib/source-filters";
 import { normalizeTags } from "@/server/ai/enrich-post";
 import { isInfoType } from "@/server/ai/info-types";
 import { attachTags } from "@/server/ai/tags";
@@ -18,6 +19,7 @@ import {
   type SourceSnapshot,
   snoozeUntilSql,
 } from "@/server/sources/triage";
+import { taxonomyForAccount } from "@/server/taxonomy";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 type SourceRow = SourceSnapshot & {
@@ -372,7 +374,10 @@ export async function updateSource(
     throw new AppError("VALIDATION", "カテゴリがありません");
   }
   if (patch.infoType && !isInfoType(patch.infoType)) {
-    throw new AppError("VALIDATION", "情報タイプが不正です");
+    const tax = await taxonomyForAccount(contextAccountId(ctx));
+    if (!tax.infoTypes.some((item) => item.id === patch.infoType)) {
+      throw new AppError("VALIDATION", "情報タイプが不正です");
+    }
   }
   const tags = patch.tags ? normalizeTags(patch.tags) : [];
   const aiTags = await loadAiTags(sourceId);
@@ -396,6 +401,14 @@ export async function updateSource(
       sourceId,
       ctx,
       "category_id = NULL, category_source = 'user', updated_at = datetime('now')",
+      [],
+    );
+  }
+  if (patch.infoType === null) {
+    await updateScoped(
+      sourceId,
+      ctx,
+      "info_type = NULL, info_type_source = 'user', updated_at = datetime('now')",
       [],
     );
   }
@@ -431,6 +444,21 @@ export async function setReadStatus(
     [status],
   );
   return { id: sourceId, status };
+}
+
+export async function setSourceKind(
+  sourceId: string,
+  ctx: AccountContext,
+  kind: string,
+): Promise<{ id: string; kind: string }> {
+  if (!isSourceKind(kind)) {
+    throw new AppError("VALIDATION", "種類が不正です");
+  }
+  await loadRow(sourceId, ctx);
+  await updateScoped(sourceId, ctx, "kind = ?, updated_at = datetime('now')", [
+    kind,
+  ]);
+  return { id: sourceId, kind };
 }
 
 export async function saveNote(

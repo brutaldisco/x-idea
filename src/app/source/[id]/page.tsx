@@ -35,6 +35,12 @@ const IMPORTANCE: Record<number, string> = {
   3: "高",
 };
 
+const AVAILABILITY_LABELS: Record<string, string> = {
+  deleted: "削除済み",
+  protected: "非公開",
+  unavailable: "取得不可",
+};
+
 export default async function SourcePage({
   params,
 }: {
@@ -84,15 +90,14 @@ export default async function SourcePage({
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <LibraryBackLink />
-          <ReaderNeighbors sourceId={source.id} variant="icons" />
         </div>
         <div className="flex items-center gap-2">
-          <p className="text-ink-2 text-xs">{source.availability}</p>
-          <SourceCardMenu
-            sourceId={source.id}
-            url={source.post.url}
-            canQueueVideos={mediaHasQueueableVideos(source.post.media)}
-          />
+          {AVAILABILITY_LABELS[source.availability] ? (
+            <p className="text-ink-2 text-xs">
+              {AVAILABILITY_LABELS[source.availability]}
+            </p>
+          ) : null}
+          <ReaderNeighbors sourceId={source.id} variant="icons" />
         </div>
       </div>
 
@@ -102,11 +107,26 @@ export default async function SourcePage({
         authorUsername={source.post.authorUsername}
         authorAvatarUrl={source.post.authorAvatarUrl}
         postedAt={source.post.postedAt}
-        url={source.post.url}
         media={source.post.media}
+        categoryId={source.categoryId}
+        categoryName={source.categoryName}
+        infoType={source.infoType}
+        readStatus={source.readStatus}
+        kind={source.kind}
+        categories={taxonomy.categories}
+        infoTypes={taxonomy.infoTypes}
       />
 
-      <ReaderSegments hasArticle={hasArticle} />
+      <ReaderSegments
+        hasArticle={hasArticle}
+        menu={
+          <SourceCardMenu
+            sourceId={source.id}
+            url={source.post.url}
+            canQueueVideos={mediaHasQueueableVideos(source.post.media)}
+          />
+        }
+      />
 
       <section id="original" className="scroll-mt-16">
         <h1 className="mt-6 font-semibold text-2xl" lang="ja" translate="no">
