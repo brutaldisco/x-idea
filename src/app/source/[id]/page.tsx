@@ -81,13 +81,15 @@ export default async function SourcePage({
   return (
     <main className="scroll-smooth px-3 pt-8 pb-8 min-[48rem]:px-6">
       <div className="flex items-center justify-between gap-3">
-        <LibraryBackLink />
+        <div className="flex min-w-0 items-center gap-2">
+          <LibraryBackLink />
+          <ReaderNeighbors sourceId={source.id} variant="icons" />
+        </div>
         <div className="flex items-center gap-2">
           <p className="text-ink-2 text-xs">{source.availability}</p>
           <SourceCardMenu sourceId={source.id} url={source.post.url} />
         </div>
       </div>
-      <ReaderNeighbors sourceId={source.id} />
 
       <SourceHero
         sourceId={source.id}

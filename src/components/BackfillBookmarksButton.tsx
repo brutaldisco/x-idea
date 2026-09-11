@@ -24,7 +24,7 @@ export function BackfillBookmarksButton({
     <div className="mt-3">
       <button
         type="button"
-        disabled={disabled || busy || exhausted}
+        disabled={disabled || busy}
         onClick={() => {
           setBusy(true);
           setMessage(null);
@@ -56,7 +56,11 @@ export function BackfillBookmarksButton({
         }}
         className="rounded-full border border-line px-4 py-2 text-sm disabled:opacity-40"
       >
-        {busy ? "取り込み中…" : "過去のブックマークを取り込む"}
+        {busy
+          ? "取り込み中…"
+          : exhausted
+            ? "過去の取り込みを再試行"
+            : "過去のブックマークを取り込む"}
       </button>
       <p className="mt-2 text-ink-2 text-xs">
         「今すぐ同期」は新着だけです。こちらは X
@@ -65,7 +69,7 @@ export function BackfillBookmarksButton({
       </p>
       {exhausted ? (
         <p className="mt-1 text-ink-2 text-xs">
-          X 側の一覧は最後まで取り込み済みです。
+          前回は一覧の末尾まで到達しました。まだ残っているなら再試行できます。
         </p>
       ) : null}
       {message ? <p className="mt-1 text-ink-2 text-xs">{message}</p> : null}

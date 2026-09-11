@@ -1,7 +1,10 @@
 import { getClient } from "@/db/client";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
-import { nextBackfillCursor } from "@/lib/sync-backfill";
+import {
+  leftoverBackfillCursor,
+  nextBackfillCursor,
+} from "@/lib/sync-backfill";
 import {
   bookmarkPageSize,
   INITIAL_BOOKMARK_PAGE,
@@ -89,6 +92,7 @@ async function syncOneAccount(
   let created = 0;
   let newHead: string | null = null;
   let pagination: string | null = null;
+  let lastNext: string | null = null;
   let remaining: number | null = null;
   let reset: string | null = null;
 
@@ -106,6 +110,7 @@ async function syncOneAccount(
       resources += page.resourcesRead;
       remaining = page.rateLimit.remaining;
       reset = page.rateLimit.reset;
+      lastNext = page.nextToken;
       if (!newHead) {
         newHead = page.tweets[0]?.id ?? null;
       }
@@ -131,6 +136,19 @@ async function syncOneAccount(
         break;
       }
       pagination = page.nextToken;
+    }
+
+    const leftover = leftoverBackfillCursor({
+      nextToken: lastNext,
+      alreadyExhausted: account.backfillExhausted,
+      existingToken: account.backfillPaginationToken,
+    });
+    if (leftover) {
+      await markXAccountBackfill(
+        account.id,
+        leftover.token,
+        leftover.exhausted,
+      );
     }
 
     const settings = await getSyncSettings();
@@ -204,8 +222,12 @@ async function syncOneAccountBackfill(
   let reset: string | null = null;
 
   if (account.backfillExhausted) {
-    logger.info({ accountId: account.id }, "bookmark backfill already done");
-    return;
+    logger.info({ accountId: account.id }, "bookmark backfill retry");
+    await markXAccountBackfill(
+      account.id,
+      account.backfillPaginationToken,
+      false,
+    );
   }
 
   try {
@@ -240,7 +262,11 @@ async function syncOneAccountBackfill(
         }
       }
 
-      const cursor = nextBackfillCursor(page.nextToken);
+      const cursor = nextBackfillCursor(page.nextToken, {
+        fetched: page.tweets.length,
+        pageSize,
+        previousToken: pagination,
+      });
       pagination = cursor.token;
       await markXAccountBackfill(account.id, cursor.token, cursor.exhausted);
       if (cursor.exhausted) {

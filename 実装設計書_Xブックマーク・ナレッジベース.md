@@ -376,7 +376,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.5 SC-06 Reader（Source 詳細）
 
-- **戻り**：ヘッダー「← ライブラリ」は直近の Library URL（並び・フィルタ・表示）へ戻す。`/library` 固定にはしない（8.3）。Library 起点では並列ルートで一覧を残す（ADR-016）。同じ並びの隣へは一覧に戻らず「前の記事」「次の記事」で進む。並びは直近の Library 一覧（フィルタ・ソート込み）。一覧に無い Source やディープリンクでは出さない。
+- **戻り**：ヘッダー「← ライブラリ」は直近の Library URL（並び・フィルタ・表示）へ戻す。`/library` 固定にはしない（8.3）。Library 起点では並列ルートで一覧を残す（ADR-016）。同じ並びの隣へは一覧に戻らず、ヘッダー内の丸いアウトライン（前／次）で進む。並びは直近の Library 一覧（フィルタ・ソート込み）。一覧に無い Source やディープリンクでは出さない。末尾にも同じ導線を残す。
 - **ヒーロー**：投稿者アバター・名前・日時・X で開く。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。
 - **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは Reader で対象ごとに手動取得**し、取得後は折りたたみ（件数つき、既定は展開）。未取得時はボタン、トグル OFF 時は案内。未保存の動画はアプリ内再生せず **サムネイル＋「X で見る」＋「あとで保存」**（ダウンロードキューへ投入、14.6 / SC-15）。`video_downloads.status='ready'` の動画はサムネタップでアプリ内再生（**1本リピート** のトグルのみ。Library カードと同じ）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**（`queued` / `downloading`）は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Reader ギャラリーはタイル下部だけに出し、サムネ上には重ねない。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。本文側に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。Reader 上部に翻訳手順の常時説明は出さない。ボタンはかな優勢の日本語本文では出さず、**漢字だけの中国語など他言語では出す**。記事は投稿 `lang` を使わず、クリック時に Language Detector が本文を見る。X の自動翻訳文は API に無い。原文カラムは書き換えない。
@@ -705,7 +705,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 - ユーザーがアプリで削除した tweet は `dismissed_bookmarks` に残し、再取り込みしない。可能なら X のブックマークも外す（ADR-013）。
 - 返信投稿は `settings.save_replies`（既定 保存）。
 - 編集追跡は行わない **[仮定]**。
-- **過去分の手動遡及**（ADR-017）：差分は `last_sync_head_tweet_id` で打ち切るため、初回上限より古いブックマークは残る。Settings の「過去のブックマークを取り込む」は `mode=backfill`。head は動かさず、`x_account.backfill_pagination_token` から古いページを 100 件ずつ読む。既存 tweet は ingest でスキップ。`next_token` が無くなったら `backfill_exhausted=1`。1 回の件数は `sync_max_per_run`。自動同期では走らせない。
+- **過去分の手動遡及**（ADR-017）：差分は `last_sync_head_tweet_id` で打ち切るため、初回上限より古いブックマークは残る。Settings の「過去のブックマークを取り込む」は `mode=backfill`。head は動かさず、`x_account.backfill_pagination_token` から古いページを 100 件ずつ読む。既存 tweet は ingest でスキップ。「今すぐ同期」の残り `next_token` は未開始の backfill に渡す。`next_token` が無い短いページで `backfill_exhausted=1`。ボタンは再試行できる。1 回の件数は `sync_max_per_run`。自動同期では走らせない。
 
 ### 14.4 ブックマークフォルダ連動（P2）
 
