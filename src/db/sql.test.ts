@@ -38,6 +38,9 @@ describe("sql helpers", () => {
       true,
     );
     expect(
+      statements.some((sql) => /gone_sweep_cursor\s*=\s*NULL/i.test(sql)),
+    ).toBe(false);
+    expect(
       statements.filter((sql) => isOptionalStatement(sql)).length,
     ).toBeGreaterThan(0);
   });

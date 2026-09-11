@@ -18,6 +18,8 @@ Bookmarks API は、X 上で消えた tweet を `data` ではなく `errors[]`�
 - 失敗しても同期全体は止めない。
 - 保存済みも同じ判定を適用する。同期／backfill のあと、未確認の Source を保存順に最大 100 件 `GET /2/tweets?ids=` で見る。`x_account.gone_sweep_cursor` で続きから再開する。課金は Post read（$0.005/件）。スレッド月次上限には入れない。
 - lookup は削除済みを `errors[]` に出さず `data` から省くことがある。要求 ID が本文に無く、非公開エラーでもなければ削除する。404 の本文も読む。
+- `gone_sweep_cursor` を NULL にする SQL は `applyMigration` に置かない。起動のたびに全 SQL を再実行するため、進捗が先頭 100 件に戻る。判定を変えたときのやり直しは一度だけ。
+- 投稿は残って動画だけ申し立てで消えたものは消さない。tweet が lookup の `data` にあれば残す。
 
 ## 影響
 

@@ -1,3 +1,5 @@
--- 欠けた ID を削除扱いに変えたので、保存済みの確認を最初からやり直す。
-
-UPDATE x_account SET gone_sweep_cursor = NULL, updated_at = datetime('now');
+-- 欠けた ID を削除扱いに変えたので、保存済みの確認を最初からやり直す、
+-- という UPDATE を一度だけ流した。
+-- applyMigration は起動のたびに全 SQL を再実行するため、ここへ UPDATE を
+-- 置くと gone_sweep_cursor が毎回消える。再実行しない。
+-- 新規 DB のカーソルは NULL のまま始まる。

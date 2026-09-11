@@ -701,7 +701,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 ```
 
 - `note_tweet` があれば長文本文を優先。X Articles は `tweet.fields=article` の `title` / `plain_text` を本文として保存する（`text` は t.co だけのことがある）。
-- 削除済み tweet は `errors[]` の Not Found で検知し、Source を消して `dismissed_bookmarks` に残す。`bookmark.write` があれば X のブックマークも外す（ADR-018）。Source が未作成でも外す。非公開・権限エラーは `sources.availability` を更新するだけ。保存済みは同期のあと最大 100 件ずつ tweet lookup し、`gone_sweep_cursor` で続きから確認する（Post read $0.005/件）。lookup の `data` に無い ID も削除扱い（errors 省略対策）。
+- 削除済み tweet は `errors[]` の Not Found で検知し、Source を消して `dismissed_bookmarks` に残す。`bookmark.write` があれば X のブックマークも外す（ADR-018）。Source が未作成でも外す。非公開・権限エラーは `sources.availability` を更新するだけ。保存済みは同期のあと最大 100 件ずつ tweet lookup し、`gone_sweep_cursor` で続きから確認する（Post read $0.005/件）。lookup の `data` に無い ID も削除扱い（errors 省略対策）。カーソルを NULL にする SQL は起動のたびに再実行しない。投稿は残って動画だけ申し立てで消えたものは消さない。
 - ユーザーがアプリで削除した tweet は `dismissed_bookmarks` に残し、再取り込みしない。可能なら X のブックマークも外す（ADR-013）。
 - 返信投稿は `settings.save_replies`（既定 保存）。
 - 編集追跡は行わない **[仮定]**。
