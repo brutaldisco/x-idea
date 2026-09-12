@@ -397,7 +397,7 @@ async function ownedItem(id: string, accountId: string): Promise<VideoItem> {
 export async function updateVideoQueue(
   id: string,
   ctx: AccountContext,
-  action: "cancel" | "retry" | "fail",
+  action: "cancel" | "retry" | "fail" | "requeue",
   error?: string,
 ): Promise<VideoItem> {
   const accountId = contextAccountId(ctx);
@@ -411,6 +411,17 @@ export async function updateVideoQueue(
     }
     await getClient().execute({
       sql: "UPDATE video_downloads SET status = 'canceled' WHERE id = ?",
+      args: [id],
+    });
+    return loadVideoItem(id);
+  }
+  if (action === "requeue") {
+    if (item.status !== "downloading") {
+      throw new AppError("VALIDATION", "再開できる状態ではありません");
+    }
+    await getClient().execute({
+      sql: `UPDATE video_downloads SET status = 'queued', error = NULL
+            WHERE id = ?`,
       args: [id],
     });
     return loadVideoItem(id);

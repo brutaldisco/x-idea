@@ -25,7 +25,9 @@ import {
   videoDownloadPercent,
   videoQueueStatusLabel,
 } from "@/lib/video-progress";
+import { isResumableVideoQueueStatus } from "@/lib/video-queue";
 import {
+  clearProgress,
   deleteVideoFile,
   downloadVideoFile,
   ensureWritePermission,
@@ -48,6 +50,46 @@ function errorMessage(error: unknown): string {
     return error.message;
   }
   return "失敗しました";
+}
+
+/** 完了登録は確実に通したいので、一時的な失敗に備えてリトライする */
+async function postComplete(
+  id: string,
+  body: { rel_path: string; bytes: number },
+): Promise<VideoItem> {
+  let lastError: Error = new Error("完了の記録に失敗しました");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const res = await fetch(`/api/videos/queue/${id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { item: VideoItem };
+        return json.item;
+      }
+      lastError = new Error(`完了の記録に失敗しました (${res.status})`);
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error : new Error("完了の記録に失敗しました");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+  }
+  throw lastError;
+}
+
+/** 中断した項目を queued に戻す（オフライン等で失敗しても次回開始時に拾う） */
+async function requeueItem(id: string): Promise<void> {
+  try {
+    await fetch(`/api/videos/queue/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "requeue" }),
+    });
+  } catch {
+    // best effort
+  }
 }
 
 export function VideosWorkspace({
@@ -80,6 +122,7 @@ export function VideosWorkspace({
   } | null>(null);
   const [repeat, setRepeat] = useState<RepeatMode>("folder");
   const abortRef = useRef<AbortController | null>(null);
+  const activeRef = useRef<Set<string>>(new Set());
   const [offlineHint, setOfflineHint] = useState(false);
   const [queueOpen, setQueueOpen] = useState(initialQueueOpen);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -165,10 +208,13 @@ export function VideosWorkspace({
       setMessage("フォルダへの書き込みを許可してください");
       return;
     }
-    const queued = data.queue.filter((item) => item.status === "queued");
+    // queued に加えて、このタブで動いていない downloading（中断分）も拾う
+    const resumable = data.queue.filter((item) =>
+      isResumableVideoQueueStatus(item.status, activeRef.current.has(item.id)),
+    );
     const chosen = ids?.length
-      ? queued.filter((item) => ids.includes(item.id))
-      : queued;
+      ? resumable.filter((item) => ids.includes(item.id))
+      : resumable;
     if (chosen.length === 0) {
       setMessage(
         ids?.length ? "選んだ動画はキューにありません" : "キューは空です",
@@ -194,23 +240,28 @@ export function VideosWorkspace({
     let cursor = 0;
 
     const runItem = async (item: (typeof chosen)[number]) => {
+      activeRef.current.add(item.id);
       const relPath = suggestedRelPath(item);
-      await fetch(`/api/videos/queue/${item.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start" }),
-      });
-      setData((prev) => ({
-        ...prev,
-        queue: prev.queue.map((entry) =>
-          entry.id === item.id ? { ...entry, status: "downloading" } : entry,
-        ),
-      }));
-      setProgress((prev) => ({
-        ...prev,
-        [item.id]: { received: 0, total: 0 },
-      }));
       try {
+        await fetch(`/api/videos/queue/${item.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "start" }),
+        });
+        setData((prev) => ({
+          ...prev,
+          queuedCount:
+            item.status === "queued"
+              ? Math.max(0, prev.queuedCount - 1)
+              : prev.queuedCount,
+          queue: prev.queue.map((entry) =>
+            entry.id === item.id ? { ...entry, status: "downloading" } : entry,
+          ),
+        }));
+        setProgress((prev) => ({
+          ...prev,
+          [item.id]: { received: 0, total: 0 },
+        }));
         const result = await downloadVideoFile({
           downloadId: item.id,
           mediaId: item.mediaId,
@@ -227,27 +278,67 @@ export function VideosWorkspace({
         });
         doneBytes += result.bytes;
         doneCount += 1;
-        await fetch(`/api/videos/queue/${item.id}/complete`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            rel_path: result.relPath,
-            bytes: result.bytes,
-          }),
+        const completed = await postComplete(item.id, {
+          rel_path: result.relPath,
+          bytes: result.bytes,
         });
+        await clearProgress(item.id);
+        // 完了したものから即座にライブラリへ出す
+        setProgress((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setData((prev) => ({
+          ...prev,
+          queue: prev.queue.filter((entry) => entry.id !== item.id),
+          library: [
+            completed,
+            ...prev.library.filter((entry) => entry.id !== item.id),
+          ],
+        }));
       } catch (error) {
         if ((error as { name?: string }).name === "AbortError") {
+          // 停止: 途中まで保存されているので queued に戻して再開可能にする
+          await requeueItem(item.id);
+          setProgress((prev) => {
+            const next = { ...prev };
+            delete next[item.id];
+            return next;
+          });
+          setData((prev) => ({
+            ...prev,
+            queuedCount: prev.queue.some(
+              (entry) => entry.id === item.id && entry.status === "downloading",
+            )
+              ? prev.queuedCount + 1
+              : prev.queuedCount,
+            queue: prev.queue.map((entry) =>
+              entry.id === item.id ? { ...entry, status: "queued" } : entry,
+            ),
+          }));
           return;
         }
         failCount += 1;
+        const messageText = errorMessage(error);
         await fetch(`/api/videos/queue/${item.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "fail",
-            error: errorMessage(error),
+            error: messageText,
           }),
         });
+        setData((prev) => ({
+          ...prev,
+          queue: prev.queue.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, status: "failed", error: messageText }
+              : entry,
+          ),
+        }));
+      } finally {
+        activeRef.current.delete(item.id);
       }
     };
 
@@ -271,6 +362,9 @@ export function VideosWorkspace({
       );
       const elapsed = (performance.now() - started) / 1000;
       const parts: string[] = [];
+      if (controller.signal.aborted) {
+        parts.push("停止しました（途中まで保存済み。再開できます）");
+      }
       if (doneCount > 0) {
         parts.push(`${doneCount} 件完了`);
       }
@@ -290,6 +384,10 @@ export function VideosWorkspace({
       setBusy(false);
       abortRef.current = null;
     }
+  }
+
+  function stopDownloads() {
+    abortRef.current?.abort();
   }
 
   async function cancelItem(id: string) {
@@ -456,6 +554,18 @@ export function VideosWorkspace({
     [data.queue],
   );
 
+  // 開始対象: queued + このタブで動いていない downloading（中断分）
+  const resumableItems = useMemo(
+    () =>
+      data.queue.filter((item) =>
+        isResumableVideoQueueStatus(
+          item.status,
+          activeRef.current.has(item.id),
+        ),
+      ),
+    [data.queue],
+  );
+
   useEffect(() => {
     const live = new Set(queuedItems.map((item) => item.id));
     setSelectedIds((current) => current.filter((id) => live.has(id)));
@@ -550,27 +660,38 @@ export function VideosWorkspace({
                   </label>
                 ) : null}
               </div>
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  !supported ||
-                  !linked ||
-                  (selectedIds.length === 0 && queuedItems.length === 0)
-                }
-                onClick={() =>
-                  void startDownloads(
-                    selectedIds.length > 0 ? selectedIds : undefined,
-                  )
-                }
-                className="rounded-full bg-ink px-3 py-1.5 text-paper text-sm disabled:opacity-50"
-              >
-                {busy
-                  ? "実行中…"
-                  : selectedIds.length > 0
-                    ? `選んだ ${selectedIds.length} 件を開始`
-                    : "すべて開始"}
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                {busy ? (
+                  <button
+                    type="button"
+                    onClick={stopDownloads}
+                    className="rounded-full border border-danger px-3 py-1.5 text-danger text-sm hover:bg-paper"
+                  >
+                    停止
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    !supported ||
+                    !linked ||
+                    (selectedIds.length === 0 && resumableItems.length === 0)
+                  }
+                  onClick={() =>
+                    void startDownloads(
+                      selectedIds.length > 0 ? selectedIds : undefined,
+                    )
+                  }
+                  className="rounded-full bg-ink px-3 py-1.5 text-paper text-sm disabled:opacity-50"
+                >
+                  {busy
+                    ? "実行中…"
+                    : selectedIds.length > 0
+                      ? `選んだ ${selectedIds.length} 件を開始`
+                      : "すべて開始"}
+                </button>
+              </div>
             </div>
             {eta ? <p className="mt-1 text-ink-2 text-xs">{eta}</p> : null}
             {supported && !linked ? (
@@ -625,14 +746,17 @@ export function VideosWorkspace({
                     total,
                     item.estimatedBytes,
                   );
-                  const downloading =
-                    Boolean(prog) || item.status === "downloading";
-                  const statusLabel = videoQueueStatusLabel(
-                    downloading && item.status !== "failed"
-                      ? "downloading"
-                      : item.status,
-                    pct,
-                  );
+                  // このタブで進捗のない downloading は中断（別セッションの取り残し）
+                  const interrupted = item.status === "downloading" && !prog;
+                  const downloading = Boolean(prog);
+                  const statusLabel = interrupted
+                    ? "中断しています（再開できます）"
+                    : videoQueueStatusLabel(
+                        downloading && item.status !== "failed"
+                          ? "downloading"
+                          : item.status,
+                        pct,
+                      );
                   const fileMeta = formatVideoQueueMeta({
                     bytes: item.bytes,
                     estimatedBytes: item.estimatedBytes,
@@ -738,6 +862,16 @@ export function VideosWorkspace({
                                   onClick={() => void startDownloads([item.id])}
                                 >
                                   この動画だけ
+                                </button>
+                              ) : null}
+                              {interrupted ? (
+                                <button
+                                  type="button"
+                                  disabled={busy || !supported || !linked}
+                                  className="text-accent text-xs hover:underline disabled:opacity-40"
+                                  onClick={() => void startDownloads([item.id])}
+                                >
+                                  再開
                                 </button>
                               ) : null}
                               <button

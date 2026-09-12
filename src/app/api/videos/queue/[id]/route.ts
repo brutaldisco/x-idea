@@ -33,7 +33,8 @@ export async function POST(
     if (
       body.action !== "cancel" &&
       body.action !== "retry" &&
-      body.action !== "fail"
+      body.action !== "fail" &&
+      body.action !== "requeue"
     ) {
       return Response.json(
         toErrorBody(new AppError("VALIDATION", "action が不正です")),

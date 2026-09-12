@@ -19,6 +19,18 @@ export function isVideoMediaType(type: string | null | undefined): boolean {
   return type === "video" || type === "animated_gif";
 }
 
+/**
+ * ダウンロード実行の対象にできるか。
+ * queued はそのまま。downloading は、このタブで実際に動いていない
+ * （= 以前のセッションや通信途絶で取り残された）ものだけ再開対象にする。
+ */
+export function isResumableVideoQueueStatus(
+  status: string,
+  active: boolean,
+): boolean {
+  return status === "queued" || (status === "downloading" && !active);
+}
+
 export function canShowSaveVideosMenu(input: {
   kind?: string | null;
   hasQueueableVideos?: boolean | null;

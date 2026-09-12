@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canShowSaveVideosMenu,
+  isResumableVideoQueueStatus,
   mediaHasQueueableVideos,
   sourceVideosQueueMessage,
   tallySourceVideoQueue,
@@ -35,6 +36,16 @@ describe("mediaHasQueueableVideos", () => {
         { type: "video", videoSaveStatus: null },
       ]),
     ).toBe(true);
+  });
+});
+
+describe("isResumableVideoQueueStatus", () => {
+  it("takes queued items and stalled downloads, but not live ones", () => {
+    expect(isResumableVideoQueueStatus("queued", false)).toBe(true);
+    expect(isResumableVideoQueueStatus("downloading", false)).toBe(true);
+    expect(isResumableVideoQueueStatus("downloading", true)).toBe(false);
+    expect(isResumableVideoQueueStatus("failed", false)).toBe(false);
+    expect(isResumableVideoQueueStatus("ready", false)).toBe(false);
   });
 });
 

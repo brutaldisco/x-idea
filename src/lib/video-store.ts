@@ -3,6 +3,7 @@ import {
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
   VIDEO_CHUNK_MIN,
+  VIDEO_STALL_MS,
   type VideoDownloadPlan,
 } from "@/lib/video-download-plan";
 import { parseVideoRelPath, videoRelPath } from "@/lib/video-path";
@@ -380,12 +381,33 @@ async function downloadVideoChunk(input: {
     }
     const end = input.start + chunk - 1;
     const chunkStart = nowMs();
+    // 無応答検知: VIDEO_STALL_MS のあいだ 1 バイトも来なければ切断してリトライする
+    // （ユーザーの停止 signal とは別の AbortController で区別する）
+    const stallController = new AbortController();
+    let stalled = false;
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    const armStallTimer = () => {
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+      }
+      stallTimer = setTimeout(() => {
+        stalled = true;
+        stallController.abort();
+      }, VIDEO_STALL_MS);
+    };
+    const onParentAbort = () => stallController.abort();
+    input.signal?.addEventListener("abort", onParentAbort, { once: true });
+    armStallTimer();
+    const onBytes = async (n: number) => {
+      armStallTimer();
+      await input.onBytes(n);
+    };
     try {
       const res = await fetchVideoChunk({
         mediaId: input.mediaId,
         start: input.start,
         end,
-        signal: input.signal,
+        signal: stallController.signal,
       });
       if (res.status === 416) {
         return { written: 0, status: 416, total: parseTotal(res, 0) };
@@ -394,7 +416,7 @@ async function downloadVideoChunk(input: {
         input.file,
         res,
         input.start,
-        input.onBytes,
+        onBytes,
       );
       const elapsed = (nowMs() - chunkStart) / 1000;
       if (written > 0 && elapsed > 0) {
@@ -413,16 +435,23 @@ async function downloadVideoChunk(input: {
       }
       return { written, status: res.status, total: parseTotal(res, 0) };
     } catch (error) {
-      if ((error as { name?: string }).name === "AbortError") {
-        throw error;
+      if (input.signal?.aborted) {
+        throw abortError();
       }
       attempt += 1;
       if (attempt > input.plan.retries) {
-        throw error;
+        throw stalled
+          ? new Error("ダウンロードが止まりました（応答なし）")
+          : error;
       }
       chunk = Math.max(VIDEO_CHUNK_MIN, Math.floor(chunk / 2));
       const delay = Math.min(10_000, 500 * 2 ** (attempt - 1));
       await sleep(delay, input.signal);
+    } finally {
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+      }
+      input.signal?.removeEventListener("abort", onParentAbort);
     }
   }
 }
@@ -522,7 +551,8 @@ export async function downloadVideoFile(input: {
       throw abortError();
     }
     await persist();
-    await clearProgress(input.downloadId);
+    // 進捗の消去は呼び出し側が完了登録を確認してから行う
+    // （先に消すと、登録だけ失敗したときに最初から取り直しになる）
     return { bytes: offset, relPath: input.relPath };
   } catch (error) {
     await persist().catch(() => {});

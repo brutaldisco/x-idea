@@ -3,6 +3,8 @@ const MB = 1024 * KB;
 
 export const VIDEO_CHUNK_MIN = 1 * MB;
 export const VIDEO_CHUNK_MAX = 32 * MB;
+/** この時間だけ 1 バイトも受信できなければ接続が止まったとみなす */
+export const VIDEO_STALL_MS = 30_000;
 
 export type VideoDownloadPlan = {
   chunkBytes: number;
