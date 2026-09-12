@@ -111,6 +111,87 @@ body {
   hanging-punctuation: allow-end;
 }
 
+.reader-measure {
+  max-width: 40em;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+
+.reader-body {
+  max-width: 40em;
+  font-size: 1.05rem;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+
+.article-body a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(
+    in oklch,
+    var(--color-accent) 50%,
+    transparent
+  );
+  text-underline-offset: 0.15em;
+}
+
+.article-body :is(h1, h2, h3) {
+  margin-top: 1.8em;
+  margin-bottom: 0.3em;
+  font-weight: 600;
+}
+
+.article-body h1 {
+  font-size: 1.3em;
+}
+
+.article-body h2 {
+  font-size: 1.15em;
+}
+
+.article-body h3 {
+  font-size: 1.05em;
+}
+
+.article-body p {
+  margin-block: 0.8em;
+}
+
+.article-body :is(ul, ol) {
+  margin-block: 0.8em;
+  padding-inline-start: 1.25rem;
+}
+
+.article-body ul {
+  list-style: disc;
+}
+
+.article-body ol {
+  list-style: decimal;
+}
+
+.article-body li {
+  margin-block: 0.2em;
+}
+
+.article-body img {
+  display: block;
+  margin-block: 0.8em;
+  max-width: 100%;
+  height: auto;
+}
+
+.article-body blockquote {
+  margin-block: 0.8em;
+  padding-inline-start: 0.9em;
+  border-inline-start: 2px solid var(--color-line);
+  color: var(--color-ink-2);
+}
+
+.article-body > :first-child {
+  margin-top: 0;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   ::view-transition-old(root),
   ::view-transition-new(root) {

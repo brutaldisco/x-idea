@@ -1,5 +1,5 @@
 import { ChromeTranslate } from "@/components/ChromeTranslate";
-import { LinkedText } from "@/components/LinkedText";
+import { ReaderBody } from "@/components/ReaderBody";
 import { translatableProps } from "@/lib/chrome-translate";
 import { scopeLabel } from "@/server/fetch/classify";
 
@@ -52,21 +52,18 @@ export function ArticleBlock({
       {html && fetched ? (
         <div
           id={bodyId}
-          className="article-body mt-3 text-sm leading-7 [&_a]:text-accent [&_a]:underline [&_h1]:mt-4 [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:font-semibold [&_img]:my-3 [&_img]:max-w-full [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+          className="article-body reader-body mt-3"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: saved after sanitize-html
           dangerouslySetInnerHTML={{ __html: html }}
           {...attrs}
         />
       ) : text ? (
-        <p
+        <ReaderBody
           id={bodyId}
-          className="mt-3 whitespace-pre-wrap text-sm leading-7"
+          className="reader-body mt-3"
+          text={text.length > 12_000 ? `${text.slice(0, 12_000)}…` : text}
           {...attrs}
-        >
-          <LinkedText
-            text={text.length > 12_000 ? `${text.slice(0, 12_000)}…` : text}
-          />
-        </p>
+        />
       ) : scope === "pending" ? (
         <p className="mt-3 text-ink-2 text-xs">記事を取得しています…</p>
       ) : (

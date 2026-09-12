@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { ReaderBody } from "@/components/ReaderBody";
 import {
   detectSourceLanguage,
   getTranslatorCtor,
   selectElementText,
   shouldOfferTranslate,
 } from "@/lib/chrome-translate";
+import { packReaderLinesForTranslate } from "@/lib/reader-paragraphs";
 
 const TARGET = "ja";
 
@@ -86,7 +88,9 @@ export function ChromeTranslate({
             });
           },
         });
-        const result = await translator.translate(text);
+        const result = await translator.translate(
+          packReaderLinesForTranslate(text),
+        );
         setTranslated(result);
         setHint(null);
       } catch {
@@ -143,9 +147,7 @@ export function ChromeTranslate({
       {translated ? (
         <div className="mt-3 rounded-xl border border-line bg-paper px-3 py-2">
           <p className="text-ink-2 text-xs">Chrome 翻訳</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-6">
-            {translated}
-          </p>
+          <ReaderBody className="reader-body mt-1" text={translated} readable />
         </div>
       ) : null}
     </div>

@@ -4,14 +4,16 @@ import { splitHttpUrls } from "@/lib/linkify";
 export function LinkedText({
   text,
   renderPlain,
+  keyPrefix = "",
 }: {
   text: string;
   renderPlain?: (text: string) => ReactNode;
+  keyPrefix?: string;
 }) {
   return (
     <>
       {splitHttpUrls(text).map((part) => {
-        const key = `${part.offset}:${part.href ?? "t"}`;
+        const key = `${keyPrefix}:${part.offset}:${part.href ?? "t"}`;
         if (part.href) {
           return (
             <a
@@ -19,7 +21,7 @@ export function LinkedText({
               href={part.href}
               target="_blank"
               rel="noreferrer"
-              className="break-all text-accent/55 underline decoration-accent/30"
+              className="wrap-anywhere text-accent underline decoration-accent/50"
             >
               {part.text}
             </a>

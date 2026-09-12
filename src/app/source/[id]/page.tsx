@@ -5,6 +5,7 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { ContextFetchButton } from "@/components/ContextFetchButton";
 import { LibraryBackLink } from "@/components/LibraryBackLink";
 import { PostBlock } from "@/components/PostBlock";
+import { ReaderBody } from "@/components/ReaderBody";
 import { ReaderNeighbors } from "@/components/ReaderNeighbors";
 import { ReaderSegments } from "@/components/ReaderSegments";
 import { SourceActions } from "@/components/SourceActions";
@@ -233,7 +234,10 @@ export default async function SourcePage({
             translate="no"
           >
             <p className="text-ai text-xs">✦ AI 要約</p>
-            <p className="mt-2 text-sm leading-7">{source.aiSummary}</p>
+            <ReaderBody
+              className="reader-measure mt-2 text-sm"
+              text={source.aiSummary ?? ""}
+            />
             <dl className="mt-4 grid gap-1 text-ink-2 text-xs">
               {infoLabel ? (
                 <div>

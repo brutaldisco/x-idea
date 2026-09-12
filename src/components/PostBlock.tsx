@@ -1,7 +1,7 @@
 import { ChromeTranslate } from "@/components/ChromeTranslate";
-import { LinkedText } from "@/components/LinkedText";
 import { MediaGallery } from "@/components/MediaGallery";
 import { OpenInX } from "@/components/OpenInX";
+import { ReaderBody } from "@/components/ReaderBody";
 import { translatableProps } from "@/lib/chrome-translate";
 import type { PostCard } from "@/server/sources/detail";
 
@@ -60,19 +60,18 @@ export function PostBlock({
         </span>
       </div>
       {long ? translate : null}
-      <p
+      <ReaderBody
         id={textId}
-        className="mt-3 whitespace-pre-wrap text-[1.05rem] leading-7"
+        className="reader-body mt-3"
+        text={post.text}
         {...attrs}
-      >
-        <LinkedText text={post.text} />
-      </p>
+      />
       {quote ? (
         <blockquote
           className="mt-3 rounded-xl border border-line bg-paper px-3 py-2 text-ink-2 text-sm"
           {...attrs}
         >
-          <LinkedText text={quote} />
+          <ReaderBody className="reader-measure" text={quote} />
         </blockquote>
       ) : null}
       {long ? null : translate}
