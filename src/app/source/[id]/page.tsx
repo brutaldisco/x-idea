@@ -229,7 +229,7 @@ export default async function SourcePage({
       <section id="summary" className="mt-10 scroll-mt-16">
         {hasSummary ? (
           <div
-            className="notranslate rounded-[var(--radius-card)] border border-ai/30 bg-ai-soft p-5"
+            className="notranslate rounded-[var(--radius-card)] border border-ai/30 bg-ai-soft p-5 min-[48rem]:px-8 min-[48rem]:py-8"
             lang="ja"
             translate="no"
           >

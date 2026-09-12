@@ -113,12 +113,14 @@ body {
 
 .reader-measure {
   max-width: 40em;
+  margin-inline: auto;
   line-height: 1.85;
   overflow-wrap: anywhere;
 }
 
 .reader-body {
   max-width: 40em;
+  margin-inline: auto;
   font-size: 1.05rem;
   line-height: 1.85;
   overflow-wrap: anywhere;

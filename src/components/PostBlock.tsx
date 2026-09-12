@@ -31,7 +31,7 @@ export function PostBlock({
     />
   );
   return (
-    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-5">
+    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 px-5 py-5 min-[48rem]:px-8 min-[48rem]:py-8">
       {eyebrow ? (
         <p className="notranslate text-ink-2 text-xs" lang="ja" translate="no">
           {eyebrow}
@@ -62,7 +62,7 @@ export function PostBlock({
       {long ? translate : null}
       <ReaderBody
         id={textId}
-        className="reader-body mt-3"
+        className="reader-body mt-10"
         text={post.text}
         {...attrs}
       />

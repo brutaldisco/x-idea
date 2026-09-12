@@ -41,7 +41,7 @@ export function ArticleBlock({
     ) : null;
 
   return (
-    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-3 min-[48rem]:p-4">
+    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-3 min-[48rem]:px-8 min-[48rem]:py-8">
       <div className="flex items-start justify-between gap-3">
         <h3 className="min-w-0 font-medium text-sm">{heading}</h3>
         <span className="shrink-0 rounded-full bg-paper px-2 py-0.5 text-ink-2 text-xs">

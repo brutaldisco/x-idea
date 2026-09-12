@@ -27,37 +27,23 @@ export function ChromeTranslate({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [translated, setTranslated] = useState<string | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
 
   const selectOriginal = () => {
-    const node = document.getElementById(targetId);
-    const ok = selectElementText(node);
-    setHint(
-      ok
-        ? "原文を選択しました。右クリック → 「日本語に翻訳」を選んでください。"
-        : "原文をドラッグして選択し、右クリック → 「日本語に翻訳」を選んでください。",
-    );
+    selectElementText(document.getElementById(targetId));
   };
 
   const translate = () => {
     setBusy(true);
-    setHint(null);
     setProgress(null);
     void (async () => {
       const Translator = getTranslatorCtor();
       if (!Translator) {
         selectOriginal();
-        setHint(
-          "この Chrome ではワンクリック翻訳が使えません。選択した原文を右クリックして「日本語に翻訳」を選んでください。",
-        );
         return;
       }
       const source = await detectSourceLanguage(text, lang);
       if (!source || source === TARGET) {
         selectOriginal();
-        setHint(
-          "原文の言語を特定できませんでした。選択した原文を右クリックして「日本語に翻訳」を選んでください。",
-        );
         return;
       }
       const options = { sourceLanguage: source, targetLanguage: TARGET };
@@ -65,13 +51,7 @@ export function ChromeTranslate({
         const availability = await Translator.availability(options);
         if (availability === "unavailable") {
           selectOriginal();
-          setHint(
-            "この言語の翻訳モデルがありません。原文を選択して右クリック → 「日本語に翻訳」を試してください。",
-          );
           return;
-        }
-        if (availability === "downloadable" || availability === "downloading") {
-          setHint("初回だけ Chrome が翻訳モデルをダウンロードします。");
         }
         const translator = await Translator.create({
           ...options,
@@ -92,12 +72,8 @@ export function ChromeTranslate({
           packReaderLinesForTranslate(text),
         );
         setTranslated(result);
-        setHint(null);
       } catch {
         selectOriginal();
-        setHint(
-          "翻訳を開始できませんでした。原文を選択して右クリック → 「日本語に翻訳」を選んでください。",
-        );
       }
     })().finally(() => {
       setBusy(false);
@@ -138,12 +114,6 @@ export function ChromeTranslate({
           原文を選択
         </button>
       </div>
-      <p className="mt-2 text-ink-2 text-xs leading-5">
-        Chrome
-        の翻訳です。サーバーには送りません。ワンクリックできないときは「原文を選択」→
-        右クリック → 日本語に翻訳。
-      </p>
-      {hint ? <p className="mt-1 text-ink-2 text-xs">{hint}</p> : null}
       {translated ? (
         <div className="mt-3 rounded-xl border border-line bg-paper px-3 py-2">
           <p className="text-ink-2 text-xs">Chrome 翻訳</p>
