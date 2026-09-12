@@ -23,6 +23,7 @@ vi.mock("@/server/media/refresh", () => ({
 vi.mock("@/server/media/select", () => ({
   parseVariantsJson: () => [],
   pickBestMp4Url: () => "https://example.com/a.mp4",
+  videoVariantMeta: () => ({ qualityLabel: null, estimatedBytes: null }),
 }));
 
 import type { AppError } from "@/lib/errors";

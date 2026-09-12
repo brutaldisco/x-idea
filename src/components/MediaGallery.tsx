@@ -8,6 +8,7 @@ import { QueueBadge } from "@/components/QueueBadge";
 import { SavedBadge } from "@/components/SavedBadge";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
+import { formatVideoQueueMeta } from "@/server/media/select";
 import type { MediaItem } from "@/server/sources/detail";
 
 export function MediaGallery({
@@ -61,6 +62,13 @@ function MediaTile({
   const showImage = !imageFailed;
   const isVideo = item.type !== "photo";
   const playable = isVideo && item.videoSaveStatus === "ready";
+  const fileMeta = isVideo
+    ? formatVideoQueueMeta({
+        bytes: item.bytes,
+        estimatedBytes: item.estimatedBytes,
+        qualityLabel: item.qualityLabel,
+      })
+    : null;
   const preview = (
     <>
       <Image
@@ -129,20 +137,25 @@ function MediaTile({
       ) : null}
       {isVideo ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-line border-t px-3 py-2">
-          {postUrl ? (
-            <a
-              href={postUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="notranslate shrink-0 rounded-full bg-ink px-3 py-1 text-paper text-xs"
-              lang="ja"
-              translate="no"
-            >
-              X で見る
-            </a>
-          ) : (
-            <span className="text-ink-2 text-xs">動画は X で見ます。</span>
-          )}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {postUrl ? (
+              <a
+                href={postUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="notranslate shrink-0 rounded-full bg-ink px-3 py-1 text-paper text-xs"
+                lang="ja"
+                translate="no"
+              >
+                X で見る
+              </a>
+            ) : (
+              <span className="text-ink-2 text-xs">動画は X で見ます。</span>
+            )}
+            {fileMeta ? (
+              <span className="text-ink-2 text-xs">{fileMeta}</span>
+            ) : null}
+          </div>
           <VideoSaveControl item={item} />
         </div>
       ) : null}
@@ -219,7 +232,7 @@ function VideoSaveControl({ item }: { item: MediaItem }) {
         }}
         className="rounded-full border border-line px-3 py-1 text-xs hover:bg-paper-2 disabled:opacity-50"
       >
-        {busy ? "追加中…" : "あとで保存"}
+        {busy ? "追加中…" : "保存する"}
       </button>
       {message ? (
         <span className="text-ink-2 text-[11px]">{message}</span>

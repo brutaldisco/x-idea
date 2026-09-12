@@ -16,6 +16,7 @@ export function PlainMenuSelect({
   onChange,
   className,
   buttonClassName,
+  variant = "default",
   disabled = false,
 }: {
   value: string;
@@ -24,6 +25,7 @@ export function PlainMenuSelect({
   onChange: (value: string) => void;
   className?: string;
   buttonClassName?: string;
+  variant?: "default" | "badge";
   disabled?: boolean;
 }) {
   const listId = useId();
@@ -57,8 +59,13 @@ export function PlainMenuSelect({
     };
   }, [open]);
 
+  const badge = variant === "badge";
+
   return (
-    <div ref={rootRef} className={`relative shrink-0 ${className ?? ""}`}>
+    <div
+      ref={rootRef}
+      className={`relative ${badge ? "min-w-0 max-w-full" : "shrink-0"} ${className ?? ""}`}
+    >
       <button
         type="button"
         aria-label={ariaLabel}
@@ -68,6 +75,8 @@ export function PlainMenuSelect({
         disabled={disabled}
         title={current?.label ?? ariaLabel}
         onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
           const rect = event.currentTarget.getBoundingClientRect();
           const menuWidth = 144;
           setCoords({
@@ -79,11 +88,17 @@ export function PlainMenuSelect({
           });
           setOpen((currentOpen) => !currentOpen);
         }}
-        className={`truncate rounded-full border px-2 py-1.5 text-left text-xs outline-none disabled:opacity-40 ${
-          currentAccent
-            ? `${currentAccent} border-transparent`
-            : "border-line bg-paper"
-        } ${buttonClassName ?? "max-w-[9.5rem]"}`}
+        className={
+          badge
+            ? `min-w-0 max-w-full overflow-hidden whitespace-nowrap rounded-full px-1.5 py-0.5 text-left text-[10px] leading-none outline-none disabled:opacity-40 ${
+                currentAccent || "bg-paper text-ink-2"
+              } ${buttonClassName ?? ""}`
+            : `truncate rounded-full border px-2 py-1.5 text-left text-xs outline-none disabled:opacity-40 ${
+                currentAccent
+                  ? `${currentAccent} border-transparent`
+                  : "border-line bg-paper"
+              } ${buttonClassName ?? "max-w-[9.5rem]"}`
+        }
       >
         {current?.label ?? ariaLabel}
       </button>

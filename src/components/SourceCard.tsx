@@ -1,16 +1,12 @@
 import Link from "next/link";
 import { LinkedText } from "@/components/LinkedText";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
+import { SourceCardTaxonomy } from "@/components/SourceCardTaxonomy";
 import { SourceCardThumb } from "@/components/SourceCardThumb";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
-import { taxonomyAccentClass } from "@/lib/taxonomy-accent";
-import {
-  type TaxonomyChip,
-  type TaxonomyChipItem,
-  taxonomyChip,
-} from "@/lib/taxonomy-chip";
+import type { TaxonomyChipItem } from "@/lib/taxonomy-chip";
 import { canShowSaveVideosMenu } from "@/lib/video-queue";
 
 function thumbSrc(mediaId: string, mediaType: string | null): string {
@@ -21,20 +17,6 @@ function thumbSrc(mediaId: string, mediaType: string | null): string {
 
 function ThumbPlaceholder({ className }: { className: string }) {
   return <span className={`block bg-paper ${className}`} aria-hidden />;
-}
-
-function MiniTaxonomyBadge({ chip }: { chip: TaxonomyChip }) {
-  const accent = taxonomyAccentClass(chip.color);
-  return (
-    <span
-      title={chip.name}
-      className={`min-w-0 overflow-hidden whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] leading-none ${
-        accent || "bg-paper text-ink-2"
-      }`}
-    >
-      {chip.name}
-    </span>
-  );
 }
 
 export function SourceCard({
@@ -79,8 +61,6 @@ export function SourceCard({
   const textAttrs = translatableProps(lang, summaryFromAi);
   const dateLabel = formatCardDate(postedAt);
   const stacked = variant === "rail" || variant === "grid";
-  const category = taxonomyChip(categoryId, categories);
-  const typeChip = taxonomyChip(infoType, infoTypes, "info_type");
 
   return (
     <li
@@ -179,12 +159,13 @@ export function SourceCard({
                 {dateLabel}
               </p>
             ) : null}
-            {category || typeChip ? (
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                {category ? <MiniTaxonomyBadge chip={category} /> : null}
-                {typeChip ? <MiniTaxonomyBadge chip={typeChip} /> : null}
-              </div>
-            ) : null}
+            <SourceCardTaxonomy
+              sourceId={id}
+              categoryId={categoryId}
+              infoType={infoType}
+              categories={categories}
+              infoTypes={infoTypes}
+            />
             <div className="ml-auto shrink-0">
               <SourceCardMenu
                 sourceId={id}

@@ -17,7 +17,11 @@ import {
 import { accountIdForMedia } from "@/server/media/account";
 import { loadMediaRow } from "@/server/media/download";
 import { refreshMediaFromTweet } from "@/server/media/refresh";
-import { parseVariantsJson, pickBestMp4Url } from "@/server/media/select";
+import {
+  parseVariantsJson,
+  pickBestMp4Url,
+  videoVariantMeta,
+} from "@/server/media/select";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 export type VideoFolder = {
@@ -45,6 +49,8 @@ export type VideoItem = {
   authorUsername: string | null;
   excerpt: string;
   durationMs: number | null;
+  qualityLabel: string | null;
+  estimatedBytes: number | null;
   previewSrc: string;
 };
 
@@ -58,6 +64,15 @@ export type VideoLibraryPayload = {
 
 function asItem(row: Record<string, unknown>): VideoItem {
   const text = row.text ? String(row.text) : "";
+  const durationMs = row.duration_ms == null ? null : Number(row.duration_ms);
+  const meta = videoVariantMeta({
+    variants: parseVariantsJson(
+      row.variants_json ? String(row.variants_json) : null,
+    ),
+    width: row.width == null ? null : Number(row.width),
+    height: row.height == null ? null : Number(row.height),
+    durationMs,
+  });
   return {
     id: String(row.id),
     mediaId: String(row.media_id),
@@ -76,7 +91,9 @@ function asItem(row: Record<string, unknown>): VideoItem {
     postUrl: row.post_url ? String(row.post_url) : null,
     authorUsername: row.author_username ? String(row.author_username) : null,
     excerpt: text.slice(0, 140),
-    durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
+    durationMs,
+    qualityLabel: meta.qualityLabel,
+    estimatedBytes: meta.estimatedBytes,
     previewSrc: `/api/media/${row.media_id}?preview=1`,
   };
 }
@@ -144,6 +161,7 @@ export async function listVideoLibrary(
       sql: `SELECT d.id, d.media_id, d.x_account_id, d.folder_id, d.status,
                    d.rel_path, d.bytes, d.error, d.queued_at, d.downloaded_at,
                    f.name AS folder_name, m.media_key, m.duration_ms,
+                   m.width, m.height, m.variants_json,
                    p.tweet_id, p.text, p.author_username, p.url AS post_url,
                    s.id AS source_id
             FROM video_downloads d
@@ -349,6 +367,7 @@ export async function loadVideoItem(id: string): Promise<VideoItem> {
     sql: `SELECT d.id, d.media_id, d.x_account_id, d.folder_id, d.status,
                  d.rel_path, d.bytes, d.error, d.queued_at, d.downloaded_at,
                  f.name AS folder_name, m.media_key, m.duration_ms,
+                 m.width, m.height, m.variants_json,
                  p.tweet_id, p.text, p.author_username, p.url AS post_url,
                  s.id AS source_id
           FROM video_downloads d

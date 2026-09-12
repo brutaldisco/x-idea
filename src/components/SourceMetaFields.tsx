@@ -140,7 +140,7 @@ export function SourceMetaFields({
           ariaLabel="カテゴリ"
           disabled={busy}
           buttonClassName="max-w-[7rem]"
-          options={[{ id: "", label: "カテゴリ" }, ...categoryOptions]}
+          options={[{ id: "", label: "Category" }, ...categoryOptions]}
           onChange={(next) => {
             if (next === category) {
               return;
@@ -158,7 +158,7 @@ export function SourceMetaFields({
           ariaLabel="情報タイプ"
           disabled={busy}
           buttonClassName="max-w-[7rem]"
-          options={[{ id: "", label: "情報タイプ" }, ...infoOptions]}
+          options={[{ id: "", label: "Type" }, ...infoOptions]}
           onChange={(next) => {
             if (next === info) {
               return;

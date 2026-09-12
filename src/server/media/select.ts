@@ -1,3 +1,4 @@
+import { formatBytes } from "@/lib/bytes";
 import type { XMedia, XMediaVariant } from "@/server/x/parse";
 
 export const LONG_VIDEO_MS = 14_400_000;
@@ -36,7 +37,7 @@ export function parseVariantsJson(
   }
 }
 
-export function pickBestMp4Url(variants: XMediaVariant[]): string | null {
+export function pickBestMp4(variants: XMediaVariant[]): XMediaVariant | null {
   const mp4 = variants.filter(
     (item) =>
       item.url &&
@@ -46,7 +47,107 @@ export function pickBestMp4Url(variants: XMediaVariant[]): string | null {
     return null;
   }
   mp4.sort((a, b) => (b.bit_rate ?? 0) - (a.bit_rate ?? 0));
-  return mp4[0]?.url ?? null;
+  return mp4[0] ?? null;
+}
+
+export function pickBestMp4Url(variants: XMediaVariant[]): string | null {
+  return pickBestMp4(variants)?.url ?? null;
+}
+
+export function parseVariantSize(
+  url: string,
+): { width: number; height: number } | null {
+  const match = url.match(/(?:^|[^\d])(\d{2,4})x(\d{2,4})(?:[^\d]|$)/);
+  if (!match) {
+    return null;
+  }
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!width || !height) {
+    return null;
+  }
+  return { width, height };
+}
+
+export function formatVideoQuality(
+  width: number | null | undefined,
+  height: number | null | undefined,
+): string | null {
+  if (!width || !height || width <= 0 || height <= 0) {
+    return null;
+  }
+  const short = Math.min(width, height);
+  if (short >= 1080) {
+    return "1080p";
+  }
+  if (short >= 720) {
+    return "720p";
+  }
+  if (short >= 480) {
+    return "480p";
+  }
+  if (short >= 360) {
+    return "360p";
+  }
+  if (short >= 240) {
+    return "240p";
+  }
+  return `${short}p`;
+}
+
+export function estimateMp4Bytes(
+  bitRate: number | null | undefined,
+  durationMs: number | null | undefined,
+): number | null {
+  if (
+    typeof bitRate !== "number" ||
+    bitRate <= 0 ||
+    typeof durationMs !== "number" ||
+    durationMs <= 0
+  ) {
+    return null;
+  }
+  return Math.round((bitRate / 8) * (durationMs / 1000));
+}
+
+export function videoVariantMeta(input: {
+  variants: XMediaVariant[];
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+}): { qualityLabel: string | null; estimatedBytes: number | null } {
+  const best = pickBestMp4(input.variants);
+  const fromUrl = best?.url ? parseVariantSize(best.url) : null;
+  return {
+    qualityLabel: formatVideoQuality(
+      fromUrl?.width ?? input.width,
+      fromUrl?.height ?? input.height,
+    ),
+    estimatedBytes: estimateMp4Bytes(best?.bit_rate, input.durationMs),
+  };
+}
+
+export function formatVideoQueueMeta(input: {
+  bytes?: number | null;
+  estimatedBytes?: number | null;
+  qualityLabel?: string | null;
+  progressTotal?: number | null;
+}): string | null {
+  const actual =
+    input.bytes && input.bytes > 0
+      ? input.bytes
+      : input.progressTotal && input.progressTotal > 0
+        ? input.progressTotal
+        : null;
+  const size = actual
+    ? formatBytes(actual)
+    : input.estimatedBytes && input.estimatedBytes > 0
+      ? `約 ${formatBytes(input.estimatedBytes)}`
+      : null;
+  const parts = [size, input.qualityLabel ?? null].filter(
+    (part): part is string => Boolean(part),
+  );
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 export function originalImageUrl(url: string): string {

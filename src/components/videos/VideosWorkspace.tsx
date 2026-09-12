@@ -30,7 +30,8 @@ import {
   openVideoObjectUrl,
   suggestedRelPath,
 } from "@/lib/video-store";
-import { formatDuration } from "@/server/media/select";
+import { VideoThumbMarks } from "@/components/VideoThumbMarks";
+import { formatDuration, formatVideoQueueMeta } from "@/server/media/select";
 import type {
   VideoFolder,
   VideoItem,
@@ -548,7 +549,7 @@ export function VideosWorkspace({
             ) : null}
             {data.queue.length === 0 ? (
               <p className="mt-3 text-ink-2 text-sm">
-                キューは空です。原文の動画から「あとで保存」を押してください。
+                キューは空です。原文の動画から「保存する」を押してください。
               </p>
             ) : (
               <ul className="mt-3 space-y-2">
@@ -566,6 +567,12 @@ export function VideosWorkspace({
                       : item.status,
                     pct,
                   );
+                  const fileMeta = formatVideoQueueMeta({
+                    bytes: item.bytes,
+                    estimatedBytes: item.estimatedBytes,
+                    qualityLabel: item.qualityLabel,
+                    progressTotal: prog?.total,
+                  });
                   return (
                     <li
                       key={item.id}
@@ -584,14 +591,20 @@ export function VideosWorkspace({
                       ) : (
                         <span className="w-4 shrink-0" aria-hidden />
                       )}
-                      <Image
-                        src={item.previewSrc}
-                        alt=""
-                        width={96}
-                        height={64}
-                        unoptimized
-                        className="h-16 w-24 rounded-lg object-cover"
-                      />
+                      <div className="relative h-16 w-24 shrink-0">
+                        <Image
+                          src={item.previewSrc}
+                          alt=""
+                          width={96}
+                          height={64}
+                          unoptimized
+                          className="h-16 w-24 rounded-lg object-cover"
+                        />
+                        <VideoThumbMarks
+                          mediaType="video"
+                          durationMs={item.durationMs}
+                        />
+                      </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm">
                           {item.authorUsername
@@ -618,7 +631,10 @@ export function VideosWorkspace({
                             {item.error}
                           </p>
                         ) : null}
-                        <div className="mt-2 flex flex-wrap gap-2">
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {fileMeta ? (
+                            <span className="text-ink-2 text-xs">{fileMeta}</span>
+                          ) : null}
                           {item.status === "failed" ? (
                             <button
                               type="button"
@@ -732,8 +748,13 @@ export function VideosWorkspace({
                       {item.excerpt}
                     </p>
                     <p className="mt-1 text-[10px] text-ink-2">
-                      {item.downloadedAt?.slice(0, 10) ?? ""}
-                      {item.bytes ? ` · ${formatBytes(item.bytes)}` : ""}
+                      {[
+                        item.downloadedAt?.slice(0, 10),
+                        item.bytes ? formatBytes(item.bytes) : null,
+                        item.qualityLabel,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                     <VideoCardMenu
                       item={item}

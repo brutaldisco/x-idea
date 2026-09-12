@@ -6,6 +6,7 @@ import {
   libraryFilterKey,
   libraryQueryKey,
   libraryTaxonomyQueryKey,
+  patchSourceInLibraryQueries,
   removeSourceFromLibraryPage,
   removeSourceFromLibraryQueries,
   resetLibraryQueries,
@@ -38,6 +39,28 @@ describe("library cache", () => {
     );
     expect(next.count).toBe(62);
     expect(next.items.map((item) => item.id)).toEqual(["a", "c"]);
+  });
+
+  it("patches a source row in every sources query", () => {
+    const client = new QueryClient();
+    const key = ["sources", "posted_desc", "{}", 1];
+    client.setQueryData(key, {
+      items: [
+        { id: "a", categoryId: "old" },
+        { id: "b", categoryId: "keep" },
+      ],
+      nextCursor: null,
+      count: 2,
+    });
+    patchSourceInLibraryQueries(client, "a", { categoryId: "next" });
+    expect(
+      client.getQueryData<{
+        items: Array<{ id: string; categoryId: string }>;
+      }>(key)?.items,
+    ).toEqual([
+      { id: "a", categoryId: "next" },
+      { id: "b", categoryId: "keep" },
+    ]);
   });
 
   it("updates every sources query and can reset them", () => {

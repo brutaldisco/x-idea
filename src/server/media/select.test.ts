@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   downloadUrlFor,
+  estimateMp4Bytes,
   extensionFor,
   formatDuration,
+  formatVideoQuality,
+  formatVideoQueueMeta,
   initialDownloadStatus,
   isLongVideo,
   LONG_VIDEO_MS,
   needsTweetRefresh,
   originalImageUrl,
+  parseVariantSize,
   pickBestMp4Url,
   remoteUrlFor,
+  videoVariantMeta,
 } from "./select";
 
 describe("pickBestMp4Url", () => {
@@ -147,6 +152,63 @@ describe("remoteUrlFor / needsTweetRefresh", () => {
         variants_json: null,
       }),
     ).toBe(true);
+  });
+});
+
+describe("video variant quality and size", () => {
+  it("reads WxH from twimg urls and labels the short side", () => {
+    expect(
+      parseVariantSize(
+        "https://video.twimg.com/ext_tw_video/1/pu/vid/avc1/854x480/x.mp4",
+      ),
+    ).toEqual({ width: 854, height: 480 });
+    expect(formatVideoQuality(854, 480)).toBe("480p");
+    expect(formatVideoQuality(720, 1280)).toBe("720p");
+    expect(formatVideoQuality(null, 480)).toBeNull();
+  });
+
+  it("estimates bytes from the best mp4 bit_rate", () => {
+    expect(estimateMp4Bytes(8_000_000, 10_000)).toBe(10_000_000);
+    expect(
+      videoVariantMeta({
+        variants: [
+          {
+            bit_rate: 256_000,
+            content_type: "video/mp4",
+            url: "https://video.twimg.com/vid/320x180/a.mp4",
+          },
+          {
+            bit_rate: 832_000,
+            content_type: "video/mp4",
+            url: "https://video.twimg.com/vid/640x360/b.mp4",
+          },
+        ],
+        width: 1280,
+        height: 720,
+        durationMs: 10_000,
+      }),
+    ).toEqual({
+      qualityLabel: "360p",
+      estimatedBytes: 1_040_000,
+    });
+  });
+
+  it("prefers actual bytes and skips empty meta", () => {
+    expect(
+      formatVideoQueueMeta({
+        estimatedBytes: 12_000_000,
+        qualityLabel: "480p",
+      }),
+    ).toBe("約 11.4 MB · 480p");
+    expect(
+      formatVideoQueueMeta({
+        bytes: 5 * 1024 * 1024,
+        estimatedBytes: 12_000_000,
+        qualityLabel: "720p",
+        progressTotal: 9_000_000,
+      }),
+    ).toBe("5.0 MB · 720p");
+    expect(formatVideoQueueMeta({})).toBeNull();
   });
 });
 

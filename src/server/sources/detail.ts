@@ -1,6 +1,10 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
-import { formatDuration } from "@/server/media/select";
+import {
+  formatDuration,
+  parseVariantsJson,
+  videoVariantMeta,
+} from "@/server/media/select";
 import { sourceScopeSql } from "@/server/sources/scope";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
@@ -20,6 +24,9 @@ export type MediaItem = {
   previewSrc: string;
   videoSaveStatus: string | null;
   videoRelPath: string | null;
+  bytes: number | null;
+  qualityLabel: string | null;
+  estimatedBytes: number | null;
 };
 
 export type PostCard = {
@@ -77,6 +84,16 @@ function asMedia(row: Record<string, unknown>): MediaItem {
   const remote = row.media_url ? String(row.media_url) : null;
   const preview = row.preview_url ? String(row.preview_url) : null;
   const durationMs = row.duration_ms == null ? null : Number(row.duration_ms);
+  const width = row.width == null ? null : Number(row.width);
+  const height = row.height == null ? null : Number(row.height);
+  const meta = videoVariantMeta({
+    variants: parseVariantsJson(
+      row.variants_json ? String(row.variants_json) : null,
+    ),
+    width,
+    height,
+    durationMs,
+  });
   return {
     id,
     type: String(row.type),
@@ -87,14 +104,17 @@ function asMedia(row: Record<string, unknown>): MediaItem {
     downloadError: row.download_error ? String(row.download_error) : null,
     durationMs,
     durationLabel: durationMs != null ? formatDuration(durationMs).label : null,
-    width: row.width == null ? null : Number(row.width),
-    height: row.height == null ? null : Number(row.height),
+    width,
+    height,
     src: `/api/media/${id}`,
     previewSrc: `/api/media/${id}?preview=1`,
     videoSaveStatus: row.video_save_status
       ? String(row.video_save_status)
       : null,
     videoRelPath: row.video_rel_path ? String(row.video_rel_path) : null,
+    bytes: row.video_bytes == null ? null : Number(row.video_bytes),
+    qualityLabel: meta.qualityLabel,
+    estimatedBytes: meta.estimatedBytes,
   };
 }
 
@@ -143,10 +163,13 @@ async function loadMedia(postId: string): Promise<MediaItem[]> {
   const result = await getClient().execute({
     sql: `SELECT m.id, m.type, m.alt_text, m.preview_url, m.media_url,
                  m.download_status, m.download_error, m.duration_ms, m.width, m.height,
+                 m.variants_json,
                  (SELECT vd.status FROM video_downloads vd
                   WHERE vd.media_id = m.id LIMIT 1) AS video_save_status,
                  (SELECT vd.rel_path FROM video_downloads vd
-                  WHERE vd.media_id = m.id LIMIT 1) AS video_rel_path
+                  WHERE vd.media_id = m.id LIMIT 1) AS video_rel_path,
+                 (SELECT vd.bytes FROM video_downloads vd
+                  WHERE vd.media_id = m.id LIMIT 1) AS video_bytes
           FROM media_assets m WHERE m.x_post_id = ? ORDER BY m.created_at LIMIT 8`,
     args: [postId],
   });

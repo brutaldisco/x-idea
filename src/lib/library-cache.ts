@@ -84,6 +84,27 @@ export function removeSourceFromLibraryPage(
   };
 }
 
+export function patchSourceInLibraryQueries(
+  client: QueryClient,
+  sourceId: string,
+  patch: Record<string, unknown>,
+): void {
+  client.setQueriesData({ queryKey: [LIBRARY_SOURCES_KEY] }, (old) => {
+    if (!isLibrarySourcesData(old)) {
+      return old;
+    }
+    let changed = false;
+    const items = old.items.map((item) => {
+      if (item.id !== sourceId) {
+        return item;
+      }
+      changed = true;
+      return { ...item, ...patch };
+    });
+    return changed ? { ...old, items } : old;
+  });
+}
+
 export function removeSourceFromLibraryQueries(
   client: QueryClient,
   sourceId: string,
