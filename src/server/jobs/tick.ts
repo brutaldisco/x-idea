@@ -5,6 +5,7 @@ import { reclaimZombies } from "@/server/jobs/queue";
 import { runJobs } from "@/server/jobs/runner";
 import { evaluateSchedules } from "@/server/jobs/schedule";
 import type { TickSource } from "@/server/jobs/types";
+import { backfillArticleThumbs } from "@/server/media/article-thumb";
 
 export async function runTick(source: TickSource): Promise<{
   ok: true;
@@ -21,6 +22,7 @@ export async function runTick(source: TickSource): Promise<{
   const reclaimed = await reclaimZombies();
   const scheduled = await evaluateSchedules();
   await enqueueEnrichIfPending();
+  await backfillArticleThumbs({ limit: 8 });
   const { ran, failed } = await runJobs({ max: 5 });
   return { ok: true, source, reclaimed, scheduled, ran, failed };
 }

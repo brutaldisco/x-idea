@@ -4,6 +4,7 @@ import { fetchArticlePage } from "@/server/fetch/article";
 import { hydrateArticleRowFromTweet } from "@/server/fetch/x-article";
 import { hostOf, isXArticleUrl, isXStatusUrl } from "@/server/ingest/url";
 import { enqueueEnrichBatch } from "@/server/jobs/enrich";
+import { attachArticleThumbnail } from "@/server/media/article-thumb";
 import { getExcludedDomains } from "@/server/settings";
 
 export async function articleFetch(payload?: {
@@ -30,16 +31,19 @@ export async function articleFetch(payload?: {
     String(row.content_text ?? "").trim().length >= 400 &&
     (row.fetch_scope === "full" || row.fetch_scope === "partial");
   if (hasBody) {
+    await attachArticleThumbnail(payload.article_id, { allowRefetch: true });
     return;
   }
   if (isXArticleUrl(url)) {
     const hydrated = await hydrateArticleRowFromTweet(payload.article_id);
     if (hydrated) {
       logger.info({ articleId: payload.article_id }, "x article from api");
+      await attachArticleThumbnail(payload.article_id, { allowRefetch: true });
       return;
     }
   }
   if (row.fetch_scope === "full" || row.fetch_scope === "partial") {
+    await attachArticleThumbnail(payload.article_id, { allowRefetch: true });
     return;
   }
   if (isXStatusUrl(url)) {
@@ -80,6 +84,7 @@ export async function articleFetch(payload?: {
     { articleId: payload.article_id, scope: result.scope },
     "article_fetch done",
   );
+  await attachArticleThumbnail(payload.article_id, { allowRefetch: false });
 }
 
 async function saveResult(

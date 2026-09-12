@@ -1,4 +1,5 @@
 import { getClient } from "@/db/client";
+import { isArticleThumbMediaKey } from "@/lib/article-thumb";
 import { logger } from "@/lib/logger";
 import {
   downloadUrlFor,
@@ -26,6 +27,11 @@ export async function refreshMediaFromTweet(input: {
   const media = row.rows[0];
   if (!media) {
     return false;
+  }
+  if (
+    isArticleThumbMediaKey(media.media_key ? String(media.media_key) : null)
+  ) {
+    return Boolean(media.media_url);
   }
   const type = String(media.type);
   const variantsJson = media.variants_json ? String(media.variants_json) : null;

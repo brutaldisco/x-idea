@@ -1,5 +1,6 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
+import { MEDIA_PHOTO_FIRST_SQL } from "@/lib/article-thumb";
 import {
   decodeSourceCursor,
   encodeSourceCursor,
@@ -54,21 +55,21 @@ export type SourceListItem = {
 
 export const LIST_MEDIA_SQL = `(SELECT m.id FROM media_assets m
                   WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS media_id,
+                  ORDER BY ${MEDIA_PHOTO_FIRST_SQL} LIMIT 1) AS media_id,
                  (SELECT m.type FROM media_assets m
                   WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS media_type,
+                  ORDER BY ${MEDIA_PHOTO_FIRST_SQL} LIMIT 1) AS media_type,
                  (SELECT m.duration_ms FROM media_assets m
                   WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS duration_ms,
+                  ORDER BY ${MEDIA_PHOTO_FIRST_SQL} LIMIT 1) AS duration_ms,
                  (SELECT vd.status FROM media_assets m
                   JOIN video_downloads vd ON vd.media_id = m.id
                   WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS video_save_status,
+                  ORDER BY ${MEDIA_PHOTO_FIRST_SQL} LIMIT 1) AS video_save_status,
                  (SELECT vd.rel_path FROM media_assets m
                   JOIN video_downloads vd ON vd.media_id = m.id
                   WHERE m.x_post_id = p.id
-                  ORDER BY m.created_at ASC LIMIT 1) AS video_rel_path,
+                  ORDER BY ${MEDIA_PHOTO_FIRST_SQL} LIMIT 1) AS video_rel_path,
                  (SELECT 1 FROM media_assets m
                   LEFT JOIN video_downloads vd ON vd.media_id = m.id
                   WHERE m.x_post_id = p.id

@@ -16,6 +16,7 @@ import {
   applyBookmarkPageErrors,
   ingestBookmark,
 } from "@/server/ingest/bookmark";
+import { backfillArticleThumbs } from "@/server/media/article-thumb";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { getSyncSettings } from "@/server/settings";
 import { runGoneSweepAndRecord } from "@/server/sources/gone-sweep";
@@ -167,6 +168,7 @@ async function syncOneAccount(
 
     await enqueuePendingMediaDownloads(account.id);
     await enqueuePendingArticleFetches(8);
+    await backfillArticleThumbs({ accountId: account.id, limit: 8 });
     await markXAccountSynced(account.id, newHead);
     await writeRun({
       runId,
@@ -326,6 +328,7 @@ async function syncOneAccountBackfill(
 
     await enqueuePendingMediaDownloads(account.id);
     await enqueuePendingArticleFetches(8);
+    await backfillArticleThumbs({ accountId: account.id, limit: 8 });
     await writeRun({
       runId,
       accountId: account.id,

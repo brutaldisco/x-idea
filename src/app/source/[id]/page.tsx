@@ -20,6 +20,10 @@ import { ensureSourceArticles } from "@/server/fetch/attach";
 import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
 import { hydrateXArticleFromApi } from "@/server/fetch/x-article";
 import { runJobs } from "@/server/jobs/runner";
+import {
+  attachArticleThumbsForSource,
+  backfillArticleThumbs,
+} from "@/server/media/article-thumb";
 import { enqueuePendingMediaDownloads } from "@/server/media/enqueue-pending";
 import { persistLocalMedia } from "@/server/media/persist";
 import { getContextSettings } from "@/server/settings";
@@ -52,6 +56,7 @@ export default async function SourcePage({
   const ctx = await getAccountContext();
   await ensureSourceArticles(id);
   await hydrateXArticleFromApi(id);
+  await attachArticleThumbsForSource(id, { allowRefetch: true });
   const [source, flags] = await Promise.all([
     getSourceDetail(id, ctx),
     getContextSettings(),
@@ -75,6 +80,12 @@ export default async function SourcePage({
             ...source.thread.flatMap((post) => post.media),
           ],
         });
+        await backfillArticleThumbs({
+          accountId: source.xAccountId,
+          limit: 8,
+        });
+      } else {
+        await backfillArticleThumbs({ limit: 8 });
       }
       await runJobs({ max: 6 });
     })();

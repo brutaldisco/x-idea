@@ -15,6 +15,7 @@ const OG_ONLY = `<!doctype html><html><head>
 <title>Card</title>
 <meta property="og:title" content="Card">
 <meta property="og:description" content="概要だけ">
+<meta property="og:image" content="https://cdn.example/hero.jpg">
 </head><body></body></html>`;
 
 const NOARCHIVE = `<!doctype html><html><head>
@@ -171,6 +172,7 @@ describe("fetchArticlePage scopes (10 URLs)", () => {
     });
     expect(result.scope).toBe("metadata_only");
     expect(result.title).toBeTruthy();
+    expect(result.thumbnailUrl).toBe("https://cdn.example/hero.jpg");
   });
 
   it("10 403 → metadata_only", async () => {

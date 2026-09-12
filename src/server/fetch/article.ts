@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import robotsParser from "robots-parser";
 import sanitizeHtml from "sanitize-html";
+import { absoluteHttpUrl, firstContentImage } from "@/lib/article-thumb";
 import {
   type ArticleScope,
   classifyArticleScope,
@@ -58,17 +59,35 @@ function robotsMetaBlocks(document: Document): boolean {
   return content.includes("noarchive") || content.includes("none");
 }
 
+function jsonLdImage(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return jsonLdImage(value[0]);
+  }
+  if (value && typeof value === "object") {
+    const url = (value as { url?: unknown }).url;
+    if (typeof url === "string") {
+      return url;
+    }
+  }
+  return null;
+}
+
 function jsonLdMeta(document: Document): {
   title: string | null;
   author: string | null;
   publishedAt: string | null;
   description: string | null;
+  image: string | null;
 } {
   const out = {
     title: null as string | null,
     author: null as string | null,
     publishedAt: null as string | null,
     description: null as string | null,
+    image: null as string | null,
   };
   for (const node of document.querySelectorAll(
     'script[type="application/ld+json"]',
@@ -92,6 +111,9 @@ function jsonLdMeta(document: Document): {
         }
         if (typeof row.description === "string" && !out.description) {
           out.description = row.description;
+        }
+        if (!out.image) {
+          out.image = jsonLdImage(row.image);
         }
         const author = row.author;
         if (!out.author && author && typeof author === "object") {
@@ -267,7 +289,10 @@ export async function fetchArticlePage(input: {
   const author = metaContent(doc, "author") ?? ld.author;
   const publishedAt =
     metaContent(doc, "article:published_time") ?? ld.publishedAt;
-  const thumbnailUrl = metaContent(doc, "og:image");
+  const thumbnailUrl =
+    absoluteHttpUrl(metaContent(doc, "og:image"), finalUrl) ??
+    absoluteHttpUrl(metaContent(doc, "twitter:image"), finalUrl) ??
+    absoluteHttpUrl(ld.image, finalUrl);
   const blocked =
     robotsMetaBlocks(doc) ||
     looksLikePaywall(
@@ -295,6 +320,8 @@ export async function fetchArticlePage(input: {
     contentText = "";
   }
 
+  const heroUrl = thumbnailUrl ?? firstContentImage(contentHtml, finalUrl);
+
   if (blocked) {
     return {
       scope: "metadata_only",
@@ -304,7 +331,7 @@ export async function fetchArticlePage(input: {
       author,
       publishedAt,
       description,
-      thumbnailUrl,
+      thumbnailUrl: thumbnailUrl,
       contentHtml: null,
       contentText: null,
       contentLinks: [],
@@ -341,7 +368,7 @@ export async function fetchArticlePage(input: {
     author,
     publishedAt,
     description,
-    thumbnailUrl,
+    thumbnailUrl: heroUrl,
     contentHtml: scope === "metadata_only" ? null : contentHtml,
     contentText:
       scope === "metadata_only" ? null : contentText.slice(0, 100_000),
