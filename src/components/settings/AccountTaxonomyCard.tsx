@@ -341,8 +341,8 @@ export function AccountTaxonomyCard({
       <div className="mt-6 border-line border-t pt-4">
         <p className="text-sm">記事のタグバッジを外す</p>
         <p className="mt-1 text-ink-2 text-xs leading-relaxed">
-          上のカテゴリ／情報タイプの一覧は消えません。消えるのは Library
-          や Reader
+          上のカテゴリ／情報タイプの一覧は消えません。消えるのは Library や
+          Reader
           の各カードに付いている色つきタグバッジ（記事ごとの割り当て）だけです。あとから記事ごとに付け直せます。
         </p>
         <div className="mt-2">

@@ -3,13 +3,13 @@ import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
 import {
   addTaxonomyItem,
+  clearSourceTaxonomyBadges,
   getAccountTaxonomy,
   isTaxonomyItemId,
   isTaxonomyKind,
   removeTaxonomyItem,
   renameTaxonomyItem,
   reorderTaxonomyItems,
-  clearSourceTaxonomyBadges,
   setTaxonomyItemColor,
   type TaxonomyKind,
 } from "@/server/taxonomy";

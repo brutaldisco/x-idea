@@ -210,12 +210,7 @@ export async function ingestBookmark(input: {
       availability, triage_status, read_status, language, created_at, updated_at
     ) VALUES (?, 'x_bookmark', 'x_post', ?, ?, datetime('now'), datetime('now'),
       'available', 'pending', 'unread', ?, datetime('now'), datetime('now'))`,
-    args: [
-      sourceId,
-      input.accountId,
-      postId,
-      input.tweet.lang ?? null,
-    ],
+    args: [sourceId, input.accountId, postId, input.tweet.lang ?? null],
   });
 
   await attachArticleLinks(sourceId, tweetUrlEntries(input.tweet.entities));

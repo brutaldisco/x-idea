@@ -16,8 +16,7 @@ export function VideoThumbMarks({
     return null;
   }
   const copy = videoBadgeCopy(saveStatus);
-  const label =
-    durationMs != null ? formatDuration(durationMs).label : null;
+  const label = durationMs != null ? formatDuration(durationMs).label : null;
   const bullet =
     copy.tone === "saved"
       ? "bg-ok"
@@ -29,14 +28,11 @@ export function VideoThumbMarks({
   }
   return (
     <span
+      title={bullet ? copy.title : undefined}
       className={`absolute flex items-center gap-1 rounded bg-ink/80 px-1 text-[10px] text-paper ${className}`}
     >
       {bullet ? (
-        <span
-          title={copy.title}
-          aria-label={copy.label}
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${bullet}`}
-        />
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bullet}`} />
       ) : null}
       {label ? <span className="tabular-nums">{label}</span> : null}
     </span>

@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import {
   loadRepeatMode,
   saveRepeatMode,
@@ -30,7 +31,6 @@ import {
   openVideoObjectUrl,
   suggestedRelPath,
 } from "@/lib/video-store";
-import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import { formatDuration, formatVideoQueueMeta } from "@/server/media/select";
 import type {
   VideoFolder,
@@ -148,7 +148,9 @@ export function VideosWorkspace({
       ? queued.filter((item) => ids.includes(item.id))
       : queued;
     if (chosen.length === 0) {
-      setMessage(ids?.length ? "選んだ動画はキューにありません" : "キューは空です");
+      setMessage(
+        ids?.length ? "選んだ動画はキューにありません" : "キューは空です",
+      );
       return;
     }
     setBusy(true);
@@ -633,7 +635,9 @@ export function VideosWorkspace({
                         ) : null}
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           {fileMeta ? (
-                            <span className="text-ink-2 text-xs">{fileMeta}</span>
+                            <span className="text-ink-2 text-xs">
+                              {fileMeta}
+                            </span>
                           ) : null}
                           {item.status === "failed" ? (
                             <button

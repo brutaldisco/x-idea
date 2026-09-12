@@ -14,11 +14,7 @@ function parseLimit(value: string, min: number, max: number): number | null {
   return rounded;
 }
 
-export function SyncLimitsForm({
-  syncMaxPerRun,
-}: {
-  syncMaxPerRun: number;
-}) {
+export function SyncLimitsForm({ syncMaxPerRun }: { syncMaxPerRun: number }) {
   const [sync, setSync] = useState(String(syncMaxPerRun));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
