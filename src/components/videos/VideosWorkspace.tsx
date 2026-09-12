@@ -12,6 +12,7 @@ import {
 } from "@/components/videos/VideoPlayer";
 import { formatBytes } from "@/lib/bytes";
 import { initialVideoDownloadPlan } from "@/lib/video-download-plan";
+import { isIncompleteVideoFile } from "@/lib/video-files";
 import { useVideoSaveFolder } from "@/lib/video-folder";
 import {
   folderPlaylist,
@@ -28,13 +29,16 @@ import {
 import { isResumableVideoQueueStatus } from "@/lib/video-queue";
 import {
   clearProgress,
+  discardPartialVideoFiles,
   downloadVideoFile,
   ensureWritePermission,
+  getVideoFile,
+  hasWritePermission,
   loadVideoRoot,
   moveVideoFile,
-  openVideoObjectUrl,
   removeSavedVideoFiles,
   suggestedRelPath,
+  sweepLeftoverVideoFiles,
 } from "@/lib/video-store";
 import { formatDuration, formatVideoQueueMeta } from "@/server/media/select";
 import type {
@@ -123,6 +127,7 @@ export function VideosWorkspace({
   const [repeat, setRepeat] = useState<RepeatMode>("folder");
   const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef<Set<string>>(new Set());
+  const sweptRef = useRef(false);
   const [offlineHint, setOfflineHint] = useState(false);
   const [queueOpen, setQueueOpen] = useState(initialQueueOpen);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -137,6 +142,7 @@ export function VideosWorkspace({
   }, []);
 
   useEffect(() => {
+    sweptRef.current = false;
     setRoot(null);
     if (!accountId) {
       return;
@@ -147,6 +153,26 @@ export function VideosWorkspace({
       }
     });
   }, [accountId]);
+
+  useEffect(() => {
+    if (sweptRef.current || !accountId || !root || !linked) {
+      return;
+    }
+    void (async () => {
+      if (!(await hasWritePermission(root))) {
+        return;
+      }
+      sweptRef.current = true;
+      const { removed } = await sweepLeftoverVideoFiles({
+        accountId,
+        protectedRelPaths: data.protectedRelPaths ?? [],
+        root,
+      });
+      if (removed > 0) {
+        setMessage(`開けない途中ファイルを ${removed} 件削除しました`);
+      }
+    })();
+  }, [accountId, root, linked, data.protectedRelPaths]);
 
   useEffect(() => {
     const onOffline = () => {
@@ -190,6 +216,22 @@ export function VideosWorkspace({
       setData((await res.json()) as VideoLibraryPayload);
     }
     router.refresh();
+  }
+
+  function itemRelPath(item: VideoItem): string {
+    return item.relPath ?? suggestedRelPath(item);
+  }
+
+  async function discardItemFiles(
+    items: VideoItem[],
+    handle?: FileSystemDirectoryHandle | null,
+  ): Promise<{ removed: number; leftover: number }> {
+    return discardPartialVideoFiles({
+      downloadIds: items.map((item) => item.id),
+      accountId: accountId ?? items[0]?.accountId ?? null,
+      relPaths: items.map(itemRelPath),
+      root: handle ?? root,
+    });
   }
 
   async function startDownloads(ids?: string[]) {
@@ -329,6 +371,8 @@ export function VideosWorkspace({
             error: messageText,
           }),
         });
+        // 途中ファイルは開けないので捨て、再試行は最初から
+        await discardItemFiles([item], handle);
         setData((prev) => ({
           ...prev,
           queue: prev.queue.map((entry) =>
@@ -390,12 +434,47 @@ export function VideosWorkspace({
     abortRef.current?.abort();
   }
 
-  async function cancelItem(id: string) {
-    await fetch(`/api/videos/queue/${id}`, {
+  async function cancelItem(item: VideoItem) {
+    const handle = await resolveRoot();
+    await discardItemFiles([item], handle);
+    await fetch(`/api/videos/queue/${item.id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "cancel" }),
     });
+    await refresh();
+  }
+
+  async function cleanBrokenFiles() {
+    const handle = await resolveRoot();
+    if (!handle) {
+      setMessage("Settings で保存フォルダを選んでください");
+      return;
+    }
+    if (!(await ensureWritePermission(handle))) {
+      setMessage("フォルダへの書き込みを許可してください");
+      return;
+    }
+    const res = await fetch("/api/videos/queue", { cache: "no-store" });
+    const payload = res.ok ? ((await res.json()) as VideoLibraryPayload) : data;
+    const failed = payload.queue.filter((item) => item.status === "failed");
+    const discarded = await discardPartialVideoFiles({
+      downloadIds: failed.map((item) => item.id),
+      accountId: accountId ?? failed[0]?.accountId ?? null,
+      relPaths: failed.map(itemRelPath),
+      root: handle,
+    });
+    const { removed } = await sweepLeftoverVideoFiles({
+      accountId,
+      protectedRelPaths: payload.protectedRelPaths ?? [],
+      root: handle,
+    });
+    const total = discarded.removed + removed;
+    setMessage(
+      total > 0
+        ? `開けない途中ファイルを ${total} 件削除しました`
+        : "削除する途中ファイルはありません",
+    );
     await refresh();
   }
 
@@ -503,7 +582,29 @@ export function VideosWorkspace({
     }
     setRoot(handle);
     try {
-      const url = await openVideoObjectUrl(handle, item.relPath);
+      const file = await getVideoFile(handle, item.relPath);
+      if (isIncompleteVideoFile(file.size, item.bytes)) {
+        await discardPartialVideoFiles({
+          downloadIds: [item.id],
+          accountId: item.accountId,
+          relPaths: [item.relPath],
+          root: handle,
+        });
+        await fetch(`/api/videos/queue/${item.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "fail",
+            error: "ファイルが途中で止まっています",
+          }),
+        });
+        setMessage(
+          "途中で止まったファイルを削除しました。キューから再試行できます。",
+        );
+        await refresh();
+        return;
+      }
+      const url = URL.createObjectURL(file);
       setPlaying((current) => {
         if (current) {
           URL.revokeObjectURL(current.url);
@@ -511,7 +612,18 @@ export function VideosWorkspace({
         return { item, url };
       });
     } catch {
-      setMessage("ファイルが見つかりません。再ダウンロードできます。");
+      await fetch(`/api/videos/queue/${item.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "fail",
+          error: "ファイルが見つかりません",
+        }),
+      }).catch(() => undefined);
+      setMessage(
+        "ファイルが見つかりません。途中ファイルは削除済みです。キューから再試行できます。",
+      );
+      await refresh();
     }
   }
 
@@ -676,7 +788,16 @@ export function VideosWorkspace({
                   >
                     停止
                   </button>
-                ) : null}
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!supported || !linked}
+                    onClick={() => void cleanBrokenFiles()}
+                    className="rounded-full border border-line px-3 py-1.5 text-ink-2 text-sm hover:bg-paper disabled:opacity-40"
+                  >
+                    途中ファイルを削除
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={
@@ -884,7 +1005,7 @@ export function VideosWorkspace({
                               <button
                                 type="button"
                                 className="text-ink-2 text-xs hover:underline"
-                                onClick={() => void cancelItem(item.id)}
+                                onClick={() => void cancelItem(item)}
                               >
                                 取消
                               </button>

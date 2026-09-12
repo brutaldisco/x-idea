@@ -6,7 +6,15 @@ import {
   VIDEO_STALL_MS,
   type VideoDownloadPlan,
 } from "@/lib/video-download-plan";
-import { parseVideoRelPath, videoRelPath } from "@/lib/video-path";
+import {
+  isFinishedVideoDownload,
+  leftoverVideoRelPaths,
+} from "@/lib/video-files";
+import {
+  isSafeVideoRelPath,
+  parseVideoRelPath,
+  videoRelPath,
+} from "@/lib/video-path";
 
 const DB_NAME = "x-idea-videos";
 const DB_VERSION = 1;
@@ -550,6 +558,13 @@ export async function downloadVideoFile(input: {
     if (input.signal?.aborted) {
       throw abortError();
     }
+    if (!isFinishedVideoDownload(offset, total)) {
+      throw new Error(
+        total > 0
+          ? `ダウンロードが完了しませんでした（${offset}/${total}）`
+          : "ダウンロードが完了しませんでした",
+      );
+    }
     await persist();
     // 進捗の消去は呼び出し側が完了登録を確認してから行う
     // （先に消すと、登録だけ失敗したときに最初から取り直しになる）
@@ -587,13 +602,74 @@ export async function deleteVideoFile(
   await dir.removeEntry(fileName);
 }
 
+async function directoryEntries(
+  dir: FileSystemDirectoryHandle,
+): Promise<Array<[string, FileSystemHandle]>> {
+  const entries: Array<[string, FileSystemHandle]> = [];
+  const iterate = (
+    dir as FileSystemDirectoryHandle & {
+      entries?: () => AsyncIterableIterator<[string, FileSystemHandle]>;
+    }
+  ).entries;
+  if (!iterate) {
+    return entries;
+  }
+  for await (const entry of iterate.call(dir)) {
+    entries.push(entry);
+  }
+  return entries;
+}
+
+export async function listAccountVideoRelPaths(
+  root: FileSystemDirectoryHandle,
+  accountId: string,
+): Promise<string[]> {
+  let accountDir: FileSystemDirectoryHandle;
+  try {
+    accountDir = await root.getDirectoryHandle(accountId);
+  } catch {
+    return [];
+  }
+  const paths: string[] = [];
+  for (const [name, handle] of await directoryEntries(accountDir)) {
+    if (handle.kind === "file" && name.endsWith(".mp4")) {
+      const relPath = `${accountId}/${name}`;
+      if (isSafeVideoRelPath(relPath)) {
+        paths.push(relPath);
+      }
+      continue;
+    }
+    if (handle.kind !== "directory") {
+      continue;
+    }
+    const folder = handle as FileSystemDirectoryHandle;
+    for (const [fileName, file] of await directoryEntries(folder)) {
+      if (file.kind !== "file" || !fileName.endsWith(".mp4")) {
+        continue;
+      }
+      const relPath = `${accountId}/${name}/${fileName}`;
+      if (isSafeVideoRelPath(relPath)) {
+        paths.push(relPath);
+      }
+    }
+  }
+  return paths;
+}
+
+export async function getVideoFile(
+  root: FileSystemDirectoryHandle,
+  relPath: string,
+): Promise<File> {
+  const { dir, fileName } = await resolveRelDir(root, relPath, false);
+  const handle = await dir.getFileHandle(fileName);
+  return handle.getFile();
+}
+
 export async function openVideoObjectUrl(
   root: FileSystemDirectoryHandle,
   relPath: string,
 ): Promise<string> {
-  const { dir, fileName } = await resolveRelDir(root, relPath, false);
-  const handle = await dir.getFileHandle(fileName);
-  const file = await handle.getFile();
+  const file = await getVideoFile(root, relPath);
   return URL.createObjectURL(file);
 }
 
@@ -635,4 +711,36 @@ export async function removeSavedVideoFiles(input: {
     }
   }
   return { removed, leftover: unique.length - removed };
+}
+
+export async function discardPartialVideoFiles(input: {
+  downloadIds?: string[];
+  accountId: string | null;
+  relPaths: string[];
+  root?: FileSystemDirectoryHandle | null;
+}): Promise<{ removed: number; leftover: number }> {
+  for (const id of input.downloadIds ?? []) {
+    await clearProgress(id).catch(() => undefined);
+  }
+  return removeSavedVideoFiles(input);
+}
+
+export async function sweepLeftoverVideoFiles(input: {
+  accountId: string | null;
+  protectedRelPaths: string[];
+  root?: FileSystemDirectoryHandle | null;
+}): Promise<{ removed: number; leftover: number }> {
+  if (!input.accountId) {
+    return { removed: 0, leftover: 0 };
+  }
+  const handle = input.root ?? (await loadVideoRoot(input.accountId));
+  if (!handle) {
+    return { removed: 0, leftover: 0 };
+  }
+  const found = await listAccountVideoRelPaths(handle, input.accountId);
+  return discardPartialVideoFiles({
+    accountId: input.accountId,
+    relPaths: leftoverVideoRelPaths(found, input.protectedRelPaths),
+    root: handle,
+  });
 }

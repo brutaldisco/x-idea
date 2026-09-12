@@ -2,6 +2,7 @@ import { getClient } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { AppError } from "@/lib/errors";
 import { newId } from "@/lib/ids";
+import { collectSavedVideoRelPaths } from "@/lib/video-files";
 import {
   isSafeVideoRelPath,
   sanitizeFolderName,
@@ -60,6 +61,8 @@ export type VideoLibraryPayload = {
   folders: VideoFolder[];
   queue: VideoItem[];
   library: VideoItem[];
+  /** ready / queued / downloading のパス。途中ファイル掃除で残す */
+  protectedRelPaths: string[];
 };
 
 function asItem(row: Record<string, unknown>): VideoItem {
@@ -96,6 +99,32 @@ function asItem(row: Record<string, unknown>): VideoItem {
     estimatedBytes: meta.estimatedBytes,
     previewSrc: `/api/media/${row.media_id}?preview=1`,
   };
+}
+
+async function listProtectedVideoRelPaths(
+  accountId: string,
+): Promise<string[]> {
+  const result = await getClient().execute({
+    sql: `SELECT d.rel_path, d.x_account_id, f.name AS folder_name,
+                 p.tweet_id, m.media_key
+          FROM video_downloads d
+          JOIN media_assets m ON m.id = d.media_id
+          JOIN x_posts p ON p.id = m.x_post_id
+          LEFT JOIN video_folders f ON f.id = d.folder_id
+          WHERE d.x_account_id = ?
+            AND d.status IN ('ready', 'queued', 'downloading')
+          LIMIT 2000`,
+    args: [accountId],
+  });
+  return collectSavedVideoRelPaths(
+    result.rows.map((row) => ({
+      relPath: row.rel_path ? String(row.rel_path) : null,
+      accountId: row.x_account_id ? String(row.x_account_id) : null,
+      folderName: row.folder_name ? String(row.folder_name) : null,
+      tweetId: row.tweet_id ? String(row.tweet_id) : null,
+      mediaKey: row.media_key ? String(row.media_key) : null,
+    })),
+  ).videoRelPaths;
 }
 
 async function queuedCount(accountId: string): Promise<number> {
@@ -147,10 +176,11 @@ export async function listVideoLibrary(
       folders: [],
       queue: [],
       library: [],
+      protectedRelPaths: [],
     };
   }
   const client = getClient();
-  const [folders, rows, queued] = await Promise.all([
+  const [folders, rows, queued, protectedRelPaths] = await Promise.all([
     client.execute({
       sql: `SELECT id, name, x_account_id FROM video_folders
             WHERE x_account_id = ?
@@ -175,6 +205,7 @@ export async function listVideoLibrary(
       args: [accountId],
     }),
     queuedCount(accountId),
+    listProtectedVideoRelPaths(accountId),
   ]);
   const items = rows.rows.map((row) => asItem(row as Record<string, unknown>));
   return {
@@ -189,6 +220,7 @@ export async function listVideoLibrary(
       ["queued", "downloading", "failed"].includes(item.status),
     ),
     library: items.filter((item) => item.status === "ready"),
+    protectedRelPaths,
   };
 }
 
