@@ -5,6 +5,7 @@ import {
   getVideoSaveFolderName,
   setVideoSaveFolderName,
 } from "@/server/settings";
+import { contextAccountId, getAccountContext } from "@/server/x/context";
 
 export const instant = false;
 
@@ -16,9 +17,11 @@ export async function GET(request: Request) {
       { status: 403 },
     );
   }
+  const accountId = contextAccountId(await getAccountContext());
   return Response.json({
     ok: true,
-    folderName: await getVideoSaveFolderName(),
+    accountId,
+    folderName: accountId ? await getVideoSaveFolderName(accountId) : null,
   });
 }
 
@@ -31,6 +34,13 @@ export async function POST(request: Request) {
     );
   }
   try {
+    const accountId = contextAccountId(await getAccountContext());
+    if (!accountId) {
+      return Response.json(
+        toErrorBody(new AppError("VALIDATION", "アカウントを選んでください")),
+        { status: 400 },
+      );
+    }
     const body = (await request.json().catch(() => ({}))) as { name?: string };
     if (typeof body.name !== "string" || !body.name.trim()) {
       return Response.json(
@@ -38,8 +48,12 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    await setVideoSaveFolderName(body.name);
-    return Response.json({ ok: true, folderName: body.name.trim() });
+    await setVideoSaveFolderName(accountId, body.name);
+    return Response.json({
+      ok: true,
+      accountId,
+      folderName: body.name.trim(),
+    });
   } catch (error) {
     return Response.json(toErrorBody(error), { status: 500 });
   }

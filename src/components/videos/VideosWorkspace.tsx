@@ -11,6 +11,7 @@ import {
   VideoPlayer,
 } from "@/components/videos/VideoPlayer";
 import { formatBytes } from "@/lib/bytes";
+import { initialVideoDownloadPlan } from "@/lib/video-download-plan";
 import { useVideoSaveFolder } from "@/lib/video-folder";
 import {
   folderPlaylist,
@@ -19,6 +20,8 @@ import {
   stepPlaylist,
 } from "@/lib/video-playlist";
 import {
+  videoDownloadBarPercent,
+  videoDownloadByteLabel,
   videoDownloadPercent,
   videoQueueStatusLabel,
 } from "@/lib/video-progress";
@@ -48,17 +51,21 @@ function errorMessage(error: unknown): string {
 }
 
 export function VideosWorkspace({
+  accountId,
   initial,
   initialFolderName,
   initialQueueOpen = false,
 }: {
+  accountId: string | null;
   initial: VideoLibraryPayload;
   initialFolderName?: string | null;
   initialQueueOpen?: boolean;
 }) {
   const router = useRouter();
-  const { supported, linked, folderName } =
-    useVideoSaveFolder(initialFolderName);
+  const { supported, linked, folderName } = useVideoSaveFolder(
+    accountId,
+    initialFolderName,
+  );
   const [data, setData] = useState(initial);
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
   const [busy, setBusy] = useState(false);
@@ -87,12 +94,16 @@ export function VideosWorkspace({
   }, []);
 
   useEffect(() => {
-    void loadVideoRoot().then((handle) => {
+    setRoot(null);
+    if (!accountId) {
+      return;
+    }
+    void loadVideoRoot(accountId).then((handle) => {
       if (handle) {
         setRoot(handle);
       }
     });
-  }, []);
+  }, [accountId]);
 
   useEffect(() => {
     const onOffline = () => {
@@ -119,6 +130,17 @@ export function VideosWorkspace({
     };
   }, [playing]);
 
+  async function resolveRoot() {
+    if (!accountId) {
+      return null;
+    }
+    const handle = root ?? (await loadVideoRoot(accountId));
+    if (handle) {
+      setRoot(handle);
+    }
+    return handle;
+  }
+
   async function refresh() {
     const res = await fetch("/api/videos/queue", { cache: "no-store" });
     if (res.ok) {
@@ -128,7 +150,7 @@ export function VideosWorkspace({
   }
 
   async function startDownloads(ids?: string[]) {
-    const handle = root ?? (await loadVideoRoot());
+    const handle = await resolveRoot();
     if (!handle) {
       setMessage("Settings で保存フォルダを選んでください");
       return;
@@ -160,69 +182,108 @@ export function VideosWorkspace({
     abortRef.current = controller;
     const started = performance.now();
     let doneBytes = 0;
-    try {
-      for (const item of chosen) {
-        if (controller.signal.aborted) {
-          break;
+    let doneCount = 0;
+    let failCount = 0;
+    const maxEstimated = Math.max(
+      0,
+      ...chosen.map((item) => item.estimatedBytes ?? 0),
+    );
+    const parallel = initialVideoDownloadPlan(
+      maxEstimated > 0 ? maxEstimated : null,
+    ).parallel;
+    let cursor = 0;
+
+    const runItem = async (item: (typeof chosen)[number]) => {
+      const relPath = suggestedRelPath(item);
+      await fetch(`/api/videos/queue/${item.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start" }),
+      });
+      setData((prev) => ({
+        ...prev,
+        queue: prev.queue.map((entry) =>
+          entry.id === item.id ? { ...entry, status: "downloading" } : entry,
+        ),
+      }));
+      setProgress((prev) => ({
+        ...prev,
+        [item.id]: { received: 0, total: 0 },
+      }));
+      try {
+        const result = await downloadVideoFile({
+          downloadId: item.id,
+          mediaId: item.mediaId,
+          relPath,
+          root: handle,
+          estimatedBytes: item.estimatedBytes,
+          signal: controller.signal,
+          onProgress: (received, total) => {
+            setProgress((prev) => ({
+              ...prev,
+              [item.id]: { received, total },
+            }));
+          },
+        });
+        doneBytes += result.bytes;
+        doneCount += 1;
+        await fetch(`/api/videos/queue/${item.id}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rel_path: result.relPath,
+            bytes: result.bytes,
+          }),
+        });
+      } catch (error) {
+        if ((error as { name?: string }).name === "AbortError") {
+          return;
         }
-        const relPath = suggestedRelPath(item);
+        failCount += 1;
         await fetch(`/api/videos/queue/${item.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "start" }),
+          body: JSON.stringify({
+            action: "fail",
+            error: errorMessage(error),
+          }),
         });
-        setData((prev) => ({
-          ...prev,
-          queue: prev.queue.map((entry) =>
-            entry.id === item.id ? { ...entry, status: "downloading" } : entry,
-          ),
-        }));
-        setProgress((prev) => ({
-          ...prev,
-          [item.id]: { received: 0, total: 0 },
-        }));
-        try {
-          const result = await downloadVideoFile({
-            downloadId: item.id,
-            mediaId: item.mediaId,
-            relPath,
-            root: handle,
-            signal: controller.signal,
-            onProgress: (received, total) => {
-              setProgress((prev) => ({
-                ...prev,
-                [item.id]: { received, total },
-              }));
-            },
-          });
-          doneBytes += result.bytes;
-          await fetch(`/api/videos/queue/${item.id}/complete`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              rel_path: result.relPath,
-              bytes: result.bytes,
-            }),
-          });
-        } catch (error) {
-          if ((error as { name?: string }).name === "AbortError") {
-            break;
-          }
-          await fetch(`/api/videos/queue/${item.id}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "fail",
-              error: errorMessage(error),
-            }),
-          });
-        }
       }
+    };
+
+    const worker = async () => {
+      while (!controller.signal.aborted) {
+        const index = cursor;
+        cursor += 1;
+        const item = chosen[index];
+        if (!item) {
+          return;
+        }
+        await runItem(item);
+      }
+    };
+
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(parallel, chosen.length) }, () =>
+          worker(),
+        ),
+      );
       const elapsed = (performance.now() - started) / 1000;
+      const parts: string[] = [];
+      if (doneCount > 0) {
+        parts.push(`${doneCount} 件完了`);
+      }
+      if (failCount > 0) {
+        parts.push(`${failCount} 件失敗`);
+      }
       if (doneBytes > 0 && elapsed > 0) {
-        setMessage(
-          `完了。実測 ${(doneBytes / elapsed / 1024 / 1024).toFixed(1)} MB/s`,
+        parts.push(
+          `実測 ${(doneBytes / elapsed / 1024 / 1024).toFixed(1)} MB/s`,
         );
+      }
+      if (parts.length > 0) {
+        setMessage(parts.join("。"));
       }
       await refresh();
     } finally {
@@ -293,10 +354,7 @@ export function VideosWorkspace({
       ...item,
       folderName: destFolder,
     });
-    const handle = root ?? (await loadVideoRoot());
-    if (handle) {
-      setRoot(handle);
-    }
+    const handle = await resolveRoot();
     if (handle && item.relPath && item.status === "ready") {
       try {
         await moveVideoFile(handle, item.relPath, nextPath);
@@ -320,10 +378,7 @@ export function VideosWorkspace({
     ) {
       return;
     }
-    const handle = root ?? (await loadVideoRoot());
-    if (handle) {
-      setRoot(handle);
-    }
+    const handle = await resolveRoot();
     if (handle && item.relPath) {
       try {
         await deleteVideoFile(handle, item.relPath);
@@ -336,7 +391,7 @@ export function VideosWorkspace({
   }
 
   async function playItem(item: VideoItem) {
-    const handle = root ?? (await loadVideoRoot());
+    const handle = await resolveRoot();
     if (!handle || !item.relPath) {
       setMessage("Settings で保存フォルダにリンクしてから再生してください");
       return;
@@ -463,7 +518,7 @@ export function VideosWorkspace({
         <Link href="/settings" className="text-accent hover:underline">
           Settings
         </Link>{" "}
-        で選びます。
+        で、表示中のアカウントごとに選びます。
       </p>
 
       <div className="mt-4 space-y-4">
@@ -557,9 +612,18 @@ export function VideosWorkspace({
               <ul className="mt-3 space-y-2">
                 {data.queue.map((item) => {
                   const prog = progress[item.id];
-                  const pct = videoDownloadPercent(
-                    prog?.received ?? 0,
-                    prog?.total ?? 0,
+                  const received = prog?.received ?? 0;
+                  const total = prog?.total ?? 0;
+                  const pct = videoDownloadPercent(received, total);
+                  const barPct = videoDownloadBarPercent(
+                    received,
+                    total,
+                    item.estimatedBytes,
+                  );
+                  const byteLabel = videoDownloadByteLabel(
+                    received,
+                    total,
+                    item.estimatedBytes,
                   );
                   const downloading =
                     Boolean(prog) || item.status === "downloading";
@@ -615,16 +679,33 @@ export function VideosWorkspace({
                           {item.excerpt || item.tweetId}
                         </p>
                         <p className="text-ink-2 text-xs">{statusLabel}</p>
-                        {downloading || pct != null ? (
-                          <div className="mt-1 flex items-center gap-2">
-                            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-paper-2">
-                              <div
-                                className="h-full bg-accent transition-[width]"
-                                style={{ width: `${pct ?? 0}%` }}
-                              />
+                        {downloading ? (
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <div
+                              className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-line"
+                              role="progressbar"
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={barPct ?? undefined}
+                              aria-label={
+                                byteLabel ??
+                                (pct != null
+                                  ? `ダウンロード ${pct}%`
+                                  : "ダウンロード中")
+                              }
+                            >
+                              {barPct != null ? (
+                                <div
+                                  className="h-full bg-accent transition-[width] duration-150"
+                                  style={{ width: `${barPct}%` }}
+                                />
+                              ) : (
+                                <div className="h-full w-1/3 bg-accent motion-safe:animate-pulse" />
+                              )}
                             </div>
-                            <span className="tabular-nums text-ink-2 text-xs">
-                              {pct != null ? `${pct}%` : "…"}
+                            <span className="shrink-0 tabular-nums text-ink-2 text-xs">
+                              {byteLabel ??
+                                (pct != null ? `${pct}%` : "準備中")}
                             </span>
                           </div>
                         ) : null}

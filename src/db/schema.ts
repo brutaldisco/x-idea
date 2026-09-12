@@ -68,6 +68,7 @@ export const xAccount = sqliteTable("x_account", {
   backfillPaginationToken: text("backfill_pagination_token"),
   backfillExhausted: integer("backfill_exhausted").notNull().default(0),
   goneSweepCursor: text("gone_sweep_cursor"),
+  videoSaveFolderName: text("video_save_folder_name"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

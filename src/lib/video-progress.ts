@@ -1,3 +1,5 @@
+import { formatBytes } from "@/lib/bytes";
+
 export function videoDownloadPercent(
   received: number,
   total: number,
@@ -6,6 +8,46 @@ export function videoDownloadPercent(
     return null;
   }
   return Math.min(100, Math.round((received / total) * 100));
+}
+
+export function videoDownloadBarPercent(
+  received: number,
+  total: number,
+  estimatedBytes?: number | null,
+): number | null {
+  const known = videoDownloadPercent(received, total);
+  if (known != null) {
+    return known;
+  }
+  if (!(estimatedBytes && estimatedBytes > 0) || !(received >= 0)) {
+    return null;
+  }
+  if (received === 0) {
+    return 0;
+  }
+  return Math.min(99, Math.round((received / estimatedBytes) * 100));
+}
+
+export function videoDownloadByteLabel(
+  received: number,
+  total: number,
+  estimatedBytes?: number | null,
+): string | null {
+  if (
+    !(received > 0) &&
+    !(total > 0) &&
+    !(estimatedBytes && estimatedBytes > 0)
+  ) {
+    return null;
+  }
+  const left = formatBytes(Math.max(0, received));
+  if (total > 0) {
+    return `${left} / ${formatBytes(total)}`;
+  }
+  if (estimatedBytes && estimatedBytes > 0) {
+    return `${left} / 約 ${formatBytes(estimatedBytes)}`;
+  }
+  return received > 0 ? left : null;
 }
 
 export function videoQueueStatusLabel(

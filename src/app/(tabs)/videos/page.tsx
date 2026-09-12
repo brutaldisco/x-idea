@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { VideosWorkspace } from "@/components/videos/VideosWorkspace";
 import { getVideoSaveFolderName } from "@/server/settings";
 import { listVideoLibrary } from "@/server/videos/queue";
-import { getAccountContext } from "@/server/x/context";
+import { contextAccountId, getAccountContext } from "@/server/x/context";
 
 export const instant = false;
 
@@ -15,12 +15,15 @@ async function VideosBody({
   await connection();
   const params = await searchParams;
   const ctx = await getAccountContext();
+  const accountId = contextAccountId(ctx);
   const [data, videoFolderName] = await Promise.all([
     listVideoLibrary(ctx),
-    getVideoSaveFolderName(),
+    accountId ? getVideoSaveFolderName(accountId) : Promise.resolve(null),
   ]);
   return (
     <VideosWorkspace
+      key={accountId ?? "none"}
+      accountId={accountId}
       initial={data}
       initialFolderName={videoFolderName}
       initialQueueOpen={params.queue === "1"}

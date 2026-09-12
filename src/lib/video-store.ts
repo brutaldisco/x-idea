@@ -1,12 +1,26 @@
+import {
+  initialVideoDownloadPlan,
+  tuneVideoDownloadPlan,
+  VIDEO_CHUNK_MAX,
+  VIDEO_CHUNK_MIN,
+  type VideoDownloadPlan,
+} from "@/lib/video-download-plan";
 import { parseVideoRelPath, videoRelPath } from "@/lib/video-path";
 
 const DB_NAME = "x-idea-videos";
 const DB_VERSION = 1;
-const HANDLE_KEY = "root";
-const START_CHUNK = 8 * 1024 * 1024;
-const MIN_CHUNK = 1024 * 1024;
+const LEGACY_HANDLE_KEY = "root";
 
-let memoryRoot: FileSystemDirectoryHandle | null = null;
+const memoryRoots = new Map<string, FileSystemDirectoryHandle>();
+
+export function videoRootHandleKey(accountId: string): string {
+  return `root:${accountId}`;
+}
+
+function directoryPickerId(accountId: string): string {
+  const safe = accountId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24);
+  return safe ? `xidea-${safe}` : "x-idea-videos";
+}
 
 export function supportsDirectoryPicker(): boolean {
   return (
@@ -64,13 +78,15 @@ async function idbDel(key: string): Promise<void> {
   });
 }
 
-async function openDirectoryPicker(): Promise<FileSystemDirectoryHandle> {
+async function openDirectoryPicker(
+  accountId: string,
+): Promise<FileSystemDirectoryHandle> {
   if (!window.showDirectoryPicker) {
     throw new Error("unsupported");
   }
   try {
     return await window.showDirectoryPicker({
-      id: "x-idea-videos",
+      id: directoryPickerId(accountId),
       mode: "readwrite",
       startIn: "videos",
     });
@@ -83,37 +99,61 @@ async function openDirectoryPicker(): Promise<FileSystemDirectoryHandle> {
 }
 
 export async function persistVideoRoot(
+  accountId: string,
   handle: FileSystemDirectoryHandle,
 ): Promise<boolean> {
   try {
-    await idbSet(HANDLE_KEY, handle);
+    await idbSet(videoRootHandleKey(accountId), handle);
     return true;
   } catch {
     return false;
   }
 }
 
-export async function pickVideoRoot(): Promise<{
+export async function pickVideoRoot(accountId: string): Promise<{
   handle: FileSystemDirectoryHandle;
   persisted: boolean;
 }> {
-  const handle = await openDirectoryPicker();
-  memoryRoot = handle;
-  const persisted = await persistVideoRoot(handle);
+  const handle = await openDirectoryPicker(accountId);
+  memoryRoots.set(accountId, handle);
+  const persisted = await persistVideoRoot(accountId, handle);
   return { handle, persisted };
 }
 
-export function peekVideoRoot(): FileSystemDirectoryHandle | null {
-  return memoryRoot;
+export function peekVideoRoot(
+  accountId: string | null,
+): FileSystemDirectoryHandle | null {
+  if (!accountId) {
+    return null;
+  }
+  return memoryRoots.get(accountId) ?? null;
 }
 
-export async function loadVideoRoot(): Promise<FileSystemDirectoryHandle | null> {
-  if (memoryRoot) {
-    return memoryRoot;
+export async function loadVideoRoot(
+  accountId: string | null,
+): Promise<FileSystemDirectoryHandle | null> {
+  if (!accountId) {
+    return null;
+  }
+  const cached = memoryRoots.get(accountId);
+  if (cached) {
+    return cached;
   }
   try {
-    memoryRoot = (await idbGet<FileSystemDirectoryHandle>(HANDLE_KEY)) ?? null;
-    return memoryRoot;
+    const owned =
+      (await idbGet<FileSystemDirectoryHandle>(
+        videoRootHandleKey(accountId),
+      )) ?? null;
+    if (owned) {
+      memoryRoots.set(accountId, owned);
+      return owned;
+    }
+    const legacy =
+      (await idbGet<FileSystemDirectoryHandle>(LEGACY_HANDLE_KEY)) ?? null;
+    if (legacy) {
+      memoryRoots.set(accountId, legacy);
+    }
+    return legacy;
   } catch {
     return null;
   }
@@ -194,6 +234,9 @@ export async function clearProgress(downloadId: string): Promise<void> {
   await idbDel(progressKey(downloadId));
 }
 
+const PROGRESS_EMIT_MS = 80;
+const PROGRESS_SAVE_EVERY = 1024 * 1024;
+
 function parseTotal(res: Response, fallback: number): number {
   const range = res.headers.get("content-range");
   const match = range?.match(/\/(\d+)\s*$/);
@@ -207,11 +250,189 @@ function parseTotal(res: Response, fallback: number): number {
   return fallback;
 }
 
+function nowMs(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+async function writeResponseStream(
+  res: Response,
+  writable: FileSystemWritableFileStream,
+  onBytes: (byteLength: number) => void | Promise<void>,
+): Promise<number> {
+  if (!res.body) {
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength > 0) {
+      await writable.write(bytes);
+      await onBytes(bytes.byteLength);
+    }
+    return bytes.byteLength;
+  }
+  const reader = res.body.getReader();
+  let written = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (!value?.byteLength) {
+        continue;
+      }
+      await writable.write(value);
+      written += value.byteLength;
+      await onBytes(value.byteLength);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return written;
+}
+
+function abortError(): DOMException {
+  return new DOMException("Aborted", "AbortError");
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+async function fetchVideoChunk(input: {
+  mediaId: string;
+  start: number;
+  end: number;
+  signal?: AbortSignal;
+}): Promise<Response> {
+  const res = await fetch(`/api/media/${input.mediaId}/file`, {
+    cache: "no-store",
+    headers: { Range: `bytes=${input.start}-${input.end}` },
+    signal: input.signal,
+  });
+  if (res.status === 416) {
+    return res;
+  }
+  if (!res.ok && res.status !== 206) {
+    const error = new Error(`download failed (${res.status})`) as Error & {
+      retryable?: boolean;
+    };
+    error.retryable = isRetryableStatus(res.status);
+    throw error;
+  }
+  return res;
+}
+
+async function writeChunkToFile(
+  file: FileSystemFileHandle,
+  res: Response,
+  start: number,
+  onBytes: (n: number) => void | Promise<void>,
+): Promise<number> {
+  const writable = await file.createWritable({
+    keepExistingData: true,
+  });
+  try {
+    await writable.seek(start);
+    return await writeResponseStream(res, writable, onBytes);
+  } finally {
+    try {
+      await writable.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+async function downloadVideoChunk(input: {
+  mediaId: string;
+  file: FileSystemFileHandle;
+  start: number;
+  end: number;
+  plan: VideoDownloadPlan;
+  signal?: AbortSignal;
+  onBytes: (n: number) => void | Promise<void>;
+}): Promise<{ written: number; status: number; total: number }> {
+  let attempt = 0;
+  let chunk = Math.max(VIDEO_CHUNK_MIN, input.end - input.start + 1);
+  for (;;) {
+    if (input.signal?.aborted) {
+      throw abortError();
+    }
+    const end = input.start + chunk - 1;
+    const chunkStart = nowMs();
+    try {
+      const res = await fetchVideoChunk({
+        mediaId: input.mediaId,
+        start: input.start,
+        end,
+        signal: input.signal,
+      });
+      if (res.status === 416) {
+        return { written: 0, status: 416, total: parseTotal(res, 0) };
+      }
+      const written = await writeChunkToFile(
+        input.file,
+        res,
+        input.start,
+        input.onBytes,
+      );
+      const elapsed = (nowMs() - chunkStart) / 1000;
+      if (written > 0 && elapsed > 0) {
+        input.plan.chunkBytes = clamp(
+          tuneVideoDownloadPlan(
+            {
+              chunkBytes: input.plan.chunkBytes,
+              parallel: 1,
+              retries: input.plan.retries,
+            },
+            written / elapsed,
+          ).chunkBytes,
+          VIDEO_CHUNK_MIN,
+          VIDEO_CHUNK_MAX,
+        );
+      }
+      return { written, status: res.status, total: parseTotal(res, 0) };
+    } catch (error) {
+      if ((error as { name?: string }).name === "AbortError") {
+        throw error;
+      }
+      attempt += 1;
+      if (attempt > input.plan.retries) {
+        throw error;
+      }
+      chunk = Math.max(VIDEO_CHUNK_MIN, Math.floor(chunk / 2));
+      const delay = Math.min(10_000, 500 * 2 ** (attempt - 1));
+      await sleep(delay, input.signal);
+    }
+  }
+}
+
 export async function downloadVideoFile(input: {
   downloadId: string;
   mediaId: string;
   relPath: string;
   root: FileSystemDirectoryHandle;
+  estimatedBytes?: number | null;
   signal?: AbortSignal;
   onProgress?: (received: number, total: number) => void;
 }): Promise<{ bytes: number; relPath: string }> {
@@ -228,74 +449,83 @@ export async function downloadVideoFile(input: {
       offset = existing.size;
     }
   }
-  const writable = await file.createWritable({ keepExistingData: offset > 0 });
-  if (offset > 0) {
-    await writable.seek(offset);
-  }
 
-  let chunk = START_CHUNK;
-  let fails = 0;
+  const plan = initialVideoDownloadPlan(input.estimatedBytes);
   let total = 0;
+  let lastEmit = 0;
+  let lastSaved = offset;
+  const emit = (force = false) => {
+    if (!input.onProgress) {
+      return;
+    }
+    const now = nowMs();
+    if (!force && now - lastEmit < PROGRESS_EMIT_MS) {
+      return;
+    }
+    lastEmit = now;
+    input.onProgress(offset, total);
+  };
+  const onBytes = async (n: number) => {
+    offset += n;
+    emit();
+    if (offset - lastSaved >= PROGRESS_SAVE_EVERY) {
+      await saveProgress(input.downloadId, offset);
+      lastSaved = offset;
+    }
+  };
+  emit(true);
+
+  const persist = async () => {
+    await saveProgress(input.downloadId, offset);
+    lastSaved = offset;
+  };
+
   try {
     while (!input.signal?.aborted) {
-      const end = offset + chunk - 1;
-      let res: Response;
-      try {
-        res = await fetch(`/api/media/${input.mediaId}/file`, {
-          cache: "no-store",
-          headers: { Range: `bytes=${offset}-${end}` },
-          signal: input.signal,
-        });
-      } catch (error) {
-        fails += 1;
-        if (fails >= 3) {
-          throw error;
-        }
-        chunk = Math.max(MIN_CHUNK, Math.floor(chunk / 2));
-        continue;
-      }
-      if (res.status === 416) {
+      if (total > 0 && offset >= total) {
         break;
       }
-      if (!res.ok && res.status !== 206) {
-        fails += 1;
-        if (fails >= 3) {
-          throw new Error(`download failed (${res.status})`);
-        }
-        chunk = Math.max(MIN_CHUNK, Math.floor(chunk / 2));
-        continue;
-      }
-      fails = 0;
-      total = parseTotal(res, total);
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.byteLength === 0) {
+      const chunkSize = clamp(
+        plan.chunkBytes,
+        VIDEO_CHUNK_MIN,
+        VIDEO_CHUNK_MAX,
+      );
+      const end =
+        total > 0
+          ? Math.min(offset + chunkSize - 1, total - 1)
+          : offset + chunkSize - 1;
+      const result = await downloadVideoChunk({
+        mediaId: input.mediaId,
+        file,
+        start: offset,
+        end,
+        plan,
+        signal: input.signal,
+        onBytes,
+      });
+      if (result.status === 416) {
         break;
       }
-      await writable.write(bytes);
-      offset += bytes.byteLength;
-      await saveProgress(input.downloadId, offset);
-      input.onProgress?.(offset, total);
-      if (res.status === 200 || (total > 0 && offset >= total)) {
+      if (result.total > 0) {
+        total = result.total;
+      }
+      emit(true);
+      if (result.written === 0) {
         break;
       }
-      if (bytes.byteLength < chunk && res.status === 206) {
-        if (total > 0 && offset >= total) {
-          break;
-        }
+      await persist();
+      if (result.status === 200 || (total > 0 && offset >= total)) {
+        break;
       }
     }
     if (input.signal?.aborted) {
-      throw new DOMException("Aborted", "AbortError");
+      throw abortError();
     }
-    await writable.close();
+    await persist();
     await clearProgress(input.downloadId);
     return { bytes: offset, relPath: input.relPath };
   } catch (error) {
-    try {
-      await writable.close();
-    } catch {
-      // ignore
-    }
+    await persist().catch(() => {});
     throw error;
   }
 }

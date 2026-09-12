@@ -1,3 +1,4 @@
+import { parseVideoRelPath } from "@/lib/video-path";
 import {
   ensureWritePermission,
   loadVideoRoot,
@@ -14,7 +15,8 @@ export async function resolveSavedVideoUrl(input: {
   videoRelPath?: string | null;
 }): Promise<SavedVideoSource> {
   if (input.videoRelPath) {
-    const handle = await loadVideoRoot();
+    const accountId = parseVideoRelPath(input.videoRelPath)?.accountId ?? null;
+    const handle = await loadVideoRoot(accountId);
     if (handle && (await ensureWritePermission(handle))) {
       try {
         const url = await openVideoObjectUrl(handle, input.videoRelPath);

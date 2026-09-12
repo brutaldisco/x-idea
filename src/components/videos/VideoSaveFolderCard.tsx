@@ -4,14 +4,16 @@ import { useState } from "react";
 import { useVideoSaveFolder } from "@/lib/video-folder";
 
 export function VideoSaveFolderCard({
+  accountId,
   accountLabel,
   initialFolderName,
 }: {
+  accountId: string | null;
   accountLabel: string;
   initialFolderName?: string | null;
 }) {
   const { supported, folderName, linked, persistWarning, linkFolder } =
-    useVideoSaveFolder(initialFolderName);
+    useVideoSaveFolder(accountId, initialFolderName);
   const [message, setMessage] = useState<string | null>(null);
 
   async function onPick() {
@@ -26,7 +28,13 @@ export function VideoSaveFolderCard({
     }
   }
 
-  const badge = linked ? "リンク済" : folderName ? "要再リンク" : "未リンク";
+  const badge = !accountId
+    ? "未連携"
+    : linked
+      ? "リンク済"
+      : folderName
+        ? "要再リンク"
+        : "未リンク";
 
   return (
     <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
@@ -45,10 +53,10 @@ export function VideoSaveFolderCard({
           このブラウザではフォルダ保存に対応していません。Chrome / Edge
           で開いてください。通常ダウンロードは各動画の「ファイルを保存」からできます。
         </p>
-      ) : (
+      ) : accountId ? (
         <>
           <p className="mt-2 text-ink-2 text-sm">
-            フォルダ名は全環境で共有します。書き込み許可はブラウザごとなので、localhost
+            表示中のアカウントごとに保存フォルダを選べます。フォルダ名はこのアカウントで全環境共有します。書き込み許可はブラウザごとなので、localhost
             と本番、別ブラウザでは同じフォルダをもう一度選んでください。
           </p>
           <p className="mt-2 text-ink-2 text-xs">{accountLabel}</p>
@@ -67,6 +75,10 @@ export function VideoSaveFolderCard({
             </button>
           ) : null}
         </>
+      ) : (
+        <p className="mt-2 text-ink-2 text-sm">
+          アカウントを選んでから、このアカウント用の保存フォルダを選んでください。
+        </p>
       )}
       {persistWarning ? (
         <p className="mt-2 text-ink-2 text-xs">{persistWarning}</p>

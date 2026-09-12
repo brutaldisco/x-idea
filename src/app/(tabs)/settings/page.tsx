@@ -55,7 +55,6 @@ async function SettingsBody({
     blobUsage,
     videoUsage,
     ctx,
-    videoFolderName,
     defaultXAccountId,
   ] = await Promise.all([
     getHealth(),
@@ -67,10 +66,12 @@ async function SettingsBody({
     getMediaBlobUsage(),
     getVideoLibraryUsage(),
     getAccountContext(),
-    getVideoSaveFolderName(),
     getDefaultXAccountId(),
   ]);
   const current = ctx.kind === "account" ? ctx.account : null;
+  const videoFolderName = current
+    ? await getVideoSaveFolderName(current.id)
+    : null;
   const taxonomy = current ? await getAccountTaxonomy(current.id) : null;
   const canUnbookmark = current
     ? await accountHasBookmarkWrite(current.id)
@@ -191,6 +192,8 @@ async function SettingsBody({
       </section>
       <MediaUsageCard blobs={blobUsage} videos={videoUsage} />
       <VideoSaveFolderCard
+        key={current?.id ?? "none"}
+        accountId={current?.id ?? null}
         accountLabel={contextLabel(ctx)}
         initialFolderName={videoFolderName}
       />

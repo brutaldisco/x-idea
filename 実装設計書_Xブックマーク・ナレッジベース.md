@@ -416,7 +416,7 @@ UI/UX の判断に迷ったら以下に従う。
 - **AI**：自動確定しきい値（0.6〜0.95）、レーン設定（bulk/quality モデル ID、日次ソフトキャップ）、「深く考える」を許可、有料利用（既定 OFF、月額上限 USD）、AI 一時停止。
 - **通知**（P2）：Briefing 時刻、Inbox しきい値、テスト送信。
 - **連携**（P2）：MCP エンドポイント URL とトークン（再発行）、Quick Capture トークン、iOS ショートカット導入手順。
-- **メディア**：DB（Turso）内の画像・サムネイルの件数と合計サイズの目安メーター、動画ライブラリの件数・合計サイズ、Videos タブへの導線。動画の保存先フォルダ名は Settings に保存して全環境で共有する。書き込みハンドルはブラウザごと（localhost / 本番 / 別ブラウザは再リンク）。旧 `MEDIA_ROOT` は開発用途の注記のみ（ADR-007）。
+- **メディア**：DB（Turso）内の画像・サムネイルの件数と合計サイズの目安メーター、動画ライブラリの件数・合計サイズ、Videos タブへの導線。動画の保存先フォルダは表示中の X アカウントごとに選ぶ。フォルダ名は `x_account.video_save_folder_name` でそのアカウントの全環境で共有する。書き込みハンドルはブラウザごと（localhost / 本番 / 別ブラウザは再リンク）。旧 `MEDIA_ROOT` は開発用途の注記のみ（ADR-007 / ADR-020）。
 - **データ**：エクスポート（Markdown/JSON）、全削除（危険ゾーン）。
 - **表示**：テーマ（システム/ライト/ダーク）、文字サイズ、モーション低減。
 
@@ -436,8 +436,8 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 8.10 SC-15 Videos（v3.5、ADR-007）
 
-- **保存フォルダ**：Settings の「保存フォルダ」カードで選ぶ（File System Access API）。フォルダ名は `settings.video_save_folder_name` で全環境共有。書き込みハンドルはブラウザ／オリジンごとなので、localhost・本番・別ブラウザでは同じフォルダを再リンクする。Videos は未リンク／要再リンク時に Settings への案内だけ出す。Safari/Firefox は非対応案内＋通常ダウンロードにフォールバック。
-- **ダウンロードキュー**：`N / 15` 件表示＋「すべて開始」。チェックで対象を選び「選んだ N 件を開始」、各行の「この動画だけ」でも実行できる。各アイテムはサムネイル（右下に再生時間）・投稿抜粋・`@username`・状態（日本語。ダウンロード中はパーセント）・進捗バー・取消。取れるときはサイズと画質（`480p` など。最高 `bit_rate` の mp4。未保存は `bit_rate × 時間` の概算）を操作の左に出す。`failed` は理由と「再試行」。実行は逐次 1 件、8MB チャンク＋レジューム（14.6）。総サイズが分かるまでパーセントは出さない。
+- **保存フォルダ**：Settings の「保存フォルダ」カードで、表示中アカウントごとに選ぶ（File System Access API）。フォルダ名は `x_account.video_save_folder_name` でそのアカウントの全環境共有。書き込みハンドルはブラウザ／オリジンごとなので、localhost・本番・別ブラウザでは同じフォルダを再リンクする。Videos は未リンク／要再リンク時に Settings への案内だけ出す。Safari/Firefox は非対応案内＋通常ダウンロードにフォールバック。
+- **ダウンロードキュー**：`N / 15` 件表示＋「すべて開始」。チェックで対象を選び「選んだ N 件を開始」、各行の「この動画だけ」でも実行できる。各アイテムはサムネイル（右下に再生時間）・投稿抜粋・`@username`・状態（日本語。ダウンロード中はパーセント）・進捗バーと受信量（`4.6 MB / 38.7 MB`。総サイズが無い間は概算を「約」で分母にする）・取消。取れるときはサイズと画質（`480p` など。最高 `bit_rate` の mp4。未保存は `bit_rate × 時間` の概算）を操作の左に出す。`failed` は理由と「再試行」。実行は回線速度に合わせてチャンク 1〜32MB と同時本数 1〜4 を自動で変える（14.6）。総サイズが分かるまでパーセントは出さない。
 - **ライブラリ**：フォルダチップ（すべて／未分類／ユーザー作成フォルダ／＋新規フォルダ）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日・画質（取れるとき）・サイズ。操作は「フォルダ移動」「削除」「X で開く」「Source を開く」。
 - **プレーヤー**：カードタップで黒ベースの全画面モーダル（ライト／ダークどちらでも黒。テーマトークンは使わない）。`<video controls playsInline>` に object URL を渡す。全画面はプレーヤー枠に対して行い、終了や左右キーで次／前へ移っても維持する。左右キーはシークせず前後の動画へ。ネイティブの全画面ボタンは使わず、枠の全画面に寄せる。
 - 詳細は `docs/design/2026-09-05-video-library.md`。
@@ -759,7 +759,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 - **画像と動画サムネイルは WebP（quality 82）に変換して DB（Turso）の `media_blobs` に保存**する（19 章）。本番・ローカルで同一の挙動。配信は `GET /api/media/[id]`（blob 優先、未保存時は X CDN を自前プロキシ＋`after()` で blob 保存。302 しない）。`?preview=1` は動画サムネイル。
 - **動画本体は自動保存しない**。未保存の Reader 動画はサムネイル＋「X で見る」。残したい動画だけ「保存する」でキュー（`video_downloads`、**queued は最大 15 件**）に入れ、**Videos タブ（SC-15）から手動実行**する。保存済み（`ready`）は Library / Reader のサムネタップでローカルファイルを再生できる（1本リピートのみ）。
 - ダウンロードは **File System Access API**（Chrome/Edge）で、ユーザーが選んだルート配下に `{x_account_id}/{フォルダ}/{tweet_id}_{media_key}.mp4` として書く（ローカルサーバー不要）。分類フォルダは 1 階層のみ（作成・移動・削除可）。引っ越しはアカウントフォルダ単位のコピー＋ルート再リンク。
-- 画質は `variants` の **最大 `bit_rate` の mp4**（最高解像度。字幕の可読性対策）。低速回線対策は **8MB チャンクの Range 取得＋IndexedDB レジューム**（`GET /api/media/[id]/file`、`maxDuration = 300`：Vercel Hobby の 300 秒上限を考慮）。
+- 画質は `variants` の **最大 `bit_rate` の mp4**（最高解像度。字幕の可読性対策）。低速回線対策は **回線適応の 1〜32MB チャンクの Range 取得＋IndexedDB レジューム**（`GET /api/media/[id]/file`、`maxDuration = 300`：Vercel Hobby の 300 秒上限を考慮）。
 - 旧方式（`MEDIA_ROOT` ローカル保存と `pnpm dev` 保存役コンパニオン）は **開発用途に限定** し、Settings の案内と自動同期は出さない。既存のローカルファイルは `local_path` があれば従来どおり配信する（後方互換）。
 - 詳細は `docs/design/2026-09-05-video-library.md`。
 
@@ -1074,7 +1074,7 @@ CREATE TABLE settings (
   initial_import_state_json TEXT, -- {requested, fetched, enriched, embedded, done}
   onboarding_done INTEGER NOT NULL DEFAULT 0,
   x_usage_cache_json TEXT,                       -- X usage/credits の短時間キャッシュ
-  video_save_folder_name TEXT,                   -- 動画保存フォルダ名。ハンドルはブラウザごと
+  video_save_folder_name TEXT,                   -- 旧・互換。正本は x_account.video_save_folder_name（0015 / ADR-020）
   default_x_account_id TEXT,                     -- 既定の X アカウント。Cookie 未設定時。0010 / ADR-014
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -1100,6 +1100,7 @@ CREATE TABLE x_account (
   backfill_pagination_token TEXT,         -- 過去遡及の続き（ADR-017）
   backfill_exhausted INTEGER NOT NULL DEFAULT 0,
   gone_sweep_cursor TEXT,                 -- 保存済み削除確認の続き（ADR-018）
+  video_save_folder_name TEXT,            -- このアカウントの動画保存フォルダ名。ハンドルはブラウザごと（0015 / ADR-020）
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1669,7 +1670,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | POST | `/api/x/credits` | クレジット追加/残量合わせ/再取得 | 同一オリジン | P1 |
 | POST | `/api/sync` | 手動同期（60秒スロットル、最大 3 ジョブ消化） | 同一オリジン | P1 |
 | PATCH | `/api/settings` | `x_api_enabled` / 同期上限 / 既定アカウント（`default_x_account_id`）など。人間が切り替える | 同一オリジン | P1 |
-| GET/POST | `/api/settings/video-folder` | 動画保存フォルダ名の共有。ハンドルはブラウザごと | 同一オリジン | P1 |
+| GET/POST | `/api/settings/video-folder` | 表示中アカウントの動画保存フォルダ名。ハンドルはブラウザごと | 同一オリジン | P1 |
 | GET/POST/PATCH/DELETE | `/api/settings/taxonomy` | アカウント別カテゴリ／情報タイプ。PATCH は改名、`item_ids` 並べ替え、色、または `clear_source_badges`（記事の分類バッジだけ外す） | 同一オリジン | P1 |
 | POST | `/api/jobs/tick` | ワーカー入口 | `CRON_SECRET`（Cron）／同一オリジン（client, 60秒制限） | P1 |
 | GET | `/api/sources` | 一覧（フィルタ・`?page=1&limit=60`。互換で `cursor` も可） | 同一オリジン | P1 |
@@ -2070,7 +2071,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-607 | `media_blobs` 追加＋画像/サムネイルの DB 保存と配信（migration `0004`） | `drizzle/0004_*`, `src/server/media/download.ts`, `src/app/api/media/[id]/route.ts` | T-603 | 本番で画像が DB から配信される |
 | T-608 | `video_folders` / `video_downloads`＋キュー API（15 件上限、enqueue/cancel/retry/complete/move/folders） | `drizzle/0004_*`, `src/app/api/videos/*`, `src/server/videos/*` | T-607 | 16 件目が 409 になる |
 | T-609 | `GET /api/media/[id]/file`（max bit_rate mp4、Range プロキシ、`maxDuration = 300`） | `src/app/api/media/[id]/file/route.ts` | T-603 | Range で部分取得できる |
-| T-610 | FS Access クライアント（フォルダ選択・権限・IndexedDB 永続化、8MB チャンク DL＋レジューム） | `src/lib/video-store.ts` | T-609 | 中断→再開で最後まで落ちる |
+| T-610 | FS Access クライアント（フォルダ選択・権限・IndexedDB 永続化、回線適応チャンク DL＋レジューム） | `src/lib/video-store.ts` | T-609 | 中断→再開で最後まで落ちる |
 | T-611 | Videos タブ SC-15（キュー UI、ライブラリ grid、プレーヤー、フォルダ作成/移動/削除） | `src/app/(tabs)/videos/*`, `src/components/videos/*` | T-608, T-610 | キュー→DL→再生→移動が一気通貫 |
 | T-612 | Reader「あとで保存」＋Settings 整理（保存役案内の撤去、DB 使用量メーター） | Reader, Settings | T-608 | 本番 Settings に `pnpm dev` 案内が出ない |
 | T-613 | 多言語の「日本語に翻訳」：漢字≠日本語、記事は投稿 `lang` を使わない、`zh` / `zh-Hant` を Translator に渡す | `chrome-translate.ts`, `ChromeTranslate.tsx`, `ArticleBlock.tsx` | T-207 | 中国語記事でボタンが出る。日本語記事では出ない。翻訳結果は DB に書かない |

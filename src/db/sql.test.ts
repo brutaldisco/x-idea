@@ -43,6 +43,11 @@ describe("sql helpers", () => {
       ),
     ).toBe(true);
     expect(
+      statements.some((sql) =>
+        sql.includes("ALTER TABLE x_account ADD COLUMN video_save_folder_name"),
+      ),
+    ).toBe(true);
+    expect(
       statements.some((sql) => /gone_sweep_cursor\s*=\s*NULL/i.test(sql)),
     ).toBe(false);
     expect(

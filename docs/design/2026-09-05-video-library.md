@@ -117,7 +117,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 - `UNIQUE(media_id)`：同じ動画の二重キューを防ぐ。再キューは `failed`/`canceled` からの retry で行う。
 - キュー上限は **`status='queued'` の件数が 15 未満のときだけ enqueue 可**。超過時は API が 409 を返し、UI は「キューがいっぱいです（15 件）。実行してから追加してください」と出す。
-  - ブラウザ側の制約は特にない（キューは DB 行、実行は逐次 1 件）。15 件は「1 回のまとめ実行で現実的に終わる量」として妥当。実行時間の目安は UI に出す（4.5）。
+  - ブラウザ側の制約は特にない（キューは DB 行、実行は回線に応じて同時 1〜4 件）。15 件は「1 回のまとめ実行で現実的に終わる量」として妥当。実行時間の目安は UI に出す（4.5）。
 
 ### 4.2 物理フォルダ構造（ユーザーが選んだルート配下）
 
@@ -152,20 +152,21 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 ### 4.4 ダウンロード実行（クライアント、Videos タブ）
 
-低速回線でのタイムアウトを避けるため、**チャンク分割＋レジューム** を採用する。
+低速回線でのタイムアウトを避け、速い回線では待ちを減らすため、**回線適応チャンク＋レジューム** を採用する。
 
 1. 「すべて開始」または選んだ行の「選んだ N 件を開始」／「この動画だけ」（ユーザー操作を起点に `requestPermission({ mode: "readwrite" })` で権限再許可）。
-2. 対象（未選択なら queued 全件）を **逐次 1 件ずつ** 処理（並列にしない。低速回線での帯域競合とタイムアウトを避ける）。
+2. 対象（未選択なら queued 全件）を、ブラウザの回線ヒント（`navigator.connection`）と概算サイズから **同時 1〜4 件** で処理する。低速・巨大ファイルは 1 件ずつ、速い回線だけ並列にする。
 3. 1 件の処理：
    - ルート → `{x_account_id}` →（あれば）フォルダ、の順にディレクトリハンドルを `getDirectoryHandle(..., { create: true })` で解決。
-   - ファイル `{tweet_id}_{media_key}.mp4` を `getFileHandle({ create: true })` → `createWritable({ keepExistingData: true })`。
-   - **8MB チャンク**で `Range: bytes=offset-` を `GET /api/media/[id]/file` に投げ、返ってきた分を `writable.seek(offset)` → `write()`。最初の応答の `Content-Range` から総サイズを得て進捗バーとパーセントに反映。総サイズが無い間は「ダウンロード中」だけ出す（100% 扱いにしない）。
-   - 失敗（タイムアウト・ネットワーク断）したら **チャンクサイズを半減**（最小 1MB）して同じオフセットから再試行。3 連続失敗で `failed`。
+   - ファイル `{tweet_id}_{media_key}.mp4` を `getFileHandle({ create: true })` → 各チャンクを `createWritable({ keepExistingData: true })` で `seek(start)` → `write()`。
+   - **1〜32MB の可変チャンク**で `Range: bytes=offset-` を `GET /api/media/[id]/file` に投げ、本文はストリームで `write()` しながら受信量を進捗バーへ出す。最初の応答の `Content-Range` から総サイズを得てパーセントに反映。総サイズが無い間はパーセントを出さず、概算サイズがあれば `4.6 MB / 約 38.7 MB` とバーだけ出す（100% 扱いにしない）。
+   - 各チャンクの実測速度で次のチャンクサイズを上下する（速いほど大きく、遅いほど小さく）。
+   - 失敗（タイムアウト・ネットワーク断・429/5xx）は **指数バックオフ**（0.5 秒〜最大 10 秒）で同じオフセットから再試行し、チャンクサイズを半減（最小 1MB）。規定回数（低速ほど多め、2〜5 回）を超えたら `failed`。
    - 進捗（`received` バイト数）は IndexedDB に保存し、**ページを閉じても途中再開**できる。
-4. 完了したら `writable.close()` → `complete` API で `ready` 化。
+4. 完了したら `complete` API で `ready` 化。
 5. `navigator.onLine === false` または `offline` イベントで中断し、`online` 復帰時に「再開しますか？」を出す（自動再開はしない。実行タイミングはユーザーが選ぶ）。
 
-**Vercel Hobby の 300 秒上限との関係**：1 リクエスト 8MB なら 100KB/s の低速回線でも約 80 秒で完了するため、関数タイムアウト（300 秒）を事実上回避できる。チャンク半減でさらに遅い回線にも対応する。
+**Vercel Hobby の 300 秒上限との関係**：1 リクエストは可変チャンクの上限 32MB。100KB/s の低速回線では自動的に 1〜2MB まで下げるため、関数タイムアウト（300 秒）を事実上回避できる。
 
 ### 4.5 実行時間の目安表示
 
@@ -184,7 +185,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 構成（上から）：
 
-1. **ダウンロードキュー**：件数（`N / 15`）＋「すべて開始」。チェックで対象を選び「選んだ N 件を開始」、各行に「この動画だけ」。各アイテムはサムネイル（右下に再生時間）・投稿抜粋・`@username`・状態（日本語。ダウンロード中は `42%` など）・進捗バー・取消。取れるときはサイズと画質（`480p` など）を操作の左に出す。`failed` は理由と「再試行」。未リンク時は Settings への案内。
+1. **ダウンロードキュー**：件数（`N / 15`）＋「すべて開始」。チェックで対象を選び「選んだ N 件を開始」、各行に「この動画だけ」。各アイテムはサムネイル（右下に再生時間）・投稿抜粋・`@username`・状態（日本語。ダウンロード中は `42%` など）・進捗バーと受信量・取消。取れるときはサイズと画質（`480p` など）を操作の左に出す。`failed` は理由と「再試行」。未リンク時は Settings への案内。
 2. **ライブラリ**：フォルダチップ（`すべて / 未分類 / {フォルダ}… / ＋新規フォルダ`）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日・画質（取れるとき）・サイズ。操作メニューに「フォルダ移動」「削除」「X で開く」「Source を開く」。
 3. **プレーヤー**：カードをタップで **黒ベースのモーダル**（ライト／ダークどちらでも `bg-black`。テーマの paper/ink は使わない）。`<video controls playsInline>` に `handle.getFile()` → `URL.createObjectURL()` を渡す（閉じたら `revokeObjectURL`）。シーク・音量はブラウザ標準。全画面はプレーヤー枠（シェル）に対して行い、動画が終わって次へ進んでも、左右キーで前後しても維持する。左右キーはシークせず前後の動画へ。
 
@@ -199,7 +200,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 - 「この PC に画像・動画を保存する」（保存役ガイド）を撤去。
 - 代わりに **メディア使用量カード**：DB 内の画像・サムネイル件数と合計サイズ（目安）、動画ライブラリの件数・合計サイズ、Videos タブへのリンク。
-- **保存フォルダカード**：リンク状態バッジ（リンク済 / 要再リンク / 未リンク）＋「保存フォルダを選ぶ / 再リンク」。フォルダ名は `settings.video_save_folder_name` で全環境共有。File System Access のハンドルはブラウザ／オリジンに閉じるため、localhost・本番・別ブラウザでは同じフォルダを一度選び直す。
+- **保存フォルダカード**：リンク状態バッジ（リンク済 / 要再リンク / 未リンク）＋「保存フォルダを選ぶ / 再リンク」。フォルダ名は `x_account.video_save_folder_name` で表示中アカウントごとに共有。File System Access のハンドルはブラウザ／オリジン／アカウントに閉じるため、localhost・本番・別ブラウザでは同じフォルダを一度選び直す。
 - `MEDIA_ROOT` / 保存役は「開発者向け」折りたたみの中に注記のみ残す。
 
 ## 6. エッジケース
@@ -209,7 +210,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 | 元投稿の削除・非公開 | CDN 404 → `failed`（「元投稿が削除された可能性があります」）。サムネイルとテキストは残る |
 | 権限失効（ブラウザ再起動など） | 次回操作時に `requestPermission` を促す（ユーザー操作起点の制約） |
 | ルートフォルダの変更・紛失 | 「再リンク」で選び直し。`rel_path` が一致すれば既存ライブラリはそのまま使える |
-| 別ブラウザ・localhost/本番 | フォルダ名は共有される。ハンドルは無いので「要再リンク」。同じフォルダを一度選ぶ |
+| 別ブラウザ・localhost/本番 | そのアカウントのフォルダ名は共有される。ハンドルは無いので「要再リンク」。同じフォルダを一度選ぶ |
 | ファイルだけ手動で消した | 再生時に `NotFoundError` → 「ファイルが見つかりません」＋再ダウンロード導線（`retry`） |
 | Source 削除 | `media_assets` カスケードで `video_downloads` 行も消える。**実ファイルは残る**（サーバーからユーザーのフォルダは触れないため）。Finder で手動削除してもらう旨を削除確認ダイアログに明記 |
 | 二重 enqueue | `UNIQUE(media_id)` + 409 →「すでにキュー／ライブラリにあります」 |
@@ -222,7 +223,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 | T-607 | `media_blobs` 追加＋画像/サムネイルの DB 保存と配信（migration `0004`） | `drizzle/0004_*`, `src/server/media/download.ts`, `src/app/api/media/[id]/route.ts` | T-603 | 本番で画像が DB から配信される |
 | T-608 | `video_folders` / `video_downloads`＋キュー API（15 件上限、enqueue/cancel/retry/complete/move/folders） | `drizzle/0004_*`, `src/app/api/videos/*`, `src/server/videos/*` | T-607 | 16 件目が 409 になる |
 | T-609 | `GET /api/media/[id]/file`（max bit_rate mp4、Range プロキシ、`maxDuration = 300`） | `src/app/api/media/[id]/file/route.ts` | T-603 | Range で部分取得できる |
-| T-610 | FS Access クライアント（フォルダ選択・権限・IndexedDB 永続化、8MB チャンク DL＋レジューム） | `src/lib/video-store.ts` | T-609 | 中断→再開で最後まで落ちる |
+| T-610 | FS Access クライアント（フォルダ選択・権限・IndexedDB 永続化、回線適応チャンク DL＋レジューム） | `src/lib/video-store.ts` | T-609 | 中断→再開で最後まで落ちる |
 | T-611 | Videos タブ SC-15（キュー UI、ライブラリ grid、プレーヤー、フォルダ作成/移動/削除） | `src/app/(tabs)/videos/*`, `src/components/videos/*` | T-608, T-610 | キュー→DL→再生→移動が一気通貫 |
 | T-612 | Reader「あとで保存」＋Settings 整理（保存役案内の撤去、DB 使用量メーター） | Reader, Settings | T-608 | 本番 Settings に `pnpm dev` 案内が出ない |
 
