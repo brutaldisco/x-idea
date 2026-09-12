@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LinkedText } from "@/components/LinkedText";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
 import { SourceCardThumb } from "@/components/SourceCardThumb";
-import { VideoBadge } from "@/components/VideoBadge";
+import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
 import { taxonomyAccentClass } from "@/lib/taxonomy-accent";
@@ -49,6 +49,7 @@ export function SourceCard({
   mediaType,
   videoSaveStatus,
   videoRelPath,
+  durationMs,
   kind,
   hasQueueableVideos,
   lang,
@@ -67,6 +68,7 @@ export function SourceCard({
   mediaType?: string | null;
   videoSaveStatus?: string | null;
   videoRelPath?: string | null;
+  durationMs?: number | null;
   kind?: string | null;
   hasQueueableVideos?: boolean;
   lang?: string | null;
@@ -111,9 +113,11 @@ export function SourceCard({
             videoSaveStatus={videoSaveStatus}
             videoRelPath={videoRelPath}
           >
-            {mediaType && mediaType !== "photo" ? (
-              <VideoBadge saveStatus={videoSaveStatus} />
-            ) : null}
+            <VideoThumbMarks
+              mediaType={mediaType}
+              saveStatus={videoSaveStatus}
+              durationMs={durationMs}
+            />
           </SourceCardThumb>
         ) : (
           <Link
@@ -148,9 +152,11 @@ export function SourceCard({
               videoSaveStatus={videoSaveStatus}
               videoRelPath={videoRelPath}
             >
-              {mediaType && mediaType !== "photo" ? (
-                <VideoBadge saveStatus={videoSaveStatus} />
-              ) : null}
+              <VideoThumbMarks
+                mediaType={mediaType}
+                saveStatus={videoSaveStatus}
+                durationMs={durationMs}
+              />
             </SourceCardThumb>
           ) : (
             <Link

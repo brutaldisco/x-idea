@@ -46,6 +46,7 @@ export type SourceListItem = {
   summaryFromAi: boolean;
   mediaId: string | null;
   mediaType: string | null;
+  durationMs: number | null;
   videoSaveStatus: string | null;
   videoRelPath: string | null;
   hasQueueableVideos: boolean;
@@ -57,6 +58,9 @@ export const LIST_MEDIA_SQL = `(SELECT m.id FROM media_assets m
                  (SELECT m.type FROM media_assets m
                   WHERE m.x_post_id = p.id
                   ORDER BY m.created_at ASC LIMIT 1) AS media_type,
+                 (SELECT m.duration_ms FROM media_assets m
+                  WHERE m.x_post_id = p.id
+                  ORDER BY m.created_at ASC LIMIT 1) AS duration_ms,
                  (SELECT vd.status FROM media_assets m
                   JOIN video_downloads vd ON vd.media_id = m.id
                   WHERE m.x_post_id = p.id
@@ -111,6 +115,7 @@ export function mapSourceListItem(
     summaryFromAi: fromAi,
     mediaId: row.media_id ? String(row.media_id) : null,
     mediaType: row.media_type ? String(row.media_type) : null,
+    durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
     videoSaveStatus: row.video_save_status
       ? String(row.video_save_status)
       : null,

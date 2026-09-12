@@ -184,6 +184,7 @@ async function RecentSources({
             mediaType={item.mediaType}
             videoSaveStatus={item.videoSaveStatus}
             videoRelPath={item.videoRelPath}
+            durationMs={item.durationMs}
             kind={item.kind}
             hasQueueableVideos={item.hasQueueableVideos}
             lang={item.lang}

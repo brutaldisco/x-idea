@@ -14,7 +14,7 @@ import { LibraryBackLink } from "@/components/LibraryBackLink";
 import { LinkedText } from "@/components/LinkedText";
 import { SourceSortSelect } from "@/components/SourceSortSelect";
 import { SwipeCard } from "@/components/SwipeCard";
-import { VideoBadge } from "@/components/VideoBadge";
+import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
 import type { SourceSort } from "@/lib/source-sort";
@@ -329,9 +329,11 @@ export function InboxWorkspace({
                   unoptimized
                   className="h-full w-full object-cover"
                 />
-                {current.mediaType && current.mediaType !== "photo" ? (
-                  <VideoBadge saveStatus={current.videoSaveStatus} />
-                ) : null}
+                <VideoThumbMarks
+                  mediaType={current.mediaType}
+                  saveStatus={current.videoSaveStatus}
+                  durationMs={current.durationMs}
+                />
               </div>
             ) : null}
             <div className="min-w-0 flex-1">

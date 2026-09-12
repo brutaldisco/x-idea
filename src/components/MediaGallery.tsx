@@ -7,6 +7,7 @@ import { PhotoLightbox } from "@/components/PhotoLightbox";
 import { QueueBadge } from "@/components/QueueBadge";
 import { SavedBadge } from "@/components/SavedBadge";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
+import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import type { MediaItem } from "@/server/sources/detail";
 
 export function MediaGallery({
@@ -80,6 +81,12 @@ function MediaTile({
           </span>
         </span>
       ) : null}
+      <VideoThumbMarks
+        mediaType={item.type}
+        saveStatus={item.videoSaveStatus}
+        durationMs={item.durationMs}
+        className="right-1.5 bottom-1.5"
+      />
     </>
   );
 

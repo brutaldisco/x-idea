@@ -109,10 +109,6 @@ export function SourceCardMenu({
       }
       setOpen(false);
       void queryClient.invalidateQueries({ queryKey: [LIBRARY_SOURCES_KEY] });
-      if (pathname.startsWith("/library")) {
-        router.push("/videos?queue=1");
-        return;
-      }
       router.refresh();
     } finally {
       setQueueBusy(false);

@@ -208,13 +208,12 @@ export async function ingestBookmark(input: {
     sql: `INSERT INTO sources (
       id, origin, kind, x_account_id, x_post_id, bookmarked_at, saved_at,
       availability, triage_status, read_status, language, created_at, updated_at
-    ) VALUES (?, 'x_bookmark', 'x_post', ?, ?, ?, datetime('now'),
+    ) VALUES (?, 'x_bookmark', 'x_post', ?, ?, datetime('now'), datetime('now'),
       'available', 'pending', 'unread', ?, datetime('now'), datetime('now'))`,
     args: [
       sourceId,
       input.accountId,
       postId,
-      input.tweet.created_at ?? null,
       input.tweet.lang ?? null,
     ],
   });

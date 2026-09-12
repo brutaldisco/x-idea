@@ -2,7 +2,7 @@ import Image from "next/image";
 import { ExpandablePhoto } from "@/components/PhotoLightbox";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { SourceMetaFields } from "@/components/SourceMetaFields";
-import { VideoBadge } from "@/components/VideoBadge";
+import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import type { TaxonomyAccentId } from "@/lib/taxonomy-accent";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 import type { MediaItem } from "@/server/sources/detail";
@@ -115,9 +115,10 @@ export function SourceHero({
               unoptimized
               className="max-h-80 w-full object-cover"
             />
-            <VideoBadge
+            <VideoThumbMarks
+              mediaType={hero.type}
               saveStatus={hero.videoSaveStatus}
-              compact={false}
+              durationMs={hero.durationMs}
               className="right-3 bottom-3"
             />
           </SavedVideoThumbButton>
@@ -144,9 +145,10 @@ export function SourceHero({
               unoptimized
               className="max-h-80 w-full object-cover"
             />
-            <VideoBadge
-              saveStatus={hero.videoSaveStatus}
-              compact={false}
+            <VideoThumbMarks
+              mediaType={hero?.type}
+              saveStatus={hero?.videoSaveStatus}
+              durationMs={hero?.durationMs}
               className="right-3 bottom-3"
             />
           </div>

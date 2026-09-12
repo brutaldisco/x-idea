@@ -113,15 +113,15 @@ export function sourceSortKeySql(sort: SourceSort): string {
   if (sort === "video_saved") {
     return VIDEO_SAVED_SORT_KEY_SQL;
   }
-  return sort.startsWith("saved_")
-    ? "s.saved_at"
-    : "COALESCE(p.posted_at, s.bookmarked_at, s.saved_at)";
+  return "s.saved_at";
 }
 
 export function sourceCursorSql(sort: SourceSort): string {
   const key = sourceSortKeySql(sort);
-  const cmp = sort.endsWith("_asc") ? ">" : "<";
-  return `(${key} ${cmp} ? OR (${key} = ? AND s.id ${cmp} ?))`;
+  if (sort === "posted_asc") {
+    return `(${key} > ? OR (${key} = ? AND s.id < ?))`;
+  }
+  return `(${key} < ? OR (${key} = ? AND s.id > ?))`;
 }
 
 export function sourceCursorKey(
@@ -134,10 +134,7 @@ export function sourceCursorKey(
 ): string {
   if (sort === "video_saved") {
     const ready = item.videoSaveStatus === "ready" ? "1" : "0";
-    return `${ready}|${item.postedAt ?? item.savedAt}`;
+    return `${ready}|${item.savedAt}`;
   }
-  if (sort.startsWith("saved_")) {
-    return item.savedAt;
-  }
-  return item.postedAt ?? item.savedAt;
+  return item.savedAt;
 }
