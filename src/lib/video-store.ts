@@ -605,3 +605,34 @@ export function suggestedRelPath(item: {
 }): string {
   return videoRelPath(item);
 }
+
+export async function removeSavedVideoFiles(input: {
+  accountId: string | null;
+  relPaths: string[];
+  root?: FileSystemDirectoryHandle | null;
+}): Promise<{ removed: number; leftover: number }> {
+  const unique = [...new Set(input.relPaths.filter((path) => path.length > 0))];
+  if (unique.length === 0) {
+    return { removed: 0, leftover: 0 };
+  }
+  if (!input.accountId || !supportsDirectoryPicker()) {
+    return { removed: 0, leftover: unique.length };
+  }
+  const handle = input.root ?? (await loadVideoRoot(input.accountId));
+  if (!handle) {
+    return { removed: 0, leftover: unique.length };
+  }
+  if (!(await ensureWritePermission(handle))) {
+    return { removed: 0, leftover: unique.length };
+  }
+  let removed = 0;
+  for (const relPath of unique) {
+    try {
+      await deleteVideoFile(handle, relPath);
+      removed += 1;
+    } catch {
+      // leftover files stay in the user's folder
+    }
+  }
+  return { removed, leftover: unique.length - removed };
+}

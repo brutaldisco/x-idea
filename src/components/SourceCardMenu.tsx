@@ -4,12 +4,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { readLibraryAccountId } from "@/lib/library-account";
 import {
   LIBRARY_SOURCES_KEY,
   removeSourceFromLibraryQueries,
 } from "@/lib/library-cache";
 import { rememberDeletedSource } from "@/lib/library-deleted";
 import { readLibraryHref } from "@/lib/library-scroll";
+import {
+  ensureWritePermission,
+  loadVideoRoot,
+  removeSavedVideoFiles,
+} from "@/lib/video-store";
 
 const MENU_WIDTH = 176;
 const MENU_HEIGHT = 140;
@@ -31,11 +37,13 @@ function menuCoords(rect: DOMRect): { top: number; left: number } {
 export function SourceCardMenu({
   sourceId,
   url,
+  accountId = null,
   compact = false,
   canQueueVideos = false,
 }: {
   sourceId: string;
   url: string | null;
+  accountId?: string | null;
   compact?: boolean;
   canQueueVideos?: boolean;
 }) {
@@ -118,7 +126,7 @@ export function SourceCardMenu({
   async function onDelete() {
     if (
       !window.confirm(
-        "この投稿と保存した画像を削除しますか？同期では戻りません。権限があれば X のブックマークからも外します。手元にダウンロードした動画ファイルは残り、Finder で手動削除してください。",
+        "この投稿を削除しますか？保存した画像と、手元に保存した動画ファイル（mp4）も消えます。同期では戻りません。権限があれば X のブックマークからも外します。",
       )
     ) {
       setOpen(false);
@@ -126,10 +134,32 @@ export function SourceCardMenu({
     }
     setBusy(true);
     try {
+      const accountHint = accountId || readLibraryAccountId() || null;
+      const root = accountHint ? await loadVideoRoot(accountHint) : null;
+      if (root) {
+        await ensureWritePermission(root);
+      }
       const res = await fetch(`/api/sources/${sourceId}`, { method: "DELETE" });
       if (!res.ok) {
         window.alert("削除できませんでした。");
         return;
+      }
+      const body = (await res.json().catch(() => null)) as {
+        accountId?: string | null;
+        videoRelPaths?: string[];
+      } | null;
+      const files = body?.videoRelPaths ?? [];
+      if (files.length > 0) {
+        const { leftover } = await removeSavedVideoFiles({
+          accountId: body?.accountId ?? accountHint,
+          relPaths: files,
+          root,
+        });
+        if (leftover > 0) {
+          window.alert(
+            `投稿は削除しました。動画ファイルを ${leftover} 件消せませんでした。Settings で保存フォルダを再リンクするか、Finder で消してください。`,
+          );
+        }
       }
       setOpen(false);
       rememberDeletedSource(sourceId);

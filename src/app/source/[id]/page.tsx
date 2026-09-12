@@ -123,6 +123,7 @@ export default async function SourcePage({
           <SourceCardMenu
             sourceId={source.id}
             url={source.post.url}
+            accountId={source.xAccountId}
             canQueueVideos={mediaHasQueueableVideos(source.post.media)}
           />
         }

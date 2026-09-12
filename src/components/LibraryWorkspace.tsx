@@ -727,6 +727,7 @@ export function LibraryWorkspace({
               videoSaveStatus={item.videoSaveStatus}
               videoRelPath={item.videoRelPath}
               durationMs={item.durationMs}
+              accountId={accountId || null}
               kind={item.kind}
               hasQueueableVideos={item.hasQueueableVideos}
               lang={item.lang}

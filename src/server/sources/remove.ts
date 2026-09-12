@@ -3,6 +3,7 @@ import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { collectSavedVideoRelPaths } from "@/lib/video-files";
 import { resolveMediaPath, safeMediaSegment } from "@/server/media/paths";
 import {
   advanceSyncHeadIfNeeded,
@@ -59,6 +60,39 @@ type FoundSource = {
   tweetId: string | null;
 };
 
+export type DeleteSourceResult = {
+  accountId: string | null;
+  videoRelPaths: string[];
+};
+
+async function listSourceVideoFiles(
+  xPostId: string | null,
+): Promise<DeleteSourceResult> {
+  if (!xPostId) {
+    return { accountId: null, videoRelPaths: [] };
+  }
+  const result = await getClient().execute({
+    sql: `SELECT d.rel_path, d.x_account_id, f.name AS folder_name,
+                 p.tweet_id, m.media_key
+          FROM video_downloads d
+          JOIN media_assets m ON m.id = d.media_id
+          JOIN x_posts p ON p.id = m.x_post_id
+          LEFT JOIN video_folders f ON f.id = d.folder_id
+          WHERE m.x_post_id = ?
+          LIMIT 20`,
+    args: [xPostId],
+  });
+  return collectSavedVideoRelPaths(
+    result.rows.map((row) => ({
+      relPath: row.rel_path ? String(row.rel_path) : null,
+      accountId: row.x_account_id ? String(row.x_account_id) : null,
+      folderName: row.folder_name ? String(row.folder_name) : null,
+      tweetId: row.tweet_id ? String(row.tweet_id) : null,
+      mediaKey: row.media_key ? String(row.media_key) : null,
+    })),
+  );
+}
+
 function foundSourceFromRow(row: Record<string, unknown>): FoundSource {
   return {
     id: String(row.id),
@@ -72,9 +106,10 @@ function foundSourceFromRow(row: Record<string, unknown>): FoundSource {
 async function deleteFoundSource(
   row: FoundSource,
   fallbackAccountId?: string | null,
-): Promise<void> {
+): Promise<DeleteSourceResult> {
   const sourceId = row.id;
   const xPostId = row.xPostId;
+  const videoFiles = await listSourceVideoFiles(xPostId);
   const tweetId = row.tweetId;
   const xAccountId = row.xAccountId;
   const articleIds = new Set<string>();
@@ -160,12 +195,16 @@ async function deleteFoundSource(
   }
 
   logger.info({ sourceId }, "source deleted");
+  return {
+    accountId: videoFiles.accountId ?? dismissAccountId,
+    videoRelPaths: videoFiles.videoRelPaths,
+  };
 }
 
 export async function deleteSource(
   sourceId: string,
   ctx: AccountContext,
-): Promise<void> {
+): Promise<DeleteSourceResult> {
   if (!isDbConfigured()) {
     throw new AppError("NOT_FOUND", "Source がありません");
   }
@@ -183,7 +222,7 @@ export async function deleteSource(
   if (!row) {
     throw new AppError("NOT_FOUND", "Source がありません");
   }
-  await deleteFoundSource(foundSourceFromRow(row), contextAccountId(ctx));
+  return deleteFoundSource(foundSourceFromRow(row), contextAccountId(ctx));
 }
 
 /** X 上で消えた tweet をアプリから消し、ブックマークも外す。Source が無くても外す。 */

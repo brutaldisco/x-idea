@@ -32,6 +32,7 @@ export function SourceCard({
   videoSaveStatus,
   videoRelPath,
   durationMs,
+  accountId,
   kind,
   hasQueueableVideos,
   lang,
@@ -51,6 +52,7 @@ export function SourceCard({
   videoSaveStatus?: string | null;
   videoRelPath?: string | null;
   durationMs?: number | null;
+  accountId?: string | null;
   kind?: string | null;
   hasQueueableVideos?: boolean;
   lang?: string | null;
@@ -170,6 +172,7 @@ export function SourceCard({
               <SourceCardMenu
                 sourceId={id}
                 url={url}
+                accountId={accountId}
                 compact={variant === "grid"}
                 canQueueVideos={canShowSaveVideosMenu({
                   kind,

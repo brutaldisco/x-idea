@@ -28,12 +28,12 @@ import {
 import { isResumableVideoQueueStatus } from "@/lib/video-queue";
 import {
   clearProgress,
-  deleteVideoFile,
   downloadVideoFile,
   ensureWritePermission,
   loadVideoRoot,
   moveVideoFile,
   openVideoObjectUrl,
+  removeSavedVideoFiles,
   suggestedRelPath,
 } from "@/lib/video-store";
 import { formatDuration, formatVideoQueueMeta } from "@/server/media/select";
@@ -471,20 +471,27 @@ export function VideosWorkspace({
   async function removeItem(item: VideoItem) {
     if (
       !window.confirm(
-        "ライブラリから削除しますか？アプリの記録は消えます。保存フォルダのファイルは、このブラウザから削除を試みます。残った場合は Finder で消してください。",
+        "この動画を削除しますか？保存フォルダの動画ファイル（mp4）も消えます。",
       )
     ) {
       return;
     }
     const handle = await resolveRoot();
-    if (handle && item.relPath) {
-      try {
-        await deleteVideoFile(handle, item.relPath);
-      } catch {
-        // leftover files are expected
-      }
+    if (handle) {
+      await ensureWritePermission(handle);
     }
+    const relPath = item.relPath ?? suggestedRelPath(item);
+    const { leftover } = await removeSavedVideoFiles({
+      accountId: item.accountId,
+      relPaths: [relPath],
+      root: handle,
+    });
     await fetch(`/api/videos/${item.id}`, { method: "DELETE" });
+    if (leftover > 0) {
+      setMessage(
+        "記録は削除しました。動画ファイルを消せませんでした。Settings で保存フォルダを再リンクするか、Finder で消してください。",
+      );
+    }
     await refresh();
   }
 

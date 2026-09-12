@@ -20,8 +20,8 @@ export async function DELETE(
   try {
     const { id } = await context.params;
     const ctx = await getAccountContext();
-    await deleteSource(id, ctx);
-    return Response.json({ ok: true });
+    const result = await deleteSource(id, ctx);
+    return Response.json({ ok: true, ...result });
   } catch (error) {
     const body = toErrorBody(error);
     const status = error instanceof AppError ? error.status : 500;
