@@ -10,7 +10,7 @@ import { accountIdForMedia } from "@/server/media/account";
 import { loadMediaBlob } from "@/server/media/blob";
 import { downloadMediaAsset, loadMediaRow } from "@/server/media/download";
 import { proxyRemoteMedia } from "@/server/media/fetch-remote";
-import { resolveMediaPath } from "@/server/media/paths";
+import { isLocalMediaEnabled, resolveMediaPath } from "@/server/media/paths";
 import { refreshMediaFromTweet } from "@/server/media/refresh";
 import {
   contentTypeForExt,
@@ -153,8 +153,17 @@ export async function GET(
     const status = String(row.download_status ?? "");
     const localPath = row.local_path ? String(row.local_path) : null;
     const type = String(row.type ?? "photo");
-    if (status === "ready" && localPath) {
-      return serveLocal(localPath, rangeHeader);
+    if (status === "ready" && localPath && isLocalMediaEnabled()) {
+      try {
+        const local = await serveLocal(localPath, rangeHeader);
+        schedulePersist(id);
+        return local;
+      } catch (error) {
+        logger.warn(
+          { err: error, mediaId: id, localPath },
+          "local media missing; falling back to remote",
+        );
+      }
     }
 
     if (!previewOnly && type !== "photo") {

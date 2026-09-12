@@ -15,7 +15,15 @@ export async function enqueuePendingMediaDownloads(
     sql: `SELECT m.id FROM media_assets m
           JOIN x_posts p ON p.id = m.x_post_id
           LEFT JOIN sources s ON s.x_post_id = p.id
-          WHERE m.download_status IN ('pending', 'failed')
+          WHERE (
+              m.download_status IN ('pending', 'failed', 'downloading')
+              OR (
+                m.download_status = 'ready'
+                AND NOT EXISTS (
+                  SELECT 1 FROM media_blobs b WHERE b.media_id = m.id
+                )
+              )
+            )
             AND (s.x_account_id = ? OR s.x_account_id IS NULL)
           ORDER BY m.created_at DESC
           LIMIT ?`,

@@ -8,6 +8,7 @@ import {
   MAX_BLOB_BYTES,
   saveMediaBlob,
 } from "@/server/media/blob";
+import { shouldFetchMediaBlob } from "@/server/media/download-policy";
 import { fetchRemoteMedia } from "@/server/media/fetch-remote";
 import {
   ensureMediaDir,
@@ -116,22 +117,20 @@ export async function downloadMediaAsset(input: {
   if (!row) {
     throw new Error("media not found");
   }
-  if (!input.force && (await hasMediaBlob(row.id))) {
+  const hasBlob = await hasMediaBlob(row.id);
+  if (hasBlob && !input.force) {
     if (row.download_status !== "ready") {
       await setStatus(row.id, "ready");
     }
     return;
   }
-  if (row.download_status === "ready" && !input.force) {
-    return;
-  }
-  if (row.download_status === "awaiting_confirm" && !input.force) {
-    return;
-  }
-  if (row.download_status === "skipped" && !input.force) {
-    return;
-  }
-  if (row.download_status === "downloading" && !input.force) {
+  if (
+    !shouldFetchMediaBlob({
+      hasBlob,
+      status: row.download_status,
+      force: input.force,
+    })
+  ) {
     return;
   }
 

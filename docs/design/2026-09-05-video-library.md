@@ -193,7 +193,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 
 - 動画タイルは **サムネイル＋「X で見る」**（実装済み）に加えて **「保存する」** ボタンを出す（挙動はキュー投入のまま）。
   - 押下 → `POST /api/videos/queue`。成功で「キューに追加しました（Videos タブで実行）」、409 なら上限/重複メッセージ。
-  - すでに `ready` の動画には「保存済み」バッジ＋「Videos で開く」リンク。
+  - すでに `ready` の動画には「保存済み」バッジ＋「Videos で開く」リンク。Library / Reader のサムネタップは **Videos と同じ全画面プレーヤー**（`VideoPlayer`）。
 - 旧「長時間動画の確認 UI」は廃止済み。4 時間超かどうかに関わらず、保存はすべて手動キュー経由。
 
 ### 5.3 Settings（SC-05）の変更

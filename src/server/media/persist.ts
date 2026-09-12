@@ -6,7 +6,9 @@ export async function persistLocalMedia(input: {
 }): Promise<void> {
   const pending = input.items.filter(
     (item) =>
-      item.downloadStatus === "pending" || item.downloadStatus === "failed",
+      item.downloadStatus === "pending" ||
+      item.downloadStatus === "failed" ||
+      item.downloadStatus === "downloading",
   );
   for (const item of pending.slice(0, 6)) {
     try {

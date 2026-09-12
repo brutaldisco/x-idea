@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 
@@ -37,8 +37,11 @@ export function SourceCardThumb({
 }) {
   const playable =
     Boolean(mediaId) && mediaType !== "photo" && videoSaveStatus === "ready";
+  const [imageFailed, setImageFailed] = useState(false);
 
-  const image = (
+  const image = imageFailed ? (
+    <span className={`block bg-paper ${imageClassName}`} aria-hidden />
+  ) : (
     <Image
       src={thumbUrl}
       alt=""
@@ -48,6 +51,7 @@ export function SourceCardThumb({
       loading="lazy"
       decoding="async"
       className={imageClassName}
+      onError={() => setImageFailed(true)}
     />
   );
 
