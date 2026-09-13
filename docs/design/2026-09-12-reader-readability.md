@@ -1,7 +1,7 @@
 # 設計書：Reader 本文の読みやすさ改善
 
 - 日付: 2026-09-12
-- 状態: **採用（T-220 / T-221 実装）。T-222（見出し推定）は未実装**
+- 状態: **採用（T-220 / T-221 実装。記事 HTML のプレーンな `<p>` も句点分割。英文の `.!?` を含む）。T-222（見出し推定）は未実装**
 - 関連: 実装設計書 8.6 / 10.2 / 10.4、T-207、ADR-006、`docs/design/2026-09-07-multilingual-chrome-translate.md`
 - きっかけ: 長文の X 投稿を Reader で開くと文字の壁になって読み進められない（2026-09-12、スクリーンショット）
 
@@ -123,6 +123,7 @@ export function splitReaderLines(text: string): ReaderLine[];
 
 - `PostBlock` の本文と引用ブロック
 - `ArticleBlock` のテキスト版本文
+- `ArticleBlock` の HTML 版本文。プレーンな `<p>` を `reflowArticleHtml` で同じ段落ルールに組み直す（リンク・画像付きは触らない。DB は書き換えない）
 - `source/[id]/page.tsx` の AI 要約
 - `ChromeTranslate` の翻訳結果ペイン。Translator は改行を潰すので、渡す前に行間を空行にし、表示は `splitReadableLines`（長い一行は句点でも段落化）を使う。
 
@@ -196,11 +197,11 @@ HTML 記事（`article-body`）も同じクラスを当て、段落余白を行�
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/lib/reader-paragraphs.ts` | 新規。`splitReaderLines` |
+| `src/lib/reader-paragraphs.ts` | 新規。`splitReaderLines`。のち `splitReadableLines`（和文の句点・英文の `.!?`）と `reflowArticleHtml` |
 | `src/lib/reader-paragraphs.test.ts` | 新規。1 文 1 行 / 空行混在 / 箇条書き / 空文字 / 見出し判定 |
 | `src/components/ReaderBody.tsx` | 新規。`splitReaderLines` ＋ `LinkedText` で `<p>` 列を出す。`id` と `lang`/`translate` を受けて包む要素に付ける |
 | `src/components/PostBlock.tsx` | 本文と引用を `ReaderBody` に。`text-[1.05rem] leading-7` → `reader-body` |
-| `src/components/ArticleBlock.tsx` | テキスト版を `ReaderBody` に。HTML 版に `reader-body` ＋ 段落・見出し余白。`text-sm` を外す |
+| `src/components/ArticleBlock.tsx` | テキスト版を `ReaderBody`（`readable`）に。HTML 版は `reflowArticleHtml` ＋ `reader-body` ＋ 段落・見出し余白。`text-sm` を外す |
 | `src/app/source/[id]/page.tsx` | 要約を `ReaderBody` に。字サイズは `text-sm` ＋ `.reader-measure` |
 | `src/components/ChromeTranslate.tsx` | 翻訳結果ペインを `ReaderBody`（`readable`）に。渡す本文は空行で行を分ける |
 | `src/components/ReaderSegments.tsx` | `bg-paper/90 backdrop-blur` → `bg-paper` |
@@ -212,7 +213,7 @@ HTML 記事（`article-body`）も同じクラスを当て、段落余白を行�
 | ID | 内容 | 依存 | DoD |
 | --- | --- | --- | --- |
 | T-220 | `splitReaderLines` ＋ `ReaderBody`。原文・記事テキスト・要約・翻訳結果を段落化。`.reader-body`（40em / 1.85 / 1.05rem）。sticky バーを不透明化 | T-207 | 長文投稿で段落が目視できる。PC の 1 行が 40 字前後。原文の文字列は変わらない（差分は表示のみ） |
-| T-221 | 記事 HTML の段落・見出し・リスト・引用の余白。本文リンクのコントラスト AA と `overflow-wrap` | T-220 | `fetch_scope=full` の記事で `h2` が本文と区別できる。リンクが 4.5:1 以上 |
+| T-221 | 記事 HTML の段落・見出し・リスト・引用の余白。プレーンな `<p>` を原文と同じ句点分割。本文リンクのコントラスト AA と `overflow-wrap` | T-220 | `fetch_scope=full` の記事で `h2` が本文と区別できる。長い英文 `<p>` が文ごとに分かれる。リンクが 4.5:1 以上 |
 | T-222 | 見出しらしい行の強調（5.4）。実データ 20 件で誤検出率を記録 | T-220 | 誤検出 1 割未満。太さだけが変わり文字は変わらない |
 
 ## 8. 受け入れ

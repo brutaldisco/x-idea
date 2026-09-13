@@ -5,6 +5,8 @@ export type XArticle = {
   title?: string;
   plain_text?: string;
   preview_text?: string;
+  coverUrl?: string;
+  mediaUrls?: string[];
   entities?: {
     code?: { content?: string }[];
   };
@@ -26,6 +28,7 @@ export type XTweet = {
       url?: string;
       title?: string;
       description?: string;
+      images?: { url?: string }[];
     }[];
   };
   attachments?: { media_keys?: string[] };
@@ -204,6 +207,7 @@ export type TweetLink = {
   url: string;
   title?: string;
   description?: string;
+  image?: string;
 };
 
 export function tweetUrlEntries(
@@ -231,6 +235,7 @@ export function tweetUrlEntries(
       url,
       title: item.title,
       description: item.description,
+      image: urlEntityImage(item),
     });
   }
   return out.slice(0, 8);
@@ -314,23 +319,88 @@ function asArticle(value: unknown): XArticle | undefined {
           : [];
       })
     : undefined;
+  const mediaUrls = asMediaUrls(row.media_entities);
+  const coverUrl = asMediaUrl(row.cover_media) ?? mediaUrls[0];
   const article: XArticle = {
     id: typeof row.id === "string" ? row.id : undefined,
     title: typeof row.title === "string" ? row.title : undefined,
     plain_text: typeof row.plain_text === "string" ? row.plain_text : undefined,
     preview_text:
       typeof row.preview_text === "string" ? row.preview_text : undefined,
+    coverUrl: coverUrl ?? undefined,
+    mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
     entities: code && code.length > 0 ? { code } : undefined,
   };
   if (
     !article.id &&
     !article.title &&
     !article.plain_text &&
-    !article.preview_text
+    !article.preview_text &&
+    !article.coverUrl
   ) {
     return undefined;
   }
   return article;
+}
+
+function asMediaUrl(value: unknown): string | null {
+  const row = asRecord(value);
+  if (!row) {
+    return null;
+  }
+  if (typeof row.url === "string" && row.url.startsWith("http")) {
+    return row.url;
+  }
+  if (
+    typeof row.preview_image_url === "string" &&
+    row.preview_image_url.startsWith("http")
+  ) {
+    return row.preview_image_url;
+  }
+  return null;
+}
+
+function asMediaUrls(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  const out: string[] = [];
+  for (const item of items.slice(0, 8)) {
+    const url = asMediaUrl(item);
+    if (url && !out.includes(url)) {
+      out.push(url);
+    }
+  }
+  return out;
+}
+
+function urlEntityImage(item: {
+  images?: { url?: string }[];
+}): string | undefined {
+  const images = Array.isArray(item.images) ? item.images : [];
+  for (const image of images) {
+    if (typeof image?.url === "string" && image.url.startsWith("http")) {
+      return image.url;
+    }
+  }
+  return undefined;
+}
+
+export function xArticleImageUrls(tweet: XTweet): string[] {
+  const out: string[] = [];
+  if (tweet.article?.coverUrl) {
+    out.push(tweet.article.coverUrl);
+  }
+  for (const url of tweet.article?.mediaUrls ?? []) {
+    if (!out.includes(url)) {
+      out.push(url);
+    }
+  }
+  for (const link of tweetUrlEntries(tweet.entities)) {
+    if (!link.image || !isXArticleUrl(link.url) || out.includes(link.image)) {
+      continue;
+    }
+    out.push(link.image);
+  }
+  return out.slice(0, 8);
 }
 
 export function parseBookmarksPage(payload: unknown): BookmarksPage {

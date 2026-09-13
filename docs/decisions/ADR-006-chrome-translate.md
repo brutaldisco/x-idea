@@ -2,8 +2,9 @@
 
 - 日付: 2026-09-05
 - 改訂: 2026-09-07（漢字≠日本語、記事は投稿 `lang` を使わない）
+- 改訂: 2026-09-13（翻訳結果を `chrome_translations` に保存。原文・AI 列は不変）
 - 状態: 採用
-- 関連: 設計書 8.5 / 14.3、ADR-005、`docs/design/2026-09-07-multilingual-chrome-translate.md`
+- 関連: 設計書 8.5 / 14.3、ADR-005、`docs/design/2026-09-07-multilingual-chrome-translate.md`、`docs/design/2026-09-13-persist-chrome-translate.md`
 
 ## 文脈
 
@@ -14,7 +15,7 @@ X の画面では投稿が自動で日本語訳されるが、Bookmarks API は�
 - X の翻訳文は取得しない。原文は `x_posts.text` に不変で保存する。
 - 原文ノードに投稿の `lang` と `translate="yes"` を付ける。日本語 UI（タブ、AI 要約、メモ、操作説明）は `translate="no"` / `notranslate`。
 - Reader で Chrome Translator API があれば「日本語に翻訳」で端末内翻訳を表示する。無ければ「原文を選択」して右クリック翻訳に誘導する。
-- 翻訳結果は画面上の一時表示のみ。DB にも AI カラムにも書かない。
+- 翻訳結果は **`chrome_translations` 専用テーブル**に保存する（T-614）。原文カラム（`x_posts.text` / `articles.content_*`）・AI 列・`user_note`・FTS には書かない。再オープン時は `source_hash` が一致するときだけ保存訳を表示する。
 - **ボタン表示は「かな優勢＝日本語」だけを見る。** 漢字（CJK 統合漢字）だけでは日本語とみなさない。中国語など漢字圏もボタン対象。対応言語のホワイトリストは表示条件に使わない。
 - **記事は投稿の `lang` を翻訳 hint に使わない。** クリック時は Language Detector が本文を見る。投稿本文だけ X の `lang` を hint にする。
 - Translator には pair 用コードを渡す。簡体は `zh`、繁体は `zh-Hant`（`zh-TW` / `zh-HK` を含む）。

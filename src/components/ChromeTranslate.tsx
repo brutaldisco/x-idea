@@ -3,12 +3,15 @@
 import { useState } from "react";
 import { ReaderBody } from "@/components/ReaderBody";
 import {
+  type ChromeTranslationTargetKind,
+  type ChromeTranslationView,
   detectSourceLanguage,
   getTranslatorCtor,
   selectElementText,
   shouldOfferTranslate,
 } from "@/lib/chrome-translate";
 import { packReaderLinesForTranslate } from "@/lib/reader-paragraphs";
+import { saveChromeTranslation } from "@/server/actions/sources";
 
 const TARGET = "ja";
 
@@ -17,19 +20,39 @@ export function ChromeTranslate({
   lang,
   targetId,
   className,
+  kind,
+  saveId,
+  sourceHash,
+  saved,
 }: {
   text: string;
   lang: string | null;
   targetId: string;
   className?: string;
+  kind: ChromeTranslationTargetKind;
+  saveId: string;
+  sourceHash: string;
+  saved: ChromeTranslationView | null;
 }) {
   const offer = shouldOfferTranslate(text, lang);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
-  const [translated, setTranslated] = useState<string | null>(null);
+  const [translated, setTranslated] = useState<string | null>(
+    offer && saved?.text ? saved.text : null,
+  );
 
   const selectOriginal = () => {
     selectElementText(document.getElementById(targetId));
+  };
+
+  const persistTranslation = (result: string, sourceLang: string | null) => {
+    void saveChromeTranslation({
+      kind,
+      id: saveId,
+      text: result,
+      sourceLang,
+      sourceHash,
+    });
   };
 
   const translate = () => {
@@ -72,6 +95,7 @@ export function ChromeTranslate({
           packReaderLinesForTranslate(text),
         );
         setTranslated(result);
+        persistTranslation(result, source);
       } catch {
         selectOriginal();
       }
@@ -84,6 +108,10 @@ export function ChromeTranslate({
   if (!text.trim()) {
     return null;
   }
+
+  const showTranslation = Boolean(translated);
+  const translateLabel =
+    showTranslation || saved?.text ? "再翻訳" : "日本語に翻訳";
 
   return (
     <div
@@ -103,7 +131,7 @@ export function ChromeTranslate({
               ? progress != null
                 ? `準備中 ${progress}%`
                 : "翻訳中…"
-              : "日本語に翻訳"}
+              : translateLabel}
           </button>
         ) : null}
         <button
@@ -114,10 +142,14 @@ export function ChromeTranslate({
           原文を選択
         </button>
       </div>
-      {translated ? (
+      {showTranslation ? (
         <div className="mt-3 rounded-xl border border-line bg-paper px-3 py-2">
           <p className="text-ink-2 text-xs">Chrome 翻訳</p>
-          <ReaderBody className="reader-body mt-1" text={translated} readable />
+          <ReaderBody
+            className="reader-body mt-1"
+            text={translated ?? ""}
+            readable
+          />
         </div>
       ) : null}
     </div>

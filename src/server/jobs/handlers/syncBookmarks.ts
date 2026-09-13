@@ -11,7 +11,11 @@ import {
   INITIAL_BOOKMARK_PAGE,
   isAutoSyncDue,
 } from "@/lib/sync-policy";
-import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
+import {
+  enqueueArticleHtmlRefetch,
+  enqueuePendingArticleFetches,
+} from "@/server/fetch/enqueue-pending";
+import { refreshXArticleCovers } from "@/server/fetch/x-article";
 import {
   applyBookmarkPageErrors,
   ingestBookmark,
@@ -169,6 +173,8 @@ async function syncOneAccount(
     await enqueuePendingMediaDownloads(account.id);
     await enqueuePendingArticleFetches(8);
     await backfillArticleThumbs({ accountId: account.id, limit: 8 });
+    await refreshXArticleCovers(2);
+    await enqueueArticleHtmlRefetch(4);
     await markXAccountSynced(account.id, newHead);
     await writeRun({
       runId,
@@ -329,6 +335,8 @@ async function syncOneAccountBackfill(
     await enqueuePendingMediaDownloads(account.id);
     await enqueuePendingArticleFetches(8);
     await backfillArticleThumbs({ accountId: account.id, limit: 8 });
+    await refreshXArticleCovers(2);
+    await enqueueArticleHtmlRefetch(4);
     await writeRun({
       runId,
       accountId: account.id,

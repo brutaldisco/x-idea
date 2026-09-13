@@ -1,5 +1,6 @@
 import { unlink, writeFile } from "node:fs/promises";
 import { getClient } from "@/db/client";
+import { ARTICLE_THUMB_KEY_PREFIX } from "@/lib/article-thumb";
 import { logger } from "@/lib/logger";
 import { withRetry } from "@/lib/retry";
 import { enqueueJob } from "@/server/jobs/queue";
@@ -9,7 +10,7 @@ import {
   saveMediaBlob,
 } from "@/server/media/blob";
 import { shouldFetchMediaBlob } from "@/server/media/download-policy";
-import { fetchRemoteMedia } from "@/server/media/fetch-remote";
+import { fetchRemoteMedia, refererFromUrl } from "@/server/media/fetch-remote";
 import {
   ensureMediaDir,
   isLocalMediaEnabled,
@@ -88,10 +89,30 @@ async function setStatus(
   });
 }
 
-async function fetchToWebp(url: string): Promise<Buffer> {
+async function refererFor(row: MediaRow): Promise<string | null> {
+  if (row.media_key.startsWith(ARTICLE_THUMB_KEY_PREFIX)) {
+    const articleId = row.media_key.slice(ARTICLE_THUMB_KEY_PREFIX.length);
+    const found = await getClient().execute({
+      sql: "SELECT original_url FROM articles WHERE id = ? LIMIT 1",
+      args: [articleId],
+    });
+    const page = refererFromUrl(
+      found.rows[0]?.original_url ? String(found.rows[0].original_url) : null,
+    );
+    if (page) {
+      return page;
+    }
+  }
+  return refererFromUrl(row.media_url);
+}
+
+async function fetchToWebp(
+  url: string,
+  referer?: string | null,
+): Promise<Buffer> {
   const res = await withRetry(
     async () => {
-      const response = await fetchRemoteMedia(url);
+      const response = await fetchRemoteMedia(url, null, { referer });
       if (response.status === 429 || response.status >= 500) {
         const error = new Error(`media fetch ${response.status}`);
         (error as { status?: number }).status = response.status;
@@ -167,7 +188,7 @@ export async function downloadMediaAsset(input: {
 
   try {
     await setStatus(fresh.id, "downloading");
-    const webp = await fetchToWebp(url);
+    const webp = await fetchToWebp(url, await refererFor(fresh));
     if (webp.length > MAX_BLOB_BYTES) {
       await setStatus(fresh.id, "failed", {
         error: "converted image too large",

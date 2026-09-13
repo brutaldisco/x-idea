@@ -1,33 +1,36 @@
 import sanitizeHtml from "sanitize-html";
 import { getClient } from "@/db/client";
+import { imgParagraphs, NO_COVER_MARK, withHtmlMark } from "@/lib/article-html";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import { hostOf, isXArticleUrl, normalizeUrl } from "@/server/ingest/url";
 import { enqueueEnrichBatch } from "@/server/jobs/enrich";
+import { attachArticleThumbnail } from "@/server/media/article-thumb";
 import { getXAccountSecret } from "@/server/x/account";
 import { fetchTweetById } from "@/server/x/client";
 import {
   tweetText,
   type XTweet,
   xArticleBody,
+  xArticleImageUrls,
   xArticlePermalink,
 } from "@/server/x/parse";
 import { ensureValidToken } from "@/server/x/token";
 
 const MIN_BODY = 400;
 
-function articleHtml(body: string): string {
+function articleHtml(body: string, images: readonly string[] = []): string {
   const escaped = body
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
-  const html = escaped
+  const html = `${imgParagraphs(images)}${escaped
     .split(/\n{2,}/)
     .map((part) => `<p>${part.replaceAll("\n", "<br />")}</p>`)
-    .join("");
+    .join("")}`;
   return sanitizeHtml(html, {
-    allowedTags: ["p", "br"],
-    allowedAttributes: {},
+    allowedTags: ["p", "br", "img"],
+    allowedAttributes: { img: ["src", "alt"] },
   });
 }
 
@@ -70,12 +73,14 @@ export async function persistNativeXArticle(
   const normalized = normalizeUrl(permalink);
   const title = tweet.article?.title?.trim() || null;
   const description = tweet.article?.preview_text?.trim() || null;
-  const html = articleHtml(body);
+  const images = xArticleImageUrls(tweet);
+  const cover = images[0] ?? null;
+  const html = articleHtml(body, images);
   const postBody = tweetText(tweet);
   const client = getClient();
 
   const existing = await client.execute({
-    sql: "SELECT id, content_text FROM articles WHERE normalized_url = ? LIMIT 1",
+    sql: "SELECT id, content_text, content_html, thumbnail_url FROM articles WHERE normalized_url = ? LIMIT 1",
     args: [normalized],
   });
   let articleId = existing.rows[0]?.id ? String(existing.rows[0].id) : null;
@@ -86,8 +91,8 @@ export async function persistNativeXArticle(
     await client.execute({
       sql: `INSERT INTO articles (
         id, normalized_url, original_url, domain, title, description,
-        content_html, content_text, fetch_scope, fetched_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'full', datetime('now'), datetime('now'))`,
+        thumbnail_url, content_html, content_text, fetch_scope, fetched_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'full', datetime('now'), datetime('now'))`,
       args: [
         articleId,
         normalized,
@@ -95,6 +100,7 @@ export async function persistNativeXArticle(
         hostOf(permalink),
         title,
         description,
+        cover,
         html,
         body.slice(0, 100_000),
       ],
@@ -106,6 +112,7 @@ export async function persistNativeXArticle(
         domain = ?,
         title = COALESCE(?, title),
         description = COALESCE(?, description),
+        thumbnail_url = COALESCE(?, NULLIF(thumbnail_url, '')),
         content_html = ?,
         content_text = ?,
         fetch_scope = 'full',
@@ -117,11 +124,21 @@ export async function persistNativeXArticle(
         hostOf(permalink),
         title,
         description,
+        cover,
         html,
         body.slice(0, 100_000),
         articleId,
       ],
     });
+  } else {
+    await applyXArticleCover(
+      articleId,
+      cover,
+      images,
+      existing.rows[0]?.content_html
+        ? String(existing.rows[0].content_html)
+        : "",
+    );
   }
 
   await client.execute({
@@ -151,6 +168,35 @@ export async function persistNativeXArticle(
   return true;
 }
 
+async function applyXArticleCover(
+  articleId: string,
+  cover: string | null,
+  images: readonly string[],
+  currentHtml: string,
+): Promise<void> {
+  if (cover) {
+    await getClient().execute({
+      sql: `UPDATE articles SET
+              thumbnail_url = COALESCE(?, NULLIF(thumbnail_url, ''))
+            WHERE id = ?`,
+      args: [cover, articleId],
+    });
+    if (!currentHtml.includes("<img") && images.length > 0) {
+      await getClient().execute({
+        sql: "UPDATE articles SET content_html = ? WHERE id = ?",
+        args: [`${imgParagraphs(images)}${currentHtml}`, articleId],
+      });
+    }
+    return;
+  }
+  if (!currentHtml.includes(NO_COVER_MARK)) {
+    await getClient().execute({
+      sql: "UPDATE articles SET content_html = ? WHERE id = ?",
+      args: [withHtmlMark(currentHtml || "", NO_COVER_MARK), articleId],
+    });
+  }
+}
+
 export async function hydrateXArticleFromApi(
   sourceId: string,
 ): Promise<boolean> {
@@ -170,20 +216,26 @@ export async function hydrateXArticleFromApi(
   if (!source?.tweet_id || !source.x_account_id) {
     return false;
   }
-  if (payloadHydrated(source.raw_payload_json)) {
-    return false;
-  }
 
   const existing = await client.execute({
-    sql: `SELECT MAX(length(COALESCE(a.content_text, ''))) AS n
+    sql: `SELECT MAX(length(COALESCE(a.content_text, ''))) AS n,
+                 MAX(CASE
+                   WHEN a.original_url LIKE '%/i/article/%'
+                    AND a.thumbnail_url IS NULL
+                    AND IFNULL(a.content_html, '') NOT LIKE '%x-idea:no-cover%'
+                   THEN 1 ELSE 0 END) AS need_cover
           FROM source_articles sa
           JOIN articles a ON a.id = sa.article_id
           WHERE sa.source_id = ?
           LIMIT 1`,
     args: [sourceId],
   });
-  if (Number(existing.rows[0]?.n ?? 0) >= MIN_BODY) {
-    await markHydrated(String(source.post_id));
+  const hasBody = Number(existing.rows[0]?.n ?? 0) >= MIN_BODY;
+  const needCover = Number(existing.rows[0]?.need_cover ?? 0) === 1;
+  if (hasBody && !needCover) {
+    if (!payloadHydrated(source.raw_payload_json)) {
+      await markHydrated(String(source.post_id));
+    }
     return false;
   }
 
@@ -249,6 +301,65 @@ export async function hydrateArticleRowFromTweet(
     logger.warn({ err: error, articleId }, "x article row hydrate skipped");
     return false;
   }
+}
+
+export async function refreshXArticleCovers(limit = 2): Promise<number> {
+  const cap = Math.min(8, Math.max(1, limit));
+  const found = await getClient().execute({
+    sql: `SELECT DISTINCT a.id
+          FROM articles a
+          JOIN source_articles sa ON sa.article_id = a.id
+          JOIN sources s ON s.id = sa.source_id
+          JOIN x_posts p ON p.id = s.x_post_id
+          WHERE a.original_url LIKE '%/i/article/%'
+            AND (a.thumbnail_url IS NULL OR a.thumbnail_url = '')
+            AND IFNULL(a.content_html, '') NOT LIKE '%x-idea:no-cover%'
+            AND NOT EXISTS (
+              SELECT 1 FROM media_assets m
+              WHERE m.x_post_id = p.id
+                AND m.type = 'photo'
+                AND IFNULL(m.media_key, '') NOT LIKE 'article-og:%'
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM media_assets m
+              WHERE m.x_post_id = p.id
+                AND m.media_key = 'article-og:' || a.id
+            )
+          ORDER BY a.fetched_at DESC
+          LIMIT ?`,
+    args: [cap],
+  });
+  let attached = 0;
+  for (const row of found.rows) {
+    const articleId = String(row.id);
+    await hydrateArticleRowFromTweet(articleId);
+    attached += await attachArticleThumbnail(articleId, {
+      allowRefetch: false,
+    });
+    await markNoCoverIfStillMissing(articleId);
+  }
+  return attached;
+}
+
+async function markNoCoverIfStillMissing(articleId: string): Promise<void> {
+  const row = await getClient().execute({
+    sql: "SELECT thumbnail_url, content_html FROM articles WHERE id = ? LIMIT 1",
+    args: [articleId],
+  });
+  const thumb = row.rows[0]?.thumbnail_url;
+  if (thumb != null && String(thumb) !== "") {
+    return;
+  }
+  const html = row.rows[0]?.content_html
+    ? String(row.rows[0].content_html)
+    : "";
+  if (html.includes(NO_COVER_MARK)) {
+    return;
+  }
+  await getClient().execute({
+    sql: "UPDATE articles SET content_html = ? WHERE id = ?",
+    args: [withHtmlMark(html, NO_COVER_MARK), articleId],
+  });
 }
 
 function payloadHydrated(raw: unknown): boolean {

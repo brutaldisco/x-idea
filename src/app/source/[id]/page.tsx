@@ -17,8 +17,15 @@ import { SourceStatusBar } from "@/components/SourceStatusBar";
 import { mediaHasQueueableVideos } from "@/lib/video-queue";
 import { infoTypeLabel } from "@/server/ai/info-types";
 import { ensureSourceArticles } from "@/server/fetch/attach";
-import { enqueuePendingArticleFetches } from "@/server/fetch/enqueue-pending";
-import { hydrateXArticleFromApi } from "@/server/fetch/x-article";
+import {
+  enqueueArticleHtmlRefetch,
+  enqueuePendingArticleFetches,
+  refreshSourceArticleHtml,
+} from "@/server/fetch/enqueue-pending";
+import {
+  hydrateXArticleFromApi,
+  refreshXArticleCovers,
+} from "@/server/fetch/x-article";
 import { runJobs } from "@/server/jobs/runner";
 import {
   attachArticleThumbsForSource,
@@ -56,6 +63,7 @@ export default async function SourcePage({
   const ctx = await getAccountContext();
   await ensureSourceArticles(id);
   await hydrateXArticleFromApi(id);
+  await refreshSourceArticleHtml(id);
   await attachArticleThumbsForSource(id, { allowRefetch: true });
   const [source, flags] = await Promise.all([
     getSourceDetail(id, ctx),
@@ -84,9 +92,12 @@ export default async function SourcePage({
           accountId: source.xAccountId,
           limit: 8,
         });
+        await refreshXArticleCovers(2);
       } else {
         await backfillArticleThumbs({ limit: 8 });
+        await refreshXArticleCovers(2);
       }
+      await enqueueArticleHtmlRefetch(2);
       await runJobs({ max: 6 });
     })();
   });
@@ -231,6 +242,8 @@ export default async function SourcePage({
                 description={article.description}
                 contentText={article.contentText}
                 contentHtml={article.contentHtml}
+                translateSourceHash={article.translateSourceHash}
+                chromeTranslation={article.chromeTranslation}
               />
             ))}
           </div>

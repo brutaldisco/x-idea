@@ -1,11 +1,18 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { MEDIA_PHOTO_FIRST_SQL } from "@/lib/article-thumb";
+import type { ChromeTranslationView } from "@/lib/chrome-translate";
 import {
   formatDuration,
   parseVariantsJson,
   videoVariantMeta,
 } from "@/server/media/select";
+import {
+  articleSourceString,
+  chromeTranslateSourceHashSync,
+  loadChromeTranslations,
+  postSourceString,
+} from "@/server/sources/chrome-translate";
 import { sourceScopeSql } from "@/server/sources/scope";
 import { type AccountContext, contextAccountId } from "@/server/x/context";
 
@@ -46,6 +53,8 @@ export type PostCard = {
   quotedTweetId: string | null;
   quotedSnapshot: { text?: string; id?: string } | null;
   media: MediaItem[];
+  translateSourceHash: string;
+  chromeTranslation: ChromeTranslationView | null;
 };
 
 export type SourceDetail = {
@@ -76,6 +85,8 @@ export type SourceDetail = {
     description: string | null;
     contentText: string | null;
     contentHtml: string | null;
+    translateSourceHash: string;
+    chromeTranslation: ChromeTranslationView | null;
   }[];
 };
 
@@ -157,6 +168,42 @@ function asPost(row: Record<string, unknown>, media: MediaItem[]): PostCard {
     quotedTweetId: row.quoted_tweet_id ? String(row.quoted_tweet_id) : null,
     quotedSnapshot: quoted,
     media,
+    translateSourceHash: "",
+    chromeTranslation: null,
+  };
+}
+
+function attachPostTranslations(
+  post: PostCard,
+  translations: Map<string, ChromeTranslationView>,
+): PostCard {
+  const source = postSourceString(post);
+  const hash = chromeTranslateSourceHashSync(source);
+  return {
+    ...post,
+    translateSourceHash: hash,
+    chromeTranslation: translations.get(`x_post:${post.id}`) ?? null,
+  };
+}
+
+function attachArticleTranslations(
+  article: {
+    id: string;
+    title: string | null;
+    url: string;
+    scope: string;
+    description: string | null;
+    contentText: string | null;
+    contentHtml: string | null;
+  },
+  translations: Map<string, ChromeTranslationView>,
+) {
+  const source = articleSourceString(article);
+  const hash = chromeTranslateSourceHashSync(source);
+  return {
+    ...article,
+    translateSourceHash: hash,
+    chromeTranslation: translations.get(`article:${article.id}`) ?? null,
   };
 }
 
@@ -326,6 +373,31 @@ export async function getSourceDetail(
     args: [id],
   });
 
+  const articleRows = articles.rows.map((item) => ({
+    id: String(item.id),
+    title: item.title ? String(item.title) : null,
+    url: String(item.original_url),
+    scope: String(item.fetch_scope),
+    description: item.description ? String(item.description) : null,
+    contentText: item.content_text ? String(item.content_text) : null,
+    contentHtml: item.content_html ? String(item.content_html) : null,
+  }));
+
+  const translations = await loadChromeTranslations([
+    ...[post, parent, ...thread, ...replies]
+      .filter((item): item is PostCard => item != null)
+      .map((item) => ({
+        kind: "x_post" as const,
+        id: item.id,
+        source: postSourceString(item),
+      })),
+    ...articleRows.map((item) => ({
+      kind: "article" as const,
+      id: item.id,
+      source: articleSourceString(item),
+    })),
+  ]);
+
   return {
     id: String(row.id),
     xAccountId: row.x_account_id ? String(row.x_account_id) : null,
@@ -342,19 +414,13 @@ export async function getSourceDetail(
     tags: tagRows.rows.map((item) => String(item.name)),
     userNote: row.user_note ? String(row.user_note) : null,
     aiSummary: row.ai_summary ? String(row.ai_summary) : null,
-    post,
-    parent,
+    post: attachPostTranslations(post, translations),
+    parent: parent ? attachPostTranslations(parent, translations) : null,
     threadLoaded,
-    thread,
-    replies,
-    articles: articles.rows.map((item) => ({
-      id: String(item.id),
-      title: item.title ? String(item.title) : null,
-      url: String(item.original_url),
-      scope: String(item.fetch_scope),
-      description: item.description ? String(item.description) : null,
-      contentText: item.content_text ? String(item.content_text) : null,
-      contentHtml: item.content_html ? String(item.content_html) : null,
-    })),
+    thread: thread.map((item) => attachPostTranslations(item, translations)),
+    replies: replies.map((item) => attachPostTranslations(item, translations)),
+    articles: articleRows.map((item) =>
+      attachArticleTranslations(item, translations),
+    ),
   };
 }

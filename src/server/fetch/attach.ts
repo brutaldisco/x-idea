@@ -31,8 +31,8 @@ export async function attachArticleLinks(
       await client.execute({
         sql: `INSERT INTO articles (
           id, normalized_url, original_url, domain, title, description,
-          fetch_scope, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
+          thumbnail_url, fetch_scope, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
         args: [
           articleId,
           normalized,
@@ -40,7 +40,15 @@ export async function attachArticleLinks(
           hostOf(link.url),
           link.title ?? null,
           link.description ?? null,
+          link.image ?? null,
         ],
+      });
+    } else if (link.image) {
+      await client.execute({
+        sql: `UPDATE articles SET
+                thumbnail_url = COALESCE(NULLIF(thumbnail_url, ''), ?)
+              WHERE id = ? AND (thumbnail_url IS NULL OR thumbnail_url = '')`,
+        args: [link.image, articleId],
       });
     }
     await client.execute({

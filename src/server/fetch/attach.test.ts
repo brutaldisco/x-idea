@@ -10,6 +10,7 @@ describe("collectArticleLinks", () => {
           {
             expanded_url: "https://x.com/i/article/9",
             title: "X Article",
+            images: [{ url: "https://pbs.twimg.com/media/card.jpg" }],
           },
         ],
       }),
@@ -19,5 +20,6 @@ describe("collectArticleLinks", () => {
       "https://example.com/from-text",
     ]);
     expect(links[0]?.title).toBe("X Article");
+    expect(links[0]?.image).toBe("https://pbs.twimg.com/media/card.jpg");
   });
 });

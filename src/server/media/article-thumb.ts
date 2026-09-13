@@ -1,4 +1,5 @@
 import { getClient } from "@/db/client";
+import { restoreStrippedImages } from "@/lib/article-html";
 import {
   absoluteHttpUrl,
   articleThumbMediaKey,
@@ -7,14 +8,26 @@ import {
 } from "@/lib/article-thumb";
 import { newId } from "@/lib/ids";
 import { fetchArticlePage } from "@/server/fetch/article";
+import { isXArticleUrl, isXStatusUrl, normalizeUrl } from "@/server/ingest/url";
 import { enqueueJob } from "@/server/jobs/queue";
 import { getExcludedDomains } from "@/server/settings";
+import { tweetUrlEntries } from "@/server/x/parse";
 
 const SKIP_REFETCH = new Set([
   "excluded_domain",
   "robots_disallow",
   "x_status",
 ]);
+
+const RECOVERABLE_HTML_SQL = `(
+  a.content_html LIKE '%<img%'
+  OR a.content_html LIKE '%.jpg%'
+  OR a.content_html LIKE '%.jpeg%'
+  OR a.content_html LIKE '%.png%'
+  OR a.content_html LIKE '%.webp%'
+  OR a.content_html LIKE '%.gif%'
+  OR a.content_html LIKE '%.avif%'
+)`;
 
 export async function attachArticleThumbsForSource(
   sourceId: string,
@@ -55,7 +68,11 @@ export async function backfillArticleThumbs(input?: {
             AND a.fetch_scope IN ('full', 'partial', 'metadata_only')
             AND (
               (a.thumbnail_url IS NOT NULL AND a.thumbnail_url != '')
-              OR a.content_html IS NOT NULL
+              OR ${RECOVERABLE_HTML_SQL}
+            )
+            AND NOT (
+              a.thumbnail_url = ''
+              AND IFNULL(a.fetch_error, '') IN ('excluded_domain', 'robots_disallow', 'x_status')
             )
             AND NOT EXISTS (
               SELECT 1 FROM media_assets m
@@ -99,19 +116,21 @@ export async function attachArticleThumbnail(
   if (!article) {
     return 0;
   }
-  const stored = article.thumbnail_url;
-  if (stored === "") {
-    return 0;
-  }
   const base = String(article.original_url);
   const fetchError = article.fetch_error ? String(article.fetch_error) : "";
+  const html = await restoreArticleContentImages(
+    articleId,
+    article.content_html ? String(article.content_html) : "",
+    base,
+  );
+  const stored = article.thumbnail_url ? String(article.thumbnail_url) : "";
   let url =
-    absoluteHttpUrl(stored ? String(stored) : null, base) ??
-    firstContentImage(
-      article.content_html ? String(article.content_html) : null,
-      base,
-    );
-  if (!url && options?.allowRefetch && !SKIP_REFETCH.has(fetchError)) {
+    absoluteHttpUrl(stored || null, base) ??
+    firstContentImage(html, base) ??
+    (await tweetCardImage(articleId, base));
+  const skipPage =
+    SKIP_REFETCH.has(fetchError) || isXArticleUrl(base) || isXStatusUrl(base);
+  if (!url && options?.allowRefetch && !skipPage) {
     url = await refetchThumbnailUrl(base);
   }
   if (!url) {
@@ -147,13 +166,72 @@ export async function attachArticleThumbnail(
   return attached;
 }
 
+export async function restoreArticleContentImages(
+  articleId: string,
+  html: string,
+  base: string,
+): Promise<string> {
+  const next = restoreStrippedImages(html, base);
+  if (!html || next === html) {
+    return html;
+  }
+  await getClient().execute({
+    sql: "UPDATE articles SET content_html = ? WHERE id = ?",
+    args: [next, articleId],
+  });
+  return next;
+}
+
+async function tweetCardImage(
+  articleId: string,
+  pageUrl: string,
+): Promise<string | null> {
+  const found = await getClient().execute({
+    sql: `SELECT p.raw_entities_json
+          FROM source_articles sa
+          JOIN sources s ON s.id = sa.source_id
+          JOIN x_posts p ON p.id = s.x_post_id
+          WHERE sa.article_id = ?
+          LIMIT 8`,
+    args: [articleId],
+  });
+  const target = normalizeUrl(pageUrl);
+  for (const row of found.rows) {
+    const raw = row.raw_entities_json ? String(row.raw_entities_json) : "";
+    if (!raw) {
+      continue;
+    }
+    try {
+      const links = tweetUrlEntries(JSON.parse(raw) as unknown);
+      for (const link of links) {
+        if (!link.image) {
+          continue;
+        }
+        if (normalizeUrl(link.url) === target) {
+          return link.image;
+        }
+      }
+      const fallback = links.find((link) => link.image)?.image;
+      if (fallback && found.rows.length === 1) {
+        return fallback;
+      }
+    } catch {
+      // ignore malformed entities
+    }
+  }
+  return null;
+}
+
 async function refetchThumbnailUrl(pageUrl: string): Promise<string | null> {
   const excluded = await getExcludedDomains();
   const result = await fetchArticlePage({
     url: pageUrl,
     excludedDomains: excluded,
   });
-  return absoluteHttpUrl(result.thumbnailUrl, result.url);
+  return (
+    absoluteHttpUrl(result.thumbnailUrl, result.url) ??
+    firstContentImage(result.contentHtml, result.url)
+  );
 }
 
 async function rememberThumbnail(
@@ -214,6 +292,14 @@ async function upsertArticleThumb(input: {
       });
     } else if (status === "ready") {
       shouldQueue = false;
+    } else if (status === "failed") {
+      await getClient().execute({
+        sql: `UPDATE media_assets SET
+                download_status = 'pending',
+                download_error = NULL
+              WHERE id = ?`,
+        args: [mediaId],
+      });
     }
   } else {
     mediaId = newId();

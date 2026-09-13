@@ -171,6 +171,31 @@ export const xPosts = sqliteTable("x_posts", {
   fetchedAt: text("fetched_at").notNull(),
 });
 
+export const chromeTranslations = sqliteTable(
+  "chrome_translations",
+  {
+    id: text("id").primaryKey(),
+    targetKind: text("target_kind").notNull(),
+    targetId: text("target_id").notNull(),
+    targetLang: text("target_lang").notNull().default("ja"),
+    sourceHash: text("source_hash").notNull(),
+    sourceLang: text("source_lang"),
+    text: text("text").notNull(),
+    translatedAt: text("translated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("chrome_translations_target").on(
+      table.targetKind,
+      table.targetId,
+      table.targetLang,
+    ),
+    index("idx_chrome_translations_target").on(
+      table.targetKind,
+      table.targetId,
+    ),
+  ],
+);
+
 export const articles = sqliteTable("articles", {
   id: text("id").primaryKey(),
   normalizedUrl: text("normalized_url").notNull().unique(),

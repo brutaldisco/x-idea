@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   packReaderLinesForTranslate,
   readerLineGapEm,
+  reflowArticleHtml,
+  splitEnglishSentences,
   splitReadableLines,
   splitReaderLines,
   splitReaderSentences,
@@ -144,6 +146,29 @@ describe("splitReaderSentences", () => {
       ),
     ).toEqual(["本当ですか？", "はい、そうです！"]);
   });
+
+  it("splits English on period plus a capital letter", () => {
+    const text =
+      "Every AI tool you have used so far waits for you. You open it, you ask, it answers, you close it. The work still happens in your hands - the model just talks you through it. Follow my Substack to get";
+    expect(splitReadableLines(text).map((line) => line.text)).toEqual([
+      "Every AI tool you have used so far waits for you.",
+      "You open it, you ask, it answers, you close it.",
+      "The work still happens in your hands - the model just talks you through it.",
+      "Follow my Substack to get",
+    ]);
+  });
+
+  it("does not split Dr. or decimals", () => {
+    expect(splitEnglishSentences("Dr. Smith paid 3.14 dollars.")).toEqual([
+      "Dr. Smith paid 3.14 dollars.",
+    ]);
+  });
+
+  it("splits after a protected abbreviation", () => {
+    expect(splitEnglishSentences("Dr. Smith went home. Then he left.")).toEqual(
+      ["Dr. Smith went home.", "Then he left."],
+    );
+  });
 });
 
 describe("splitReadableLines", () => {
@@ -173,6 +198,36 @@ describe("splitReadableLines", () => {
       [true, "難"],
       [false, "次"],
     ]);
+  });
+});
+
+describe("reflowArticleHtml", () => {
+  it("splits a plain English paragraph into sentence paragraphs", () => {
+    const html =
+      "<p>Every AI tool you have used so far waits for you. You open it, you ask, it answers, you close it. The work still happens in your hands - the model just talks you through it. Follow my Substack to get</p>";
+    const out = reflowArticleHtml(html);
+    expect(out).toContain("Every AI tool you have used so far waits for you.");
+    expect(out).toContain("You open it, you ask, it answers, you close it.");
+    expect((out.match(/<p\b/g) ?? []).length).toBe(4);
+  });
+
+  it("leaves paragraphs with links or images alone", () => {
+    const html =
+      '<p><a href="https://example.com">Every AI tool you have used so far waits for you. You open it, you ask, it answers.</a></p>';
+    expect(reflowArticleHtml(html)).toBe(html);
+  });
+
+  it("splits a Japanese HTML wall on sentence endings", () => {
+    const html =
+      "<p>Hermes Bottingsで一つのメディア会社を構築する方法を提供する6つのボットのチームを構築しました。ほとんどの人はAIを使ってより書き込みます。これ役に立ちますが、書き込みはもはやボトルネックではありません。</p>";
+    expect((reflowArticleHtml(html).match(/<p\b/g) ?? []).length).toBe(3);
+  });
+
+  it("is safe to run twice", () => {
+    const html =
+      "<p>Every AI tool you have used so far waits for you. You open it, you ask, it answers, you close it. The work still happens in your hands - the model just talks you through it. Follow my Substack to get</p>";
+    const once = reflowArticleHtml(html);
+    expect(reflowArticleHtml(once)).toBe(once);
   });
 });
 

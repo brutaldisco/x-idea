@@ -131,7 +131,7 @@ Inbox / Library カードに翻訳ボタンは置かない（現状どおり）�
 
 - `articles.lang` カラムや `article_fetch` での `html[lang]` / `og:locale` 抽出（マイグレーションが要る。HTML の `lang` は不正確なことが多い）
 - AI enrich での言語再判定（予算レーンを使う。ADR-006 に反する）
-- 翻訳結果の永続化
+- ~~翻訳結果の永続化~~ → **T-614**（`docs/design/2026-09-13-persist-chrome-translate.md`）で実装
 - サーバー側翻訳 API、有料トグル
 - ボタン表示のための Language Detector（非同期・初回モデル DL・モバイル非対応。ちらつきが出る）
 - 「対応 39 言語だけボタン」ホワイトリスト（未対応言語でも右クリック経路は残す）
@@ -208,7 +208,7 @@ DoD:
 - [x] `ArticleBlock` が投稿 `lang` を翻訳 hint に渡さない
 - [x] `translatorLanguage("zh-Hant") === "zh-Hant"`、`translatorLanguage("zh-CN") === "zh"`
 - [x] クリック時、hint=`ja` でも Detector が中国語なら翻訳に進む
-- [x] 翻訳結果を DB に書かない（回帰）
+- [x] 翻訳結果を原文カラムに書かない（回帰。T-614 で `chrome_translations` に保存）
 - [x] ADR-006 に「漢字≠日本語」「記事は投稿 lang を使わない」を追記
 - [x] 設計書 8.5 の Chrome 翻訳一文を同じ内容に更新
 

@@ -35,6 +35,52 @@ const KANA = /[\u3040-\u309f\u30a0-\u30ff]/u;
 const KANA_RATIO = 0.12;
 const LOW_DETECT_CONFIDENCE = 0.4;
 
+export const CHROME_TRANSLATE_TARGET_LANG = "ja";
+export const CHROME_TRANSLATE_INPUT_MAX = 12_000;
+export const CHROME_TRANSLATE_TEXT_MAX = 24_000;
+
+export type ChromeTranslationTargetKind = "x_post" | "article";
+
+export type ChromeTranslationView = {
+  text: string;
+  sourceLang: string | null;
+  translatedAt: string;
+};
+
+export type PostTranslateInput = {
+  text: string;
+  quotedSnapshot?: { text?: string } | null;
+};
+
+export type ArticleTranslateInput = {
+  title: string | null;
+  contentText: string | null;
+  description: string | null;
+  maxChars?: number;
+};
+
+export function postTranslateSource(post: PostTranslateInput): string {
+  const quote = post.quotedSnapshot?.text?.trim() ?? "";
+  return quote ? `${post.text}\n\n${quote}` : post.text;
+}
+
+export function articleTranslateSource(input: ArticleTranslateInput): string {
+  const text = input.contentText?.trim() || input.description?.trim() || "";
+  const source = [input.title?.trim(), text].filter(Boolean).join("\n\n");
+  const max = input.maxChars ?? CHROME_TRANSLATE_INPUT_MAX;
+  return source.length > max ? source.slice(0, max) : source;
+}
+
+export async function chromeTranslateSourceHash(
+  source: string,
+): Promise<string> {
+  const data = new TextEncoder().encode(source);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function normalizeLangTag(lang: string | null | undefined): string | null {
   if (!lang) {
     return null;

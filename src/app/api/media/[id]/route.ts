@@ -4,12 +4,13 @@ import { extname } from "node:path";
 import { Readable } from "node:stream";
 import { after, connection } from "next/server";
 import { getClient } from "@/db/client";
+import { ARTICLE_THUMB_KEY_PREFIX } from "@/lib/article-thumb";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { accountIdForMedia } from "@/server/media/account";
 import { loadMediaBlob } from "@/server/media/blob";
 import { downloadMediaAsset, loadMediaRow } from "@/server/media/download";
-import { proxyRemoteMedia } from "@/server/media/fetch-remote";
+import { proxyRemoteMedia, refererFromUrl } from "@/server/media/fetch-remote";
 import { isLocalMediaEnabled, resolveMediaPath } from "@/server/media/paths";
 import { refreshMediaFromTweet } from "@/server/media/refresh";
 import {
@@ -133,7 +134,7 @@ export async function GET(
     const rangeHeader = request.headers.get("range");
     const result = await getClient().execute({
       sql: `SELECT download_status, local_path, media_url, preview_url, type,
-                   variants_json
+                   variants_json, media_key
             FROM media_assets WHERE id = ? LIMIT 1`,
       args: [id],
     });
@@ -232,7 +233,20 @@ export async function GET(
     }
 
     schedulePersist(id);
-    return proxyRemoteMedia(url, rangeHeader, "image/jpeg");
+    const mediaKey = row.media_key ? String(row.media_key) : "";
+    let referer = refererFromUrl(url);
+    if (mediaKey.startsWith(ARTICLE_THUMB_KEY_PREFIX)) {
+      const articleId = mediaKey.slice(ARTICLE_THUMB_KEY_PREFIX.length);
+      const page = await getClient().execute({
+        sql: "SELECT original_url FROM articles WHERE id = ? LIMIT 1",
+        args: [articleId],
+      });
+      referer =
+        refererFromUrl(
+          page.rows[0]?.original_url ? String(page.rows[0].original_url) : null,
+        ) ?? referer;
+    }
+    return proxyRemoteMedia(url, rangeHeader, "image/jpeg", referer);
   } catch (error) {
     return Response.json(toErrorBody(error), { status: 500 });
   }

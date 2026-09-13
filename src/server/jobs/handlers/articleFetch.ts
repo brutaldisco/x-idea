@@ -1,14 +1,19 @@
 import { getClient } from "@/db/client";
+import { HTML_REFRESH_MARK, withHtmlMark } from "@/lib/article-html";
 import { logger } from "@/lib/logger";
 import { fetchArticlePage } from "@/server/fetch/article";
 import { hydrateArticleRowFromTweet } from "@/server/fetch/x-article";
 import { hostOf, isXArticleUrl, isXStatusUrl } from "@/server/ingest/url";
 import { enqueueEnrichBatch } from "@/server/jobs/enrich";
-import { attachArticleThumbnail } from "@/server/media/article-thumb";
+import {
+  attachArticleThumbnail,
+  restoreArticleContentImages,
+} from "@/server/media/article-thumb";
 import { getExcludedDomains } from "@/server/settings";
 
 export async function articleFetch(payload?: {
   article_id?: string;
+  force?: boolean;
 }): Promise<void> {
   if (!payload?.article_id) {
     throw new Error("article_fetch payload missing");
@@ -19,7 +24,8 @@ export async function articleFetch(payload?: {
   }
 
   const existing = await getClient().execute({
-    sql: `SELECT id, original_url, fetch_scope, content_text FROM articles WHERE id = ? LIMIT 1`,
+    sql: `SELECT id, original_url, fetch_scope, content_text, content_html
+          FROM articles WHERE id = ? LIMIT 1`,
     args: [payload.article_id],
   });
   const row = existing.rows[0];
@@ -30,21 +36,33 @@ export async function articleFetch(payload?: {
   const hasBody =
     String(row.content_text ?? "").trim().length >= 400 &&
     (row.fetch_scope === "full" || row.fetch_scope === "partial");
-  if (hasBody) {
-    await attachArticleThumbnail(payload.article_id, { allowRefetch: true });
-    return;
-  }
   if (isXArticleUrl(url)) {
     const hydrated = await hydrateArticleRowFromTweet(payload.article_id);
     if (hydrated) {
       logger.info({ articleId: payload.article_id }, "x article from api");
+    }
+    await attachArticleThumbnail(payload.article_id, { allowRefetch: true });
+    return;
+  }
+  if (hasBody && !payload.force) {
+    await restoreArticleContentImages(
+      payload.article_id,
+      row.content_html ? String(row.content_html) : "",
+      url,
+    );
+    await attachArticleThumbnail(payload.article_id, { allowRefetch: true });
+    return;
+  }
+  if (row.fetch_scope === "full" || row.fetch_scope === "partial") {
+    if (!payload.force) {
+      await restoreArticleContentImages(
+        payload.article_id,
+        row.content_html ? String(row.content_html) : "",
+        url,
+      );
       await attachArticleThumbnail(payload.article_id, { allowRefetch: true });
       return;
     }
-  }
-  if (row.fetch_scope === "full" || row.fetch_scope === "partial") {
-    await attachArticleThumbnail(payload.article_id, { allowRefetch: true });
-    return;
   }
   if (isXStatusUrl(url)) {
     await saveResult(payload.article_id, {
@@ -66,6 +84,14 @@ export async function articleFetch(payload?: {
 
   const excluded = await getExcludedDomains();
   const result = await fetchArticlePage({ url, excludedDomains: excluded });
+  let contentHtml = result.contentHtml;
+  if (payload.force) {
+    const previous = row.content_html ? String(row.content_html) : "";
+    const next = contentHtml ?? previous;
+    if (next && !next.includes("<img") && !next.includes(HTML_REFRESH_MARK)) {
+      contentHtml = withHtmlMark(next, HTML_REFRESH_MARK);
+    }
+  }
   await saveResult(payload.article_id, {
     scope: result.scope,
     error: result.error,
@@ -75,14 +101,14 @@ export async function articleFetch(payload?: {
     publishedAt: result.publishedAt,
     description: result.description,
     thumbnailUrl: result.thumbnailUrl,
-    contentHtml: result.contentHtml,
+    contentHtml,
     contentText: result.contentText,
     contentLinks: result.contentLinks,
     url: result.url,
   });
   logger.info(
     { articleId: payload.article_id, scope: result.scope },
-    "article_fetch done",
+    payload.force ? "article_fetch html refresh" : "article_fetch done",
   );
   await attachArticleThumbnail(payload.article_id, { allowRefetch: false });
 }
@@ -112,9 +138,9 @@ async function saveResult(
       author = COALESCE(?, author),
       published_at = COALESCE(?, published_at),
       description = COALESCE(?, description),
-      thumbnail_url = COALESCE(?, thumbnail_url),
-      content_html = ?,
-      content_text = ?,
+      thumbnail_url = COALESCE(?, NULLIF(thumbnail_url, '')),
+      content_html = COALESCE(?, content_html),
+      content_text = COALESCE(?, content_text),
       content_links_json = ?,
       fetch_scope = ?,
       fetch_error = ?,

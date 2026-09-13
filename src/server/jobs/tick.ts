@@ -1,5 +1,7 @@
 import { isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
+import { enqueueArticleHtmlRefetch } from "@/server/fetch/enqueue-pending";
+import { refreshXArticleCovers } from "@/server/fetch/x-article";
 import { enqueueEnrichIfPending } from "@/server/jobs/enrich";
 import { reclaimZombies } from "@/server/jobs/queue";
 import { runJobs } from "@/server/jobs/runner";
@@ -23,6 +25,8 @@ export async function runTick(source: TickSource): Promise<{
   const scheduled = await evaluateSchedules();
   await enqueueEnrichIfPending();
   await backfillArticleThumbs({ limit: 8 });
+  await refreshXArticleCovers(2);
+  await enqueueArticleHtmlRefetch(4);
   const { ran, failed } = await runJobs({ max: 5 });
   return { ok: true, source, reclaimed, scheduled, ran, failed };
 }

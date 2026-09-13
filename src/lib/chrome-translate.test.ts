@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  articleTranslateSource,
+  chromeTranslateSourceHash,
   detectSourceLanguage,
   htmlLanguage,
   isJapaneseLang,
   looksMostlyJapanese,
+  postTranslateSource,
   primaryLanguage,
   resolveSourceLanguage,
   shouldOfferTranslate,
@@ -18,6 +21,45 @@ const TRADITIONAL =
 const KOREAN =
   "이것은 인공지능에 관한 기사입니다. 딥러닝 모델이 자연어 처리에서 성과를 냈습니다.";
 const JAPANESE = "これは日本語の投稿です。翻訳ボタンは出ません。";
+
+describe("postTranslateSource", () => {
+  it("matches PostBlock quote joining", () => {
+    expect(
+      postTranslateSource({
+        text: "Main",
+        quotedSnapshot: { text: "Quote" },
+      }),
+    ).toBe("Main\n\nQuote");
+    expect(
+      postTranslateSource({
+        text: "Main only",
+        quotedSnapshot: null,
+      }),
+    ).toBe("Main only");
+  });
+});
+
+describe("articleTranslateSource", () => {
+  it("matches ArticleBlock title and body joining", () => {
+    expect(
+      articleTranslateSource({
+        title: "Grok Bot Agents",
+        contentText: "Every AI tool you have used so far waits for you.",
+        description: null,
+      }),
+    ).toBe(
+      "Grok Bot Agents\n\nEvery AI tool you have used so far waits for you.",
+    );
+  });
+});
+
+describe("chromeTranslateSourceHash", () => {
+  it("returns a stable sha256 hex digest", async () => {
+    await expect(chromeTranslateSourceHash("hello")).resolves.toBe(
+      "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+    );
+  });
+});
 
 describe("primaryLanguage", () => {
   it("normalizes BCP 47 and drops unknown", () => {

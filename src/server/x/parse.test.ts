@@ -9,8 +9,10 @@ import {
   lookupGapActions,
   parseBookmarksPage,
   tweetText,
+  tweetUrlEntries,
   tweetUrls,
   xArticleBody,
+  xArticleImageUrls,
   xArticlePermalink,
 } from "./parse";
 
@@ -53,6 +55,12 @@ describe("X Article fields", () => {
             title: "How to become a Robotics Engineer",
             plain_text:
               "Robotics is the least crowded high-value skill in tech right now",
+            cover_media: {
+              url: "https://pbs.twimg.com/media/cover.jpg",
+            },
+            media_entities: [
+              { preview_image_url: "https://pbs.twimg.com/media/inline.jpg" },
+            ],
             entities: { code: [{ content: "ros2 topic list" }] },
           },
         },
@@ -65,6 +73,25 @@ describe("X Article fields", () => {
     expect(xArticleBody(tweet.article)).toContain("ros2 topic list");
     expect(tweetText(tweet)).toContain("How to become a Robotics Engineer");
     expect(tweetText(tweet)).toContain("least crowded");
+    expect(tweet.article?.coverUrl).toBe(
+      "https://pbs.twimg.com/media/cover.jpg",
+    );
+    expect(xArticleImageUrls(tweet)).toEqual([
+      "https://pbs.twimg.com/media/cover.jpg",
+      "https://pbs.twimg.com/media/inline.jpg",
+    ]);
+  });
+
+  it("reads card images from url entities", () => {
+    const links = tweetUrlEntries({
+      urls: [
+        {
+          expanded_url: "https://news.example/a",
+          images: [{ url: "https://cdn.example/card.jpg" }],
+        },
+      ],
+    });
+    expect(links[0]?.image).toBe("https://cdn.example/card.jpg");
   });
 });
 

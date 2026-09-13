@@ -40,6 +40,15 @@ describe("firstContentImage", () => {
       ),
     ).toBe("https://cdn.example/a.jpg");
   });
+
+  it("picks an image href when img was stripped", () => {
+    expect(
+      firstContentImage(
+        '<p><a href="https://i.gzn.jp/img/a/00.png"></a></p>',
+        "https://gigazine.net",
+      ),
+    ).toBe("https://i.gzn.jp/img/a/00.png");
+  });
 });
 
 describe("resolveStoredThumbnail", () => {
@@ -60,13 +69,13 @@ describe("resolveStoredThumbnail", () => {
     ).toBe("https://news.example/body.jpg");
   });
 
-  it("treats an empty thumbnail_url as already checked", () => {
+  it("still uses content images when thumbnail_url is empty", () => {
     expect(
       resolveStoredThumbnail({
         thumbnailUrl: "",
         contentHtml: '<img src="https://cdn.example/body.jpg">',
         baseUrl: "https://news.example",
       }),
-    ).toBeNull();
+    ).toBe("https://cdn.example/body.jpg");
   });
 });

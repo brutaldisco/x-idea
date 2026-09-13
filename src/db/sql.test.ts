@@ -37,6 +37,9 @@ describe("sql helpers", () => {
     expect(statements.some((sql) => sql.includes("gone_sweep_cursor"))).toBe(
       true,
     );
+    expect(statements.some((sql) => sql.includes("chrome_translations"))).toBe(
+      true,
+    );
     expect(
       statements.some((sql) =>
         sql.includes("ALTER TABLE account_taxonomy ADD COLUMN color"),

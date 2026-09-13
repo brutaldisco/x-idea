@@ -377,10 +377,10 @@ UI/UX の判断に迷ったら以下に従う。
 ### 8.5 SC-06 Reader（Source 詳細）
 
 - **戻り**：ヘッダー「← ライブラリ」は直近の Library URL（並び・フィルタ・表示）へ戻す。`/library` 固定にはしない（8.3）。Library 起点では並列ルートで一覧を残す（ADR-016）。Today など別タブへ移ったときは Reader を出さない（スロットが残っても下部に重ねない）。同じ並びの隣へは一覧に戻らず、ヘッダー右の丸いアウトライン（前／次）で進む。並びは直近の Library 一覧（フィルタ・ソート込み）。一覧に無い Source やディープリンクでは出さない。末尾にも同じ導線を残す。`availability` は `available` のときヘッダーに出さない。非公開・取得不可のときだけ日本語バッジ（削除済み／非公開／取得不可）。
-- **ヒーロー**：投稿者アバター・名前・日時。右にカテゴリ／情報タイプ／状態／種類のドロップダウン（変更可。未設定は項目名。カテゴリと情報タイプは Settings の accent 色）。「X で開く」は 3 点メニューと原文カード。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。写真はフル画像（`/api/media/{id}`、`name=orig`／ローカル保存）。**記事ブックマークで投稿に写真が無いとき**は記事の `og:image`（`twitter:image` / JSON-LD / 本文先頭画像も可）を WebP にして `media_blobs` に保存し、ヒーローと Library カードに出す。既存の取得済み記事も Reader 表示とバックフィルで同じ。ヒーローは切り抜き表示し、タップでフルスクリーン拡大（原文ギャラリーと同じ）。
+- **ヒーロー**：投稿者アバター・名前・日時。右にカテゴリ／情報タイプ／状態／種類のドロップダウン（変更可。未設定は項目名。カテゴリと情報タイプは Settings の accent 色）。「X で開く」は 3 点メニューと原文カード。サムネイルは一覧からの `<ViewTransition name="source-{id}">` 共有要素。写真はフル画像（`/api/media/{id}`、`name=orig`／ローカル保存）。**記事ブックマークで投稿に写真が無いとき**は記事の `og:image`（`twitter:image` / `og:image:secure_url` / JSON-LD / 本文先頭画像 / X の URL カード画像も可）を WebP にして `media_blobs` に保存し、ヒーローと Library カードに出す。X ネイティブ記事は API の `cover_media` / `media_entities` を表紙にする。既存の取得済み記事も Reader 表示とバックフィルで同じ。ヒーローは切り抜き表示し、タップでフルスクリーン拡大（原文ギャラリーと同じ）。
 - **セグメント**：`原文 | 記事 | 要約`（記事がなければ 2 つ）。単一スクロールで、セグメントはアンカージャンプ。バーは不透明（`bg-paper`）。右端に 3 点メニュー（動画を保存する／X で開く／削除）。
-- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは Reader で対象ごとに手動取得**し、取得後は折りたたみ（件数つき、既定は展開）。未取得時はボタン、トグル OFF 時は案内。未保存の動画はアプリ内再生せず **サムネイル＋「X で見る」＋サイズ／画質（取れるとき）＋「保存する」**（ダウンロードキューへ投入、14.6 / SC-15）。`video_downloads.status='ready'` の動画はサムネタップでアプリ内再生（**Videos と同じ全画面プレーヤー**。Library カードと同じ）。動画サムネ右下に再生時間（`media_assets.duration_ms`、X 取り込み時）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**（`queued` / `downloading`）は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Reader ギャラリーの保存／キューバッジはタイル下部だけに出し、サムネ上には重ねない。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。本文側に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。翻訳手順の常時説明と失敗時の案内文は出さない。ワンクリックできないときは原文を選択するだけ。ボタンはかな優勢の日本語本文では出さず、**漢字だけの中国語など他言語では出す**。記事は投稿 `lang` を使わず、クリック時に Language Detector が本文を見る。X の自動翻訳文は API に無い。表示は段落として組む（単一改行も段落、空行はより大きな区切り）。Chrome 翻訳結果も同じ組み。Translator が改行を消した場合は句点で分ける。原文カラムは読むだけで、AI・表示処理とも書き換えない。
-- **記事**：外部リンクだけにせず、取得できた本文を **アプリ内リーダー**で表示する。タイトル＋本文（sanitize 済み HTML 優先）＋補助の「元の記事を開く」。本文は `.reader-body`（1.05rem / 1.85 / `max-width: 40em`、カード内中央）。PC のカード左右パディングは `2rem`。プレーンテキストは行ごとに段落化。HTML は見出し・段落・リスト・引用の余白を本文より大きく取る。`fetch_scope` バッジ（全文／一部／概要のみ／失敗）。既存 Source は Reader 表示時に URL を拾ってバックフィルする。モバイルは左右パディングを詰めて本文幅を広げる。
+- **原文**：全文、引用投稿は入れ子カード、メディアはギャラリー（**ローカル保存を優先表示**（ADR-005）、画像タップでフルスクリーン、**OCR テキストを画像下に折り畳み表示**（P2））、**セルフスレッドは Reader で対象ごとに手動取得**し、取得後は折りたたみ（件数つき、既定は展開）。未取得時はボタン、トグル OFF 時は案内。未保存の動画はアプリ内再生せず **サムネイル＋「X で見る」＋サイズ／画質（取れるとき）＋「保存する」**（ダウンロードキューへ投入、14.6 / SC-15）。`video_downloads.status='ready'` の動画はサムネタップでアプリ内再生（**Videos と同じ全画面プレーヤー**。Library カードと同じ）。動画サムネ右下に再生時間（`media_assets.duration_ms`、X 取り込み時）。**保存済**は共通バッジ（緑アウトライン・紙色フィル・緑文字）。**キュー**（`queued` / `downloading`）は共通バッジ（黄アウトライン・紙色フィル・黄文字）。Reader ギャラリーの保存／キューバッジはタイル下部だけに出し、サムネ上には重ねない。**Chrome 翻訳**（ADR-006）：原文に `lang` + `translate=yes`、日本語 UI は `translate=no`。本文側に「日本語に翻訳」（Chrome Translator API、端末内）と「原文を選択」（右クリック翻訳の起点）。翻訳手順の常時説明と失敗時の案内文は出さない。ワンクリックできないときは原文を選択するだけ。ボタンはかな優勢の日本語本文では出さず、**漢字だけの中国語など他言語では出す**。記事は投稿 `lang` を使わず、クリック時に Language Detector が本文を見る。X の自動翻訳文は API に無い。表示は段落として組む（単一改行も段落、空行はより大きな区切り）。本文の上余白は 2rem（記事と同じ）。Chrome 翻訳結果も同じ組み。Translator が改行を消した場合は句点で分ける。**「日本語に翻訳」成功時は対訳を `chrome_translations` に保存**し、再オープン時に `source_hash` が一致すれば対訳ペインを最初から出す（原文カラム・AI 列・FTS には書かない）。
+- **記事**：外部リンクだけにせず、取得できた本文を **アプリ内リーダー**で表示する。タイトル（1.2rem、本文 1.05rem より一段大きく、下に 1.5rem の余白）＋本文（上に 2rem、sanitize 済み HTML 優先、`img` を許可）＋補助の「元の記事を開く」。過去に `img` を落とした HTML は、空の画像リンクを `<img>` に戻す。戻せない分は本文を再取得する（1 記事 1 回、tick / Reader の `after`、LIMIT あり）。本文は `.reader-body`（1.05rem / 1.85 / `max-width: 40em`、カード内中央）。PC のカード左右パディングは `2rem`。プレーンテキストは行ごとに段落化。長い一行は句点（和文）と `.!?`（英文）でも段落化する。HTML のプレーンな `<p>` も同じ組み（リンク・画像付きの段落は触らない）。見出し・リスト・引用の余白は本文より大きく取る。`fetch_scope` バッジ（全文／一部／概要のみ／失敗）。既存 Source は Reader 表示時に URL を拾ってバックフィルする。モバイルは左右パディングを詰めて本文幅を広げる。原文カラムは表示の組みだけ変え、DB は書き換えない。
 - **要約**：「✦ AI」バッジ、3行要約、情報タイプ、重要度、タグ、カテゴリ（確信度）。「AI で再処理」。要約は `text-sm` のまま、幅と行間だけ本文に揃える。
 - **x-idea Reader（P2）**：記事・原文の重要文を AI がハイライト（薄いマーカー色）、余白（PC は右カラム、モバイルはハイライトタップで下部シート）に注釈。ユーザーは選択→「ハイライト」「メモ」「これについて聞く」。
 - **関連（P2）**：関連・重複・矛盾 Source。矛盾は警告色バナー。
@@ -533,7 +533,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 ### 10.2 タイポグラフィ
 
-- Reader 本文は 1.05rem（16.8px）/ 1.85、幅は `max-width: 40em`（全角 40 字）。AI 要約は `text-sm` ＋同じ幅・行間。日本語は `font-feature-settings: "palt"`, `text-wrap: pretty`, `line-break: strict`, `hanging-punctuation: allow-end`。
+- Reader 本文は 1.05rem（16.8px）/ 1.85、幅は `max-width: 40em`（全角 40 字）。記事タイトルは 1.2rem。AI 要約は `text-sm` ＋同じ幅・行間。日本語は `font-feature-settings: "palt"`, `text-wrap: pretty`, `line-break: strict`, `hanging-punctuation: allow-end`。
 - 見出しは Inter 600、本文は Noto Sans JP 400。数値は `font-variant-numeric: tabular-nums`。
 - 文字サイズ設定は `html { font-size }` を 15/16/17/18px で切替（未実装。本文幅は `em` なので入れてから追従する）。
 
@@ -805,7 +805,7 @@ article_fetch(url):
   4. robots.txt 確認（robots-parser）→ 拒否なら metadata_only
   5. HTML 取得（UA: "x-idea-bot/1.0 (+https://x-idea.vercel.app)", 15秒, 3MB, text/html のみ, リダイレクト5）
   6. OGP / Twitter Card / JSON-LD → メタデータ
-  7. Readability で本文 → sanitize-html → content_html / content_text
+  7. Readability で本文 → sanitize-html（`img` 許可）→ content_html / content_text。空の画像リンクは `<img>` に戻す
   8. 短文（<400字）/ ペイウォール検出 → partial / metadata_only
   9. 保存。enrich_batch 再投入は T-202 以降
 ```
@@ -1226,6 +1226,19 @@ CREATE TABLE articles (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_articles_domain ON articles (domain);
+
+CREATE TABLE chrome_translations (
+  id TEXT PRIMARY KEY,
+  target_kind TEXT NOT NULL,                     -- x_post | article
+  target_id TEXT NOT NULL,
+  target_lang TEXT NOT NULL DEFAULT 'ja',
+  source_hash TEXT NOT NULL,                     -- 翻訳元 UTF-8 の SHA-256 hex
+  source_lang TEXT,                              -- Translator pair（en, zh, zh-Hant 等）
+  text TEXT NOT NULL,
+  translated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (target_kind, target_id, target_lang)
+);
+CREATE INDEX idx_chrome_translations_target ON chrome_translations (target_kind, target_id);
 
 CREATE TABLE source_articles (
   source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
@@ -1689,7 +1702,7 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 
 ### 21.2 Server Actions（`src/server/actions/*.ts`）
 
-`confirmSource(id, {category_id?, info_type?, tags?})`, `archiveSource(id)`, `snoozeSource(id, until)`, `bulkConfirm(minConfidence)`, `updateSource(id, patch)`, `setReadStatus(id, status)`, `saveNote(id, note)`, `reenrich(id)`, `createHighlight(...)`, `categoryCreate/Update/Merge/Delete`, `lensCreate/Update/Delete`, `kcCreate/Update/Draft/Delete`, `recallAnswer(itemId, result)`, `settingsUpdate(patch)`, `tokenIssue(kind)`, `tokenRevoke(id)`, `briefingMarkOpened(date)`.
+`confirmSource(id, {category_id?, info_type?, tags?})`, `archiveSource(id)`, `snoozeSource(id, until)`, `bulkConfirm(minConfidence)`, `updateSource(id, patch)`, `setReadStatus(id, status)`, `saveNote(id, note)`, `saveChromeTranslation({kind, id, text, sourceLang, sourceHash})`, `reenrich(id)`, `createHighlight(...)`, `categoryCreate/Update/Merge/Delete`, `lensCreate/Update/Delete`, `kcCreate/Update/Draft/Delete`, `recallAnswer(itemId, result)`, `settingsUpdate(patch)`, `tokenIssue(kind)`, `tokenRevoke(id)`, `briefingMarkOpened(date)`.
 
 規約：入力は Zod で検証、返り値は `{ok:true, data} | {ok:false, error:{code,message}}`、成功時に Next.js 16 の `updateTag('sources' | 'today' | ...)` と `refresh()`（Server Action では `revalidateTag` より即時）。
 
@@ -2028,9 +2041,9 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-218 | 共通シェル + Reader 並列ルート。Library↔Reader で一覧をアンマウントしない | `src/app/(shell)/*` または同等 | T-216 | ギャラリー途中→記事→戻るで同じ位置 |
 | T-219 | 過去ブックマークの手動遡及（`mode=backfill`、ページカーソル、Settings ボタン） | `src/server/jobs/handlers/syncBookmarks.ts`, Settings | T-104, T-106 | 今すぐ同期では増えない古い件が、ボタン連打で古い方へ増える。head は新着用のまま |
 | T-220 | Reader 本文を段落化。`.reader-body`（40em / 1.85 / 1.05rem）。セグメントバーを不透明化 | `reader-paragraphs.ts`, `ReaderBody.tsx`, `PostBlock.tsx` | T-207 | 長文投稿で段落が目視できる。PC の 1 行が 40 字前後。原文カラムは変わらない |
-| T-221 | 記事 HTML の見出し・段落余白。本文リンクのコントラスト AA と `overflow-wrap` | `globals.css`, `ArticleBlock.tsx`, `LinkedText.tsx` | T-220 | `fetch_scope=full` の記事で `h2` が本文と区別できる。リンクが 4.5:1 以上 |
+| T-221 | 記事 HTML の見出し・段落余白。プレーンな `<p>` を原文と同じ句点分割。本文リンクのコントラスト AA と `overflow-wrap` | `globals.css`, `ArticleBlock.tsx`, `reader-paragraphs.ts` | T-220 | `fetch_scope=full` の記事で `h2` が本文と区別できる。長い英文 `<p>` が文ごとに分かれる。リンクが 4.5:1 以上 |
 | T-222 | 見出しらしい行の強調。実データ 20 件で誤検出率を記録 | `reader-paragraphs.ts` | T-220 | 誤検出 1 割未満。太さだけが変わり文字は変わらない |
-| T-223 | 記事ヒーロー画像（`og:image` → WebP / `media_blobs`）。投稿に写真が無いとき一覧と Reader に出す。既存記事もバックフィル | `article-thumb.ts`, `articleFetch.ts` | T-207, T-607 | 記事ブックマークでヒーローが出る。X 写真がある投稿は上書きしない |
+| T-223 | 記事ヒーロー画像（`og:image` / X 表紙 → WebP / `media_blobs`）。本文 `img` を残す。投稿に写真が無いとき一覧と Reader に出す。既存記事もバックフィル | `article-thumb.ts`, `article-html.ts`, `articleFetch.ts` | T-207, T-607 | 記事ブックマークでヒーローと本文画像が出る。X 写真がある投稿は上書きしない |
 
 ### Phase 3（レーン E）
 
@@ -2078,7 +2091,8 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-610 | FS Access クライアント（フォルダ選択・権限・IndexedDB 永続化、回線適応チャンク DL＋レジューム） | `src/lib/video-store.ts` | T-609 | 中断→再開で最後まで落ちる |
 | T-611 | Videos タブ SC-15（キュー UI、ライブラリ grid、プレーヤー、フォルダ作成/移動/削除） | `src/app/(tabs)/videos/*`, `src/components/videos/*` | T-608, T-610 | キュー→DL→再生→移動が一気通貫 |
 | T-612 | Reader「あとで保存」＋Settings 整理（保存役案内の撤去、DB 使用量メーター） | Reader, Settings | T-608 | 本番 Settings に `pnpm dev` 案内が出ない |
-| T-613 | 多言語の「日本語に翻訳」：漢字≠日本語、記事は投稿 `lang` を使わない、`zh` / `zh-Hant` を Translator に渡す | `chrome-translate.ts`, `ChromeTranslate.tsx`, `ArticleBlock.tsx` | T-207 | 中国語記事でボタンが出る。日本語記事では出ない。翻訳結果は DB に書かない |
+| T-613 | 多言語の「日本語に翻訳」：漢字≠日本語、記事は投稿 `lang` を使わない、`zh` / `zh-Hant` を Translator に渡す | `chrome-translate.ts`, `ChromeTranslate.tsx`, `ArticleBlock.tsx` | T-207 | 中国語記事でボタンが出る。日本語記事では出ない。原文カラムは書かない |
+| T-614 | Chrome 翻訳結果の永続化（`chrome_translations`、再オープン時表示、`source_hash` 検証） | `drizzle/0016_*`, `server/sources/chrome-translate.ts`, `ChromeTranslate.tsx` | T-613 | 翻訳→リロードで同じ対訳ペイン。原文更新後は古い訳を出さない |
 
 ---
 
@@ -2362,7 +2376,7 @@ x-idea/
 1. **入口**：`AGENTS.md` → 本書 35 章で担当タスクを選ぶ → 該当章（画面なら 8・10 章、DB なら 19 章、AI なら 16 章・付録B）を読む。
 2. **ブランチ／PR**：`feat/T-xxx-短い説明`。1 タスク 1 PR。PR 本文にタスク ID、DoD のチェックリスト、スクリーンショット（UI）を含める。
 3. **設計と実装が食い違ったら**：実挙動（API の実レスポンス、実クォータ）を正とし、本書の該当箇所と `docs/decisions/ADR-xxx.md` を **同じ PR で** 更新する。特に 14 章・16.2・付録C。
-4. **やってはいけないこと**：`user_id` の追加、マルチユーザーのログイン UI、全件 SELECT、`vector_distance_cos` によるフルスキャン、AI 429 時の有料切替、**有料トグル（`x_api_enabled` / `ai_paid_enabled` / `thread_expand_enabled` / `paid_providers_json`）を人間の指示なしに ON にする**、原文カラムの書き換え、ユーザー記述カラムへの AI 書き込み、トークンのログ出力。
+4. **やってはいけないこと**：`user_id` の追加、マルチユーザーのログイン UI、全件 SELECT、`vector_distance_cos` によるフルスキャン、AI 429 時の有料切替、**有料トグル（`x_api_enabled` / `ai_paid_enabled` / `thread_expand_enabled` / `paid_providers_json`）を人間の指示なしに ON にする**、原文カラムの書き換え、ユーザー記述カラム（`user_note`）への AI 書き込み、**Chrome 翻訳を原文カラム・AI 列・FTS に書く**（`chrome_translations` のみ可）、トークンのログ出力。
 5. **コーディング規約**：TypeScript strict、Biome 既定、Server Actions は Zod 入力検証＋`{ok, data|error}`、DB アクセスは `src/server/*` のみ（コンポーネントから直接叩かない）、時間は UTC ISO 保存・表示時に `Asia/Tokyo`、AI 呼び出しは必ず `budget.guard(lane)` 経由。
 6. **テスト**：単体はロジック（同期打ち切り、予算、SM-2、RRF、cron）。統合はローカル libSQL。E2E は msw でX/Gemini をモック。UI 変更は `instant()` を壊さない。
 7. **コミット**：Conventional Commits（`feat:`, `fix:`, `docs:`, `chore:`）。

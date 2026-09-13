@@ -3,7 +3,9 @@
 import { refresh, updateTag } from "next/cache";
 import { z } from "zod";
 import { type ActionResult, actionFail, actionOk } from "@/lib/action-result";
+import { CHROME_TRANSLATE_TEXT_MAX } from "@/lib/chrome-translate";
 import { isTaxonomyItemId } from "@/lib/taxonomy-id";
+import { upsertChromeTranslation } from "@/server/sources/chrome-translate";
 import {
   archiveSource as archiveSourceRow,
   bulkConfirmSources,
@@ -248,6 +250,38 @@ export async function reenrich(
   try {
     const ctx = await getAccountContext();
     return finish(await reenrichSource(parse(idSchema, id), ctx));
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function saveChromeTranslation(input: {
+  kind: "x_post" | "article";
+  id: string;
+  text: string;
+  sourceLang: string | null;
+  sourceHash: string;
+}): Promise<ActionResult<{ id: string }>> {
+  try {
+    const body = parse(
+      z.object({
+        kind: z.enum(["x_post", "article"]),
+        id: idSchema,
+        text: z.string().min(1).max(CHROME_TRANSLATE_TEXT_MAX),
+        sourceLang: z.string().max(16).nullable(),
+        sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+      }),
+      input,
+    );
+    return actionOk(
+      await upsertChromeTranslation({
+        kind: body.kind,
+        id: body.id,
+        text: body.text,
+        sourceLang: body.sourceLang,
+        sourceHash: body.sourceHash,
+      }),
+    );
   } catch (error) {
     return fail(error);
   }

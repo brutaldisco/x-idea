@@ -5,6 +5,7 @@ const LONG = `<!doctype html><html><head>
 <title>Long</title><meta property="og:title" content="Long piece">
 </head><body><article><h1>Long piece</h1>
 <p>${"知識を余白に残す。".repeat(80)}</p>
+<p><img src="https://cdn.example/body.jpg" alt="図"></p>
 </article></body></html>`;
 
 const SHORT = `<!doctype html><html><head>
@@ -129,6 +130,8 @@ describe("fetchArticlePage scopes (10 URLs)", () => {
     });
     expect(result.scope).toBe("full");
     expect((result.contentText ?? "").length).toBeGreaterThanOrEqual(400);
+    expect(result.contentHtml).toContain("https://cdn.example/body.jpg");
+    expect(result.contentHtml).toContain("<img");
   });
 
   it("7 404 → failed", async () => {

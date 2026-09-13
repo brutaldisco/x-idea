@@ -34,6 +34,7 @@ const MIGRATION_FILES = [
   "0013_reset_gone_sweep.sql",
   "0014_taxonomy_color.sql",
   "0015_account_video_folder.sql",
+  "0016_chrome_translations.sql",
 ];
 
 export function loadInitSql(): string {

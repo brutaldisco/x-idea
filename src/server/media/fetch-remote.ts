@@ -1,16 +1,32 @@
 export const MEDIA_FETCH_HEADERS = {
-  Accept: "*/*",
+  Accept: "image/avif,image/webp,image/*,*/*;q=0.8",
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 } as const;
 
+export function refererFromUrl(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  try {
+    return `${new URL(url).origin}/`;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchRemoteMedia(
   url: string,
   range?: string | null,
+  extra?: { referer?: string | null },
 ): Promise<Response> {
   const headers: Record<string, string> = { ...MEDIA_FETCH_HEADERS };
   if (range) {
     headers.Range = range;
+  }
+  const referer = extra?.referer ?? refererFromUrl(url);
+  if (referer) {
+    headers.Referer = referer;
   }
   return fetch(url, {
     cache: "no-store",
@@ -28,8 +44,9 @@ export async function proxyRemoteMedia(
   url: string,
   range?: string | null,
   fallbackType = "application/octet-stream",
+  referer?: string | null,
 ): Promise<Response> {
-  const remote = await fetchRemoteMedia(url, range);
+  const remote = await fetchRemoteMedia(url, range, { referer });
   if (!remote.ok && remote.status !== 206) {
     return Response.json(
       {

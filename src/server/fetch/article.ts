@@ -1,7 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import robotsParser from "robots-parser";
-import sanitizeHtml from "sanitize-html";
+import { sanitizeArticleHtml } from "@/lib/article-html";
 import { absoluteHttpUrl, firstContentImage } from "@/lib/article-thumb";
 import {
   type ArticleScope,
@@ -291,7 +291,9 @@ export async function fetchArticlePage(input: {
     metaContent(doc, "article:published_time") ?? ld.publishedAt;
   const thumbnailUrl =
     absoluteHttpUrl(metaContent(doc, "og:image"), finalUrl) ??
+    absoluteHttpUrl(metaContent(doc, "og:image:secure_url"), finalUrl) ??
     absoluteHttpUrl(metaContent(doc, "twitter:image"), finalUrl) ??
+    absoluteHttpUrl(metaContent(doc, "twitter:image:src"), finalUrl) ??
     absoluteHttpUrl(ld.image, finalUrl);
   const blocked =
     robotsMetaBlocks(doc) ||
@@ -304,15 +306,7 @@ export async function fetchArticlePage(input: {
   try {
     const parsed = new Readability(doc).parse();
     if (parsed?.content) {
-      contentHtml = sanitizeHtml(parsed.content, {
-        allowedTags: sanitizeHtml.defaults.allowedTags.filter(
-          (tag) => tag !== "script" && tag !== "style",
-        ),
-        allowedAttributes: {
-          a: ["href", "title"],
-          img: ["src", "alt"],
-        },
-      });
+      contentHtml = sanitizeArticleHtml(parsed.content, finalUrl);
       contentText = (parsed.textContent ?? "").replace(/\s+\n/g, "\n").trim();
     }
   } catch {

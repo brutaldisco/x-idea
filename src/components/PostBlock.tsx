@@ -2,7 +2,7 @@ import { ChromeTranslate } from "@/components/ChromeTranslate";
 import { MediaGallery } from "@/components/MediaGallery";
 import { OpenInX } from "@/components/OpenInX";
 import { ReaderBody } from "@/components/ReaderBody";
-import { translatableProps } from "@/lib/chrome-translate";
+import { postTranslateSource, translatableProps } from "@/lib/chrome-translate";
 import type { PostCard } from "@/server/sources/detail";
 
 export function PostBlock({
@@ -19,14 +19,17 @@ export function PostBlock({
     : null;
   const textId = `post-text-${post.id}`;
   const attrs = translatableProps(post.lang, false);
-  const quote = post.quotedSnapshot?.text?.trim() ?? "";
-  const translateSource = quote ? `${post.text}\n\n${quote}` : post.text;
+  const translateSource = postTranslateSource(post);
   const long = translateSource.length >= 400;
   const translate = (
     <ChromeTranslate
       text={translateSource}
       lang={post.lang}
       targetId={textId}
+      kind="x_post"
+      saveId={post.id}
+      sourceHash={post.translateSourceHash}
+      saved={post.chromeTranslation}
       className={long ? "mb-3 mt-3" : "mt-3"}
     />
   );
@@ -62,16 +65,19 @@ export function PostBlock({
       {long ? translate : null}
       <ReaderBody
         id={textId}
-        className="reader-body mt-10"
+        className="reader-body mt-8"
         text={post.text}
         {...attrs}
       />
-      {quote ? (
+      {post.quotedSnapshot?.text?.trim() ? (
         <blockquote
           className="mt-3 rounded-xl border border-line bg-paper px-3 py-2 text-ink-2 text-sm"
           {...attrs}
         >
-          <ReaderBody className="reader-measure" text={quote} />
+          <ReaderBody
+            className="reader-measure"
+            text={post.quotedSnapshot.text.trim()}
+          />
         </blockquote>
       ) : null}
       {long ? null : translate}

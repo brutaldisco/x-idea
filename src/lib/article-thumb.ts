@@ -36,19 +36,54 @@ export function firstContentImage(
   if (!html) {
     return null;
   }
-  const match = html.match(/<img\b[^>]*\bsrc=["']([^"']+)["']/i);
-  return absoluteHttpUrl(match?.[1] ?? null, base);
+  const img = html.match(
+    /<img\b[^>]*\b(?:src|data-src)\s*=\s*["']([^"']+)["']/i,
+  );
+  const fromImg = absoluteHttpUrl(img?.[1] ?? null, base);
+  if (fromImg) {
+    return fromImg;
+  }
+  const srcset = html.match(/<img\b[^>]*\bsrcset\s*=\s*["']([^"']+)["']/i);
+  const firstSrc = srcset?.[1]?.split(",")[0]?.trim().split(/\s+/)[0];
+  const fromSrcset = absoluteHttpUrl(firstSrc ?? null, base);
+  if (fromSrcset) {
+    return fromSrcset;
+  }
+  for (const match of html.matchAll(
+    /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi,
+  )) {
+    const href = match[1] ?? "";
+    if (!isLikelyImageHref(href, base)) {
+      continue;
+    }
+    const url = absoluteHttpUrl(href, base);
+    if (url) {
+      return url;
+    }
+  }
+  return null;
 }
 
-/** `thumbnail_url === ""` は「探して無かった」印。再取得しない。 */
+function isLikelyImageHref(raw: string, base: string): boolean {
+  try {
+    const url = new URL(raw, base);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+    return /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)(?:$|\?)/i.test(
+      `${url.pathname}${url.search}`,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 空の `thumbnail_url` はページ再取得を省略する印。本文画像は使う。 */
 export function resolveStoredThumbnail(input: {
   thumbnailUrl: string | null;
   contentHtml: string | null;
   baseUrl: string;
 }): string | null {
-  if (input.thumbnailUrl === "") {
-    return null;
-  }
   return (
     absoluteHttpUrl(input.thumbnailUrl, input.baseUrl) ??
     firstContentImage(input.contentHtml, input.baseUrl)
