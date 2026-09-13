@@ -1,6 +1,12 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { mediaVideoProxyFallbackPath } from "@/lib/media-video-api";
 import {
   exitFullscreen,
@@ -61,6 +67,17 @@ export function VideoPlayer({
   useEffect(() => {
     setPlaybackUrl(url);
   }, [url]);
+
+  useLayoutEffect(() => {
+    const el = videoRef.current;
+    if (!el) {
+      return;
+    }
+    el.setAttribute("referrerpolicy", "no-referrer");
+    if (el.getAttribute("src") !== playbackUrl) {
+      el.src = playbackUrl;
+    }
+  }, [playbackUrl]);
 
   useEffect(() => {
     function sync() {
@@ -164,8 +181,6 @@ export function VideoPlayer({
         playsInline
         controlsList="nofullscreen"
         loop={repeat === "one"}
-        src={playbackUrl}
-        referrerPolicy="no-referrer"
         className="min-h-0 w-full flex-1 bg-black object-contain outline-none"
         onError={() => {
           const fallback = mediaVideoProxyFallbackPath(playbackUrl);

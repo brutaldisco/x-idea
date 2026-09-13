@@ -1,4 +1,8 @@
 import {
+  probeDirectTotalBytes,
+  VIDEO_CDN_FETCH_INIT,
+} from "@/lib/video-direct-fetch";
+import {
   DIRECT_PARALLEL,
   directChunkBytes,
   initialVideoDownloadPlan,
@@ -12,10 +16,6 @@ import {
   isFinishedVideoDownload,
   leftoverVideoRelPaths,
 } from "@/lib/video-files";
-import {
-  probeDirectTotalBytes,
-  VIDEO_CDN_FETCH_INIT,
-} from "@/lib/video-direct-fetch";
 import {
   isSafeVideoRelPath,
   parseVideoRelPath,

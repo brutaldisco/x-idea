@@ -53,9 +53,9 @@ describe("parseVideoSourcePayload", () => {
 
 describe("mediaVideoProxyFallbackPath", () => {
   it("maps the CDN redirect back to the inline proxy", () => {
-    expect(mediaVideoProxyFallbackPath("/api/media/media-1/url?redirect=1")).toBe(
-      "/api/media/media-1/file?inline=1",
-    );
+    expect(
+      mediaVideoProxyFallbackPath("/api/media/media-1/url?redirect=1"),
+    ).toBe("/api/media/media-1/file?inline=1");
     expect(mediaVideoProxyFallbackPath("/api/media/media-1/url")).toBe(
       "/api/media/media-1/file?inline=1",
     );
