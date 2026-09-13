@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { setAccountContextAction } from "@/app/(tabs)/settings/actions";
+import { useAccountSwitch } from "@/components/useAccountSwitch";
 import type { XAccountPublic } from "@/server/x/account";
 
 export function SettingsAccountPicker({
@@ -11,6 +13,7 @@ export function SettingsAccountPicker({
   currentId: string | null;
   maxAccounts: number;
 }) {
+  const { busy, switchTo } = useAccountSwitch();
   const canAdd = accounts.length < maxAccounts;
   const current = accounts.find((account) => account.id === currentId) ?? null;
 
@@ -28,7 +31,7 @@ export function SettingsAccountPicker({
         </span>
       </div>
       <p className="mt-2 text-ink-2 text-sm">
-        下の連携と分類は、選んだアカウントのものです。
+        下の連携と分類は、選んだアカウントのものです。表示するアカウントはページ上部でも切り替えられます。
       </p>
       {accounts.length === 0 ? (
         <p className="mt-3 text-ink-2 text-sm">
@@ -51,15 +54,17 @@ export function SettingsAccountPicker({
                 );
               }
               return (
-                <form key={account.id} action={setAccountContextAction}>
-                  <input type="hidden" name="id" value={account.id} />
-                  <button
-                    type="submit"
-                    className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper"
-                  >
-                    @{account.username}
-                  </button>
-                </form>
+                <button
+                  key={account.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    void switchTo(account.id);
+                  }}
+                  className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper disabled:opacity-60"
+                >
+                  @{account.username}
+                </button>
               );
             })}
           </div>

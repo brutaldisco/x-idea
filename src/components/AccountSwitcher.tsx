@@ -1,35 +1,10 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { AccountSyncDot } from "@/components/AccountSyncDot";
+import { useAccountSwitch } from "@/components/useAccountSwitch";
 import { writeLibraryAccountId } from "@/lib/library-account";
-import { resetLibraryQueries } from "@/lib/library-cache";
-import { clearSourcesHttpCache } from "@/lib/pwa";
 import type { XAccountPublic } from "@/server/x/account";
-
-function SyncBullet({
-  enabled,
-  inverted = false,
-}: {
-  enabled: boolean;
-  inverted?: boolean;
-}) {
-  return (
-    <span
-      role="img"
-      aria-label={enabled ? "同期ON" : "同期OFF"}
-      title={enabled ? "同期ON" : "同期OFF"}
-      className={`ml-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
-        enabled
-          ? "bg-ok"
-          : inverted
-            ? "border border-paper/70"
-            : "border border-ink-2"
-      }`}
-    />
-  );
-}
 
 export function AccountSwitcher({
   accounts,
@@ -38,13 +13,10 @@ export function AccountSwitcher({
   accounts: XAccountPublic[];
   currentId: string | null;
 }) {
-  const router = useRouter();
-  const queryClient = useQueryClient();
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [, startTransition] = useTransition();
+  const { busy, switchTo } = useAccountSwitch();
   const current =
     accounts.find((account) => account.id === currentId) ?? accounts[0] ?? null;
 
@@ -93,22 +65,11 @@ export function AccountSwitcher({
                         setOpen(false);
                         return;
                       }
-                      setBusy(true);
-                      void fetch("/api/x/context", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ ctx: account.id }),
-                      })
-                        .then((res) => {
-                          if (res.ok) {
-                            setOpen(false);
-                            writeLibraryAccountId(account.id);
-                            resetLibraryQueries(queryClient);
-                            void clearSourcesHttpCache();
-                            startTransition(() => router.refresh());
-                          }
-                        })
-                        .finally(() => setBusy(false));
+                      void switchTo(account.id).then((ok) => {
+                        if (ok) {
+                          setOpen(false);
+                        }
+                      });
                     }}
                     className={`w-full rounded-xl px-3 py-2 text-left text-sm ${
                       selected
@@ -117,7 +78,7 @@ export function AccountSwitcher({
                     }`}
                   >
                     @{account.username}
-                    <SyncBullet
+                    <AccountSyncDot
                       enabled={account.syncEnabled}
                       inverted={selected}
                     />
@@ -137,7 +98,7 @@ export function AccountSwitcher({
         className="inline-flex max-w-[11rem] items-center rounded-full border border-line bg-paper/90 px-3 py-1.5 text-left text-sm font-medium shadow-card backdrop-blur"
       >
         <span className="truncate">@{current.username}</span>
-        <SyncBullet enabled={current.syncEnabled} />
+        <AccountSyncDot enabled={current.syncEnabled} />
       </button>
     </div>
   );

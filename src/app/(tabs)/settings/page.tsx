@@ -12,6 +12,7 @@ import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { AccountTaxonomyCard } from "@/components/settings/AccountTaxonomyCard";
 import { SettingsAccountPicker } from "@/components/settings/SettingsAccountPicker";
 import { SettingsDefaultAccountCard } from "@/components/settings/SettingsDefaultAccountCard";
+import { SettingsViewingAccountCard } from "@/components/settings/SettingsViewingAccountCard";
 import { UsageMeters } from "@/components/UsageMeters";
 import { VideoSaveFolderCard } from "@/components/videos/VideoSaveFolderCard";
 import { XApiEnabledToggle } from "@/components/XApiEnabledToggle";
@@ -78,23 +79,10 @@ async function SettingsBody({
     : false;
   return (
     <div className="space-y-3">
-      <InstallAppCard />
-      <article
-        className="notranslate rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
-        lang="ja"
-        translate="no"
-      >
-        <h2 className="font-semibold">Chrome で原文を読む</h2>
-        <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink-2 text-sm">
-          <li>Library か Inbox から投稿を開く</li>
-          <li>
-            原文の下の「日本語に翻訳」を押す（Chrome
-            内蔵。サーバーには送らない）
-          </li>
-          <li>出ないときは「原文を選択」→ 右クリック →「日本語に翻訳」</li>
-        </ol>
-      </article>
-      <UsageMeters data={usage} accountId={current?.id ?? null} />
+      <SettingsViewingAccountCard
+        accounts={accounts}
+        currentId={current?.id ?? null}
+      />
       {params.x === "missing" ? (
         <p className="rounded-xl bg-warn/20 px-3 py-2 text-sm">
           X_CLIENT_ID が未設定です。Vercel の環境変数を入れてください。
@@ -127,6 +115,23 @@ async function SettingsBody({
           Callback にこの環境の URL があるかも確認してください。
         </p>
       ) : null}
+      <InstallAppCard />
+      <article
+        className="notranslate rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
+        lang="ja"
+        translate="no"
+      >
+        <h2 className="font-semibold">Chrome で原文を読む</h2>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink-2 text-sm">
+          <li>Library か Inbox から投稿を開く</li>
+          <li>
+            原文の下の「日本語に翻訳」を押す（Chrome
+            内蔵。サーバーには送らない）
+          </li>
+          <li>出ないときは「原文を選択」→ 右クリック →「日本語に翻訳」</li>
+        </ol>
+      </article>
+      <UsageMeters data={usage} accountId={current?.id ?? null} />
       <section className="space-y-3">
         <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
           <SettingsAccountPicker
@@ -325,7 +330,7 @@ export default function SettingsPage({
   return (
     <main className="px-4 pt-8">
       <h1 className="font-semibold text-2xl">Settings</h1>
-      <p className="mt-2 mb-6 text-ink-2 text-sm">
+      <p className="mt-2 mb-4 text-ink-2 text-sm">
         残量が減ったら追加する運用です。有料トグルは人間が切り替えます。
       </p>
       <Suspense fallback={<p className="text-ink-2 text-sm">読み込み中…</p>}>
