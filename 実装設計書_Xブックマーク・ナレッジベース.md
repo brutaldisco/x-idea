@@ -37,7 +37,7 @@
 
 > **v3.5 の要点（v3.4 からの変更）**
 > 1. **動画は手動ダウンロードのみ、画像は DB 保存**（ADR-007、ADR-005 を一部改定）。容量破綻の主因である動画の全量保存をやめ、画像・動画サムネイルは WebP 化して **Turso の `media_blobs`** に保存（本番・ローカル同一挙動）。動画本体は Reader の「あとで保存」→ **キュー（最大 15 件）** → Videos タブから手動実行し、**File System Access API** でユーザー指定フォルダへ保存（ローカルサーバー不要）。`pnpm dev` 保存役は開発用途に限定。
-> 2. **Videos タブ（SC-15）追加** で下部タブは 6 項目に。ダウンロードキュー・動画ライブラリ（1 階層フォルダ分類）・ブラウザ標準プレーヤー。低速回線対策は 8MB チャンク＋レジューム。詳細は `docs/design/2026-09-05-video-library.md`。
+> 2. **Videos タブ（SC-15）追加** で下部タブは 6 項目に。ダウンロードキュー・動画ライブラリ（1 階層フォルダ分類）・ブラウザ標準プレーヤー。転送は CDN 直接・4 並列 Range（ADR-021）＋レジューム。詳細は `docs/design/2026-09-05-video-library.md`。
 >
 > **v3.6 の要点（v3.5 からの変更）**
 > 1. **既定の X アカウントを Settings で選ぶ**（ADR-014）。Cookie `x_ctx` が無いときのフォールバックを「先頭アカウント」から「`settings.default_x_account_id`、未設定なら先頭」に変更する。Settings では「このアカウントの設定」と「既定のアカウント」を別カードにする。
@@ -438,7 +438,7 @@ UI/UX の判断に迷ったら以下に従う。
 ### 8.10 SC-15 Videos（v3.5、ADR-007）
 
 - **保存フォルダ**：Settings の「保存フォルダ」カードで、表示中アカウントごとに選ぶ（File System Access API）。フォルダ名は `x_account.video_save_folder_name` でそのアカウントの全環境共有。書き込みハンドルはブラウザ／オリジンごとなので、localhost・本番・別ブラウザでは同じフォルダを再リンクする。Videos は未リンク／要再リンク時に Settings への案内だけ出す。Safari/Firefox は非対応案内＋通常ダウンロードにフォールバック。
-- **ダウンロードキュー**：`N / 15` 件表示＋「すべて開始」。チェックで対象を選び「選んだ N 件を開始」、各行の「この動画だけ」でも実行できる。実行中は **「停止」ボタン** で全体を中断できる（途中まで保存済み。中断分は `queued` に戻り、次回は続きから再開）。**失敗・取消・開けない途中ファイルは保存フォルダから削除**する（再試行は最初から）。キューに「途中ファイルを削除」があり、Videos を開いたときも孤立した mp4（失敗・取消・記録なし）を掃除する。保存済みを開いて途中ファイルだった場合も削除し、キューへ戻す。各アイテムはサムネイル（右下に再生時間）・投稿抜粋・`@username`・状態（日本語。ダウンロード中はパーセント）・進捗バーと受信量（`4.6 MB / 38.7 MB`。総サイズが無い間は概算を「約」で分母にする）・取消。取れるときはサイズと画質（`480p` など。最高 `bit_rate` の mp4。未保存は `bit_rate × 時間` の概算）を操作の左に出す。`failed` は理由と「再試行」。このタブで進捗のない `downloading` は **中断** と表示し、「再開」ボタンと「すべて開始」の対象に含める（別セッションの取り残しを復帰させる）。**完了した動画は残りを待たず即座にライブラリへ出す**。実行は回線速度に合わせてチャンク 1〜32MB と同時本数 1〜4 を自動で変え、**30 秒無応答のチャンクは切断してリトライ**する（14.6）。総サイズが分かるまでパーセントは出さない。
+- **ダウンロードキュー**：`N / 15` 件表示＋「すべて開始」。チェックで対象を選び「選んだ N 件を開始」、各行の「この動画だけ」でも実行できる。実行中は **「停止」ボタン** で全体を中断できる（途中まで保存済み。中断分は `queued` に戻り、次回は続きから再開）。**失敗しても途中ファイルと進捗（IndexedDB）は残し、「再試行」で続きから取り直せる**（2026-09-13 改定。それ以前は失敗時に破棄していた）。取消・開けない途中ファイルは保存フォルダから削除する。キューに「途中ファイルを削除」があり（失敗分も明示的に消せる）、Videos を開いたときも孤立した mp4（取消・記録なし）を掃除する（`failed` は再試行用に残す）。保存済みを開いて途中ファイルだった場合も削除し、キューへ戻す。各アイテムはサムネイル（右下に再生時間）・投稿抜粋・`@username`・状態（日本語。ダウンロード中はパーセント）・進捗バーと受信量（`4.6 MB / 38.7 MB`。総サイズが無い間は概算を「約」で分母にする）・取消。取れるときはサイズと画質（`480p` など。最高 `bit_rate` の mp4。未保存は `bit_rate × 時間` の概算）を操作の左に出す。`failed` は理由と「再試行」。このタブで進捗のない `downloading` は **中断** と表示し、「再開」ボタンと「すべて開始」の対象に含める（別セッションの取り残しを復帰させる）。**完了した動画は残りを待たず即座にライブラリへ出す**。実行は **CDN 直接・4 並列の Range 取得**（ADR-021。失敗時はプロキシ逐次へフォールバック）で、**30 秒無応答のチャンクは切断してリトライ**する（14.6）。総サイズが分かるまでパーセントは出さない。
 - **ライブラリ**：フォルダチップ（すべて／未分類／ユーザー作成フォルダ／＋新規フォルダ）。グリッドカードはサムネイル（WebP blob）・再生時間バッジ・投稿抜粋・保存日・画質（取れるとき）・サイズ。操作は「フォルダ移動」「削除」（確認で **mp4 も消える** と明示し、保存フォルダのファイルも消す）「X で開く」「Source を開く」。
 - **プレーヤー**：カードタップで黒ベースの全画面モーダル（ライト／ダークどちらでも黒。テーマトークンは使わない）。`<video controls playsInline>` に object URL を渡す。全画面はプレーヤー枠に対して行い、終了や左右キーで次／前へ移っても維持する。左右キーはシークせず前後の動画へ。ネイティブの全画面ボタンは使わず、枠の全画面に寄せる。
 - 詳細は `docs/design/2026-09-05-video-library.md`。
@@ -760,7 +760,7 @@ sync_bookmarks(x_account_id, mode = 'incremental' | 'initial', initial_limit?):
 - **画像と動画サムネイルは WebP（quality 82）に変換して DB（Turso）の `media_blobs` に保存**する（19 章）。本番・ローカルで同一の挙動。配信は `GET /api/media/[id]`（blob 優先、未保存時は X CDN を自前プロキシ＋`after()` で blob 保存。302 しない）。`?preview=1` は動画サムネイル。
 - **動画本体は自動保存しない**。未保存の Reader 動画はサムネイル＋「X で見る」。残したい動画だけ「保存する」でキュー（`video_downloads`、**queued は最大 15 件**）に入れ、**Videos タブ（SC-15）から手動実行**する。保存済み（`ready`）は Library / Reader のサムネタップでローカルファイルを再生できる（Videos と同じ全画面プレーヤー）。
 - ダウンロードは **File System Access API**（Chrome/Edge）で、ユーザーが選んだルート配下に `{x_account_id}/{フォルダ}/{tweet_id}_{media_key}.mp4` として書く（ローカルサーバー不要）。分類フォルダは 1 階層のみ（作成・移動・削除可）。引っ越しはアカウントフォルダ単位のコピー＋ルート再リンク。
-- 画質は `variants` の **最大 `bit_rate` の mp4**（最高解像度。字幕の可読性対策）。低速回線対策は **回線適応の 1〜32MB チャンクの Range 取得＋IndexedDB レジューム**（`GET /api/media/[id]/file`、`maxDuration = 300`：Vercel Hobby の 300 秒上限を考慮）。**30 秒間 1 バイトも受信できないチャンクは切断してリトライ**（チャンク半減＋指数バックオフ）し、無音ストールでキュー全体が止まらないようにする。実行中は **「停止」ボタン**で全体を中断でき、中断分は `queued` に戻って続きから再開できる。完了登録（`POST /api/videos/queue/[id]/complete`）はレスポンスを検査して最大 3 回リトライし、**完了した動画から即座にライブラリへ表示**する。進捗（IndexedDB）は完了登録が確認できてから消す（登録だけ失敗したときの取り直しを防ぐ）。このタブで進捗のない `downloading` は中断とみなし、「すべて開始」や個別の「再開」で続きから復帰できる（`action: "requeue"` で `downloading` → `queued`）。
+- 画質は `variants` の **最大 `bit_rate` の mp4**（最高解像度。字幕の可読性対策）。転送は **CDN 直接・4 並列の Range 取得**（ADR-021：`GET /api/media/[id]/url` で URL を解決し、ブラウザから video.twimg.com へ直接取得。総サイズは HEAD の `Content-Length`、チャンクは 1〜8MB。video.twimg.com はコネクション単位でスロットルするため逐次プロキシより約 40 倍速い）。直接取得に失敗したときは従来のプロキシ逐次経路（`GET /api/media/[id]/file`、`maxDuration = 300`）へフォールバックする。レジュームは IndexedDB に **書き込み済み位置だけ** を記録する（表示用の受信量と分離）。**30 秒間 1 バイトも受信できないチャンクは切断してリトライ**（指数バックオフ）し、無音ストールでキュー全体が止まらないようにする。実行中は **「停止」ボタン**で全体を中断でき、中断分は `queued` に戻って続きから再開できる。完了登録（`POST /api/videos/queue/[id]/complete`）はレスポンスを検査して最大 3 回リトライし、**完了した動画から即座にライブラリへ表示**する。進捗（IndexedDB）は完了登録が確認できてから消す（登録だけ失敗したときの取り直しを防ぐ）。このタブで進捗のない `downloading` は中断とみなし、「すべて開始」や個別の「再開」で続きから復帰できる（`action: "requeue"` で `downloading` → `queued`）。
 - 旧方式（`MEDIA_ROOT` ローカル保存と `pnpm dev` 保存役コンパニオン）は **開発用途に限定** し、Settings の案内と自動同期は出さない。既存のローカルファイルは `local_path` があれば従来どおり配信する（後方互換）。
 - 詳細は `docs/design/2026-09-05-video-library.md`。
 
@@ -1831,7 +1831,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 ## 26. PWA・オフライン・プッシュ通知
 
 - **マニフェスト**：`src/app/manifest.ts` → `/manifest.webmanifest`。`display: standalone`、`start_url: /today`、アイコン（192 / 512 と maskable）、`share_target: { action: '/capture', method: 'GET', params: { title, text, url } }`（Android Chrome）。
-- **Service Worker**：`public/sw.js`（ADR-008 / ADR-016）。App Shell と静的資産はプリキャッシュ。`/api/sources*` は Stale-While-Revalidate（上限 200、TTL 10 分）。サムネ `/api/media/*`（`file` 以外）は cache-first。Reader（`/source/*`）は直近閲覧 100 件。navigate の RUNTIME は 30 件。オフライン時はバナー＋`/offline`＋読み取り専用。動画 Range・同期・ジョブは SW を通さない。
+- **Service Worker**：`public/sw.js`（ADR-008 / ADR-016）。App Shell と静的資産はプリキャッシュ。`/api/sources*` は Stale-While-Revalidate（上限 200、TTL 10 分）。サムネ `/api/media/*`（`file` / `url` 以外）は cache-first。Reader（`/source/*`）は直近閲覧 100 件。navigate の RUNTIME は 30 件。オフライン時はバナー＋`/offline`＋読み取り専用。動画 Range・同期・ジョブは SW を通さない。
 - **インストール案内**：Settings / オンボーディング STEP 5 / `beforeinstallprompt`。iOS は共有シートの手順。
 - **iOS 注意**：Push・Badging は「ホーム画面に追加」した PWA のみ（iOS 16.4+）。Web Share Target 非対応 → **iOS ショートカット**（共有シート→「x-idea に保存」→ `POST /api/capture` に Bearer）を Settings から導入案内（ショートカットの iCloud リンクを用意 **[仮定]**）。キャッシュは 7 日で消える前提。
 - **Web Push**：`web-push`（VAPID）。イベント：Briefing 完成、Inbox ≥ しきい値（1 日 1 回）、`reauth_required`、同期失敗 6 時間超。`send_push` ジョブが送信、410/404 は購読削除。
@@ -2094,6 +2094,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-612 | Reader「あとで保存」＋Settings 整理（保存役案内の撤去、DB 使用量メーター） | Reader, Settings | T-608 | 本番 Settings に `pnpm dev` 案内が出ない |
 | T-613 | 多言語の「日本語に翻訳」：漢字≠日本語、記事は投稿 `lang` を使わない、`zh` / `zh-Hant` を Translator に渡す | `chrome-translate.ts`, `ChromeTranslate.tsx`, `ArticleBlock.tsx` | T-207 | 中国語記事でボタンが出る。日本語記事では出ない。原文カラムは書かない |
 | T-614 | Chrome 翻訳結果の永続化（`chrome_translations`、再オープン時表示、`source_hash` 検証） | `drizzle/0016_*`, `server/sources/chrome-translate.ts`, `ChromeTranslate.tsx` | T-613 | 翻訳→リロードで同じ対訳ペイン。原文更新後は古い訳を出さない |
+| T-615 | 動画 DL の CDN 直接・4 並列 Range 化（`/api/media/[id]/url` 追加、プロキシ逐次へフォールバック） | `video-store.ts`, `video-download-plan.ts`, `server/media/resolve-download-url.ts`, `api/media/[id]/url` | T-610 | 大きな動画が従来比で大幅に速く終わる。直接取得を遮ってもプロキシ経路で完了する |
 
 ---
 

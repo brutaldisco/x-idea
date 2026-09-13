@@ -1,4 +1,6 @@
 import {
+  DIRECT_PARALLEL,
+  directChunkBytes,
   initialVideoDownloadPlan,
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
@@ -464,12 +466,241 @@ async function downloadVideoChunk(input: {
   }
 }
 
+/**
+ * CDN 直接取得の総サイズを HEAD で調べる。
+ * Content-Range は CORS で expose されないため Content-Length を使う。
+ * 失敗（CORS・ネットワーク等）は null を返し、呼び出し側がプロキシへ落ちる。
+ */
+async function fetchDirectTotalBytes(
+  url: string,
+  signal?: AbortSignal,
+): Promise<number | null> {
+  try {
+    const res = await fetch(url, {
+      method: "HEAD",
+      cache: "no-store",
+      signal,
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const length = Number(res.headers.get("content-length") ?? 0);
+    return length > 0 ? length : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 1 レンジをメモリ上に取得する。ストール検知・指数バックオフは
+ * プロキシ経路（downloadVideoChunk）と同じ方針。リトライ時は
+ * 受信済みバイトを onBytes の負数で巻き戻して進捗の二重計上を防ぐ。
+ */
+async function fetchRangeBytes(input: {
+  url: string;
+  start: number;
+  end: number;
+  retries: number;
+  signal?: AbortSignal;
+  onBytes: (n: number) => void;
+}): Promise<Uint8Array<ArrayBuffer>> {
+  const expected = input.end - input.start + 1;
+  let attempt = 0;
+  for (;;) {
+    if (input.signal?.aborted) {
+      throw abortError();
+    }
+    const stallController = new AbortController();
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    const armStallTimer = () => {
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+      }
+      stallTimer = setTimeout(() => stallController.abort(), VIDEO_STALL_MS);
+    };
+    const onParentAbort = () => stallController.abort();
+    input.signal?.addEventListener("abort", onParentAbort, { once: true });
+    armStallTimer();
+    let received = 0;
+    try {
+      const res = await fetch(input.url, {
+        cache: "no-store",
+        headers: { Range: `bytes=${input.start}-${input.end}` },
+        signal: stallController.signal,
+      });
+      // Range を無視した 200 などは並列方式と相性が悪いので失敗扱いにし、
+      // 呼び出し側のプロキシ経路フォールバックに任せる
+      if (res.status !== 206 || !res.body) {
+        const error = new Error(
+          `direct range failed (${res.status})`,
+        ) as Error & {
+          retryable?: boolean;
+        };
+        error.retryable = isRetryableStatus(res.status);
+        throw error;
+      }
+      const reader = res.body.getReader();
+      const parts: Uint8Array[] = [];
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          if (!value?.byteLength) {
+            continue;
+          }
+          armStallTimer();
+          parts.push(value);
+          received += value.byteLength;
+          input.onBytes(value.byteLength);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      if (received !== expected) {
+        const error = new Error(
+          `direct range short read (${received}/${expected})`,
+        ) as Error & { retryable?: boolean };
+        error.retryable = true;
+        throw error;
+      }
+      const out = new Uint8Array(received);
+      let at = 0;
+      for (const part of parts) {
+        out.set(part, at);
+        at += part.byteLength;
+      }
+      return out;
+    } catch (error) {
+      if (received > 0) {
+        input.onBytes(-received);
+      }
+      if (input.signal?.aborted) {
+        throw abortError();
+      }
+      attempt += 1;
+      const retryable = (error as { retryable?: boolean }).retryable !== false;
+      if (attempt > input.retries || !retryable) {
+        throw error;
+      }
+      const delay = Math.min(10_000, 500 * 2 ** (attempt - 1));
+      await sleep(delay, input.signal);
+    } finally {
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+      }
+      input.signal?.removeEventListener("abort", onParentAbort);
+    }
+  }
+}
+
+/**
+ * CDN から DIRECT_PARALLEL 本の並列 Range 取得でダウンロードする。
+ * File System Access は 1 ファイル同時 1 writable なので、取得は並列・
+ * 書き込みはオフセット順に直列化する。返り値は書き込み済みの最終オフセット。
+ */
+async function downloadDirectToFile(input: {
+  url: string;
+  file: FileSystemFileHandle;
+  offset: number;
+  total: number;
+  retries: number;
+  signal?: AbortSignal;
+  onBytes: (n: number) => void;
+  onWritten: (offset: number) => Promise<void>;
+}): Promise<number> {
+  const chunk = directChunkBytes(input.total);
+  const writable = await input.file.createWritable({
+    keepExistingData: true,
+  });
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort();
+  input.signal?.addEventListener("abort", onParentAbort, { once: true });
+  let nextFetch = input.offset;
+  let nextWrite = input.offset;
+  const pending = new Map<number, Uint8Array<ArrayBuffer>>();
+  let writeChain: Promise<void> = Promise.resolve();
+  const flush = () => {
+    writeChain = writeChain.then(async () => {
+      for (;;) {
+        const data = pending.get(nextWrite);
+        if (!data) {
+          return;
+        }
+        pending.delete(nextWrite);
+        await writable.seek(nextWrite);
+        await writable.write(data);
+        nextWrite += data.byteLength;
+        await input.onWritten(nextWrite);
+      }
+    });
+    return writeChain;
+  };
+  const worker = async () => {
+    for (;;) {
+      if (controller.signal.aborted) {
+        throw abortError();
+      }
+      const start = nextFetch;
+      if (start >= input.total) {
+        return;
+      }
+      const end = Math.min(start + chunk, input.total) - 1;
+      nextFetch = end + 1;
+      const data = await fetchRangeBytes({
+        url: input.url,
+        start,
+        end,
+        retries: input.retries,
+        signal: controller.signal,
+        onBytes: input.onBytes,
+      });
+      pending.set(start, data);
+      await flush();
+    }
+  };
+  try {
+    const results = await Promise.all(
+      Array.from({ length: DIRECT_PARALLEL }, async () => {
+        try {
+          await worker();
+          return null;
+        } catch (error) {
+          controller.abort();
+          return error;
+        }
+      }),
+    );
+    await flush();
+    const failure = results.find((error) => error != null);
+    if (failure) {
+      throw failure;
+    }
+    if (nextWrite < input.total) {
+      throw new Error(
+        `ダウンロードが完了しませんでした（${nextWrite}/${input.total}）`,
+      );
+    }
+    return nextWrite;
+  } finally {
+    input.signal?.removeEventListener("abort", onParentAbort);
+    try {
+      await writable.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export async function downloadVideoFile(input: {
   downloadId: string;
   mediaId: string;
   relPath: string;
   root: FileSystemDirectoryHandle;
   estimatedBytes?: number | null;
+  /** あれば CDN から直接・並列で取得し、失敗時はプロキシ経路へ落ちる（ADR-021） */
+  directUrl?: string | null;
   signal?: AbortSignal;
   onProgress?: (received: number, total: number) => void;
 }): Promise<{ bytes: number; relPath: string }> {
@@ -516,6 +747,65 @@ export async function downloadVideoFile(input: {
     await saveProgress(input.downloadId, offset);
     lastSaved = offset;
   };
+
+  // CDN 直接・並列取得を先に試す（ADR-021）。
+  // video.twimg.com はコネクション単位のスロットルのため、並列 Range の方が
+  // プロキシ逐次より桁違いに速い。失敗時は書き込み済み位置からプロキシ経路へ落ちる。
+  if (input.directUrl && !input.signal?.aborted) {
+    const headTotal = await fetchDirectTotalBytes(
+      input.directUrl,
+      input.signal,
+    );
+    if (headTotal && headTotal <= offset) {
+      // すでに取り終わっている（完了登録だけ失敗したケース）
+      return { bytes: offset, relPath: input.relPath };
+    }
+    if (headTotal && headTotal > offset) {
+      total = headTotal;
+      emit(true);
+      try {
+        const written = await downloadDirectToFile({
+          url: input.directUrl,
+          file,
+          offset,
+          total,
+          retries: plan.retries,
+          signal: input.signal,
+          onBytes: (n) => {
+            // 表示用の受信量。保存済み位置（レジューム基準）は onWritten 側だけが進める
+            offset += n;
+            emit();
+          },
+          onWritten: async (writtenOffset) => {
+            await saveProgress(input.downloadId, writtenOffset);
+            lastSaved = writtenOffset;
+          },
+        });
+        offset = written;
+        await persist();
+        return { bytes: offset, relPath: input.relPath };
+      } catch (error) {
+        if (
+          (error as { name?: string }).name === "AbortError" ||
+          input.signal?.aborted
+        ) {
+          // 表示用 offset は未書き込み分を含むことがあるので書き込み済み位置を保存する
+          await saveProgress(input.downloadId, lastSaved).catch(() => {});
+          throw abortError();
+        }
+        offset = await loadProgress(input.downloadId);
+        if (offset > 0) {
+          const existing = await file.getFile();
+          if (existing.size < offset) {
+            offset = existing.size;
+          }
+        }
+        lastSaved = offset;
+        total = 0;
+        emit(true);
+      }
+    }
+  }
 
   try {
     while (!input.signal?.aborted) {

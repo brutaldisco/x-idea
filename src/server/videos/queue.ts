@@ -61,7 +61,7 @@ export type VideoLibraryPayload = {
   folders: VideoFolder[];
   queue: VideoItem[];
   library: VideoItem[];
-  /** ready / queued / downloading のパス。途中ファイル掃除で残す */
+  /** ready / queued / downloading / failed のパス。途中ファイル掃除で残す */
   protectedRelPaths: string[];
 };
 
@@ -112,7 +112,7 @@ async function listProtectedVideoRelPaths(
           JOIN x_posts p ON p.id = m.x_post_id
           LEFT JOIN video_folders f ON f.id = d.folder_id
           WHERE d.x_account_id = ?
-            AND d.status IN ('ready', 'queued', 'downloading')
+            AND d.status IN ('ready', 'queued', 'downloading', 'failed')
           LIMIT 2000`,
     args: [accountId],
   });

@@ -1,4 +1,4 @@
-export const PWA_CACHE_VERSION = "x-idea-v6";
+export const PWA_CACHE_VERSION = "x-idea-v7";
 export const PWA_ICON_REVISION = "xi";
 export const PWA_APPLE_TOUCH_ICON = "/apple-touch-icon-xi.png";
 
@@ -43,7 +43,10 @@ export function shouldBypassServiceWorker(
   if (method !== "GET") {
     return true;
   }
-  if (pathname.startsWith("/api/media/") && pathname.includes("/file")) {
+  if (
+    pathname.startsWith("/api/media/") &&
+    (pathname.includes("/file") || pathname.includes("/url"))
+  ) {
     return true;
   }
   if (pathname.startsWith("/api/videos")) {
@@ -88,7 +91,11 @@ export function isStaticAssetPath(pathname: string): boolean {
 }
 
 export function isMediaThumbPath(pathname: string): boolean {
-  return pathname.startsWith("/api/media/") && !pathname.includes("/file");
+  return (
+    pathname.startsWith("/api/media/") &&
+    !pathname.includes("/file") &&
+    !pathname.includes("/url")
+  );
 }
 
 export function isHttpDateFresh(

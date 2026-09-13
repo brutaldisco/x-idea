@@ -1,4 +1,4 @@
-const VERSION = "x-idea-v6";
+const VERSION = "x-idea-v7";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const SOURCES = `${VERSION}-sources`;
@@ -23,7 +23,10 @@ function bypass(request, url) {
     return true;
   }
   const path = url.pathname;
-  if (path.startsWith("/api/media/") && path.includes("/file")) {
+  if (
+    path.startsWith("/api/media/") &&
+    (path.includes("/file") || path.includes("/url"))
+  ) {
     return true;
   }
   if (path.startsWith("/api/videos")) {
@@ -145,7 +148,11 @@ async function handle(request, url) {
   if (path.startsWith("/_next/static/") || path.startsWith("/icons/")) {
     return cacheFirst(request, RUNTIME);
   }
-  if (path.startsWith("/api/media/") && !path.includes("/file")) {
+  if (
+    path.startsWith("/api/media/") &&
+    !path.includes("/file") &&
+    !path.includes("/url")
+  ) {
     return cacheFirst(request, RUNTIME);
   }
   if (path.startsWith("/api/sources")) {

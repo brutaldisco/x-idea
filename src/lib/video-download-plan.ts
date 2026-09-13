@@ -6,6 +6,26 @@ export const VIDEO_CHUNK_MAX = 32 * MB;
 /** この時間だけ 1 バイトも受信できなければ接続が止まったとみなす */
 export const VIDEO_STALL_MS = 30_000;
 
+/**
+ * CDN 直接ダウンロードの同時接続数。
+ * video.twimg.com はコネクション単位でスロットルする（実測: 1 接続 ~120KB/s、
+ * 4 並列で合計 ~4.6MB/s、8 並列では逆に低下）ため 4 が最適（ADR-021）。
+ */
+export const DIRECT_PARALLEL = 4;
+export const DIRECT_CHUNK_MAX = 8 * MB;
+
+/**
+ * 直接ダウンロードのチャンクサイズ。小さいファイルでも全ワーカーに仕事が
+ * 行くよう total / DIRECT_PARALLEL を目安にし、1〜8MB に収める。
+ */
+export function directChunkBytes(total: number): number {
+  if (!(total > 0)) {
+    return DIRECT_CHUNK_MAX;
+  }
+  const quarter = Math.ceil(total / DIRECT_PARALLEL);
+  return clamp(quarter, VIDEO_CHUNK_MIN, DIRECT_CHUNK_MAX);
+}
+
 export type VideoDownloadPlan = {
   chunkBytes: number;
   parallel: number;

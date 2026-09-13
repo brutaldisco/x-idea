@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  DIRECT_CHUNK_MAX,
+  DIRECT_PARALLEL,
+  directChunkBytes,
   initialVideoDownloadPlan,
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
@@ -52,5 +55,25 @@ describe("video download plan", () => {
       100 * 1024 * 1024,
     );
     expect(fast.chunkBytes).toBe(VIDEO_CHUNK_MAX);
+  });
+});
+
+describe("directChunkBytes", () => {
+  it("caps huge files at the direct chunk max", () => {
+    expect(directChunkBytes(2_405_869_896)).toBe(DIRECT_CHUNK_MAX);
+  });
+
+  it("splits small files so every worker gets a chunk", () => {
+    const chunk = directChunkBytes(20 * 1024 * 1024);
+    expect(chunk).toBe(5 * 1024 * 1024);
+    expect(chunk * DIRECT_PARALLEL).toBeGreaterThanOrEqual(20 * 1024 * 1024);
+  });
+
+  it("never goes below the minimum chunk", () => {
+    expect(directChunkBytes(1024)).toBe(VIDEO_CHUNK_MIN);
+  });
+
+  it("falls back to the max when total is unknown", () => {
+    expect(directChunkBytes(0)).toBe(DIRECT_CHUNK_MAX);
   });
 });

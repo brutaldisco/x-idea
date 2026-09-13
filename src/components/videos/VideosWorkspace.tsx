@@ -304,12 +304,28 @@ export function VideosWorkspace({
           ...prev,
           [item.id]: { received: 0, total: 0 },
         }));
+        // CDN 直接ダウンロード用の URL を解決（失敗時はプロキシ経路で進む）
+        let directUrl: string | null = null;
+        try {
+          const urlRes = await fetch(`/api/media/${item.mediaId}/url`, {
+            cache: "no-store",
+          });
+          if (urlRes.ok) {
+            const payload = (await urlRes.json()) as { url?: unknown };
+            if (typeof payload.url === "string" && payload.url.length > 0) {
+              directUrl = payload.url;
+            }
+          }
+        } catch {
+          directUrl = null;
+        }
         const result = await downloadVideoFile({
           downloadId: item.id,
           mediaId: item.mediaId,
           relPath,
           root: handle,
           estimatedBytes: item.estimatedBytes,
+          directUrl,
           signal: controller.signal,
           onProgress: (received, total) => {
             setProgress((prev) => ({
@@ -371,8 +387,8 @@ export function VideosWorkspace({
             error: messageText,
           }),
         });
-        // 途中ファイルは開けないので捨て、再試行は最初から
-        await discardItemFiles([item], handle);
+        // 途中ファイルと進捗（IndexedDB）は残す。「再試行」で続きから取り直せる。
+        // 明示的に消したいときはキューの「途中ファイルを削除」を使う
         setData((prev) => ({
           ...prev,
           queue: prev.queue.map((entry) =>

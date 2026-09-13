@@ -31,6 +31,7 @@ describe("shouldBypassServiceWorker", () => {
   it("leaves mutations and large media on the network", () => {
     expect(shouldBypassServiceWorker("/today", "POST")).toBe(true);
     expect(shouldBypassServiceWorker("/api/media/abc/file", "GET")).toBe(true);
+    expect(shouldBypassServiceWorker("/api/media/abc/url", "GET")).toBe(true);
     expect(shouldBypassServiceWorker("/api/videos/queue", "GET")).toBe(true);
     expect(shouldBypassServiceWorker("/api/auth/google/start", "GET")).toBe(
       true,
@@ -49,6 +50,7 @@ describe("path classifiers", () => {
     expect(isStaticAssetPath("/_next/static/chunks/app.js")).toBe(true);
     expect(isMediaThumbPath("/api/media/abc")).toBe(true);
     expect(isMediaThumbPath("/api/media/abc/file")).toBe(false);
+    expect(isMediaThumbPath("/api/media/abc/url")).toBe(false);
   });
 });
 

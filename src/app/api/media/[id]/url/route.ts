@@ -1,12 +1,12 @@
 import { connection } from "next/server";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
-import { proxyRemoteMedia } from "@/server/media/fetch-remote";
 import { resolveVideoDownloadUrl } from "@/server/media/resolve-download-url";
 
-export const instant = false;
-export const maxDuration = 300;
-
+/**
+ * 動画の CDN URL を返す。ブラウザから video.twimg.com へ直接 Range 取得する
+ * 並列ダウンロード用（ADR-021）。URL 自体は認証不要の公開 CDN リンク。
+ */
 export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -26,19 +26,7 @@ export async function GET(
         status: resolved.error.status,
       });
     }
-    const range = request.headers.get("range");
-    const proxied = await proxyRemoteMedia(resolved.url, range, "video/mp4");
-    const headers = new Headers(proxied.headers);
-    const filename = `${resolved.row.tweet_id}_${resolved.row.media_key}.mp4`;
-    const inline = new URL(request.url).searchParams.get("inline") === "1";
-    headers.set(
-      "Content-Disposition",
-      inline ? "inline" : `attachment; filename="${filename}"`,
-    );
-    return new Response(proxied.body, {
-      status: proxied.status,
-      headers,
-    });
+    return Response.json({ url: resolved.url });
   } catch (error) {
     return Response.json(toErrorBody(error), { status: 500 });
   }
