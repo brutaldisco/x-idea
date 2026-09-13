@@ -3,20 +3,21 @@ import { LinkedText } from "@/components/LinkedText";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
 import { SourceCardTaxonomy } from "@/components/SourceCardTaxonomy";
 import { SourceCardThumb } from "@/components/SourceCardThumb";
+import { SourceThumbFallback } from "@/components/SourceThumbFallback";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
 import type { TaxonomyChipItem } from "@/lib/taxonomy-chip";
 import { canShowSaveVideosMenu } from "@/lib/video-queue";
 
+function ThumbPlaceholder({ className }: { className: string }) {
+  return <span className={`block bg-paper ${className}`} aria-hidden />;
+}
+
 function thumbSrc(mediaId: string, mediaType: string | null): string {
   return mediaType === "photo"
     ? `/api/media/${mediaId}`
     : `/api/media/${mediaId}?preview=1`;
-}
-
-function ThumbPlaceholder({ className }: { className: string }) {
-  return <span className={`block bg-paper ${className}`} aria-hidden />;
 }
 
 export function SourceCard({
@@ -27,6 +28,9 @@ export function SourceCard({
   infoTypes = [],
   summary,
   url,
+  authorAvatarUrl,
+  authorName,
+  authorUsername,
   mediaId,
   mediaType,
   videoSaveStatus,
@@ -39,6 +43,7 @@ export function SourceCard({
   summaryFromAi = false,
   postedAt,
   variant = "list",
+  avatarFallback = false,
 }: {
   id: string;
   categoryId?: string | null;
@@ -47,6 +52,9 @@ export function SourceCard({
   infoTypes?: TaxonomyChipItem[];
   summary: string;
   url: string | null;
+  authorAvatarUrl?: string | null;
+  authorName?: string | null;
+  authorUsername?: string | null;
   mediaId?: string | null;
   mediaType?: string | null;
   videoSaveStatus?: string | null;
@@ -59,6 +67,7 @@ export function SourceCard({
   summaryFromAi?: boolean;
   postedAt?: string | null;
   variant?: "list" | "rail" | "grid";
+  avatarFallback?: boolean;
 }) {
   const textAttrs = translatableProps(lang, summaryFromAi);
   const dateLabel = formatCardDate(postedAt);
@@ -90,6 +99,10 @@ export function SourceCard({
                 : "relative mb-2 block w-full"
             }
             imageClassName={`${variant === "grid" ? "h-[112px]" : "h-28"} w-full rounded-lg object-cover`}
+            authorAvatarUrl={avatarFallback ? authorAvatarUrl : null}
+            authorName={avatarFallback ? authorName : null}
+            authorUsername={avatarFallback ? authorUsername : null}
+            avatarSize="md"
             mediaId={mediaId}
             mediaType={mediaType}
             videoSaveStatus={videoSaveStatus}
@@ -101,6 +114,20 @@ export function SourceCard({
               durationMs={durationMs}
             />
           </SourceCardThumb>
+        ) : avatarFallback ? (
+          <SourceThumbFallback
+            sourceId={id}
+            href={`/source/${id}`}
+            authorAvatarUrl={authorAvatarUrl}
+            authorName={authorName}
+            authorUsername={authorUsername}
+            avatarSize="md"
+            className={
+              variant === "grid"
+                ? "relative mb-1.5 h-[112px] w-full rounded-lg bg-paper"
+                : "relative mb-2 h-28 w-full rounded-lg bg-paper"
+            }
+          />
         ) : (
           <Link
             href={`/source/${id}`}
@@ -129,6 +156,10 @@ export function SourceCard({
               imageHeight={160}
               wrapperClassName="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper"
               imageClassName="h-full w-full object-cover"
+              authorAvatarUrl={avatarFallback ? authorAvatarUrl : null}
+              authorName={avatarFallback ? authorName : null}
+              authorUsername={avatarFallback ? authorUsername : null}
+              avatarSize="sm"
               mediaId={mediaId}
               mediaType={mediaType}
               videoSaveStatus={videoSaveStatus}
@@ -140,6 +171,16 @@ export function SourceCard({
                 durationMs={durationMs}
               />
             </SourceCardThumb>
+          ) : avatarFallback ? (
+            <SourceThumbFallback
+              sourceId={id}
+              href={`/source/${id}`}
+              authorAvatarUrl={authorAvatarUrl}
+              authorName={authorName}
+              authorUsername={authorUsername}
+              avatarSize="sm"
+              className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-paper"
+            />
           ) : (
             <Link
               href={`/source/${id}`}

@@ -40,6 +40,8 @@ export type SourceListItem = {
   postedAt: string | null;
   triageStatus: string;
   authorUsername: string | null;
+  authorName: string | null;
+  authorAvatarUrl: string | null;
   categoryId: string | null;
   infoType: string | null;
   url: string | null;
@@ -109,6 +111,10 @@ export function mapSourceListItem(
     postedAt,
     triageStatus: String(row.triage_status),
     authorUsername: row.author_username ? String(row.author_username) : null,
+    authorName: row.author_name ? String(row.author_name) : null,
+    authorAvatarUrl: row.author_avatar_url
+      ? String(row.author_avatar_url)
+      : null,
     categoryId: row.category_id ? String(row.category_id) : null,
     infoType: row.info_type ? String(row.info_type) : null,
     url: row.url ? String(row.url) : null,
@@ -176,7 +182,8 @@ export async function listSourcesPage(input: {
   const result = await getClient().execute({
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
                  s.triage_status, s.category_id, s.info_type,
-                 p.posted_at, p.author_username, p.text, p.lang,
+                 p.posted_at, p.author_username, p.author_name,
+                 p.author_avatar_url, p.text, p.lang,
                  p.url, ${ARTICLE_EXCERPT_SQL},
                  ${LIST_MEDIA_SQL}
           FROM sources s
@@ -228,7 +235,8 @@ export async function listInbox(input: {
     sql: `SELECT s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
                  s.triage_status, s.ai_uncertainty_reason, s.category_id,
                  s.info_type, s.category_confidence, s.category_candidates_json,
-                 p.posted_at, p.author_username, p.text, p.lang, p.url,
+                 p.posted_at, p.author_username, p.author_name,
+                 p.author_avatar_url, p.text, p.lang, p.url,
                  ${ARTICLE_EXCERPT_SQL},
                  ${LIST_MEDIA_SQL}
           FROM sources s

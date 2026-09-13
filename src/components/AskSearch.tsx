@@ -148,6 +148,9 @@ export function AskSearch({
               infoTypes={infoTypes}
               summary={item.summary}
               url={item.url}
+              authorAvatarUrl={item.authorAvatarUrl}
+              authorName={item.authorName}
+              authorUsername={item.authorUsername}
               mediaId={item.mediaId}
               mediaType={item.mediaType}
               videoSaveStatus={item.videoSaveStatus}

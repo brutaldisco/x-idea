@@ -21,7 +21,8 @@ import { type AccountContext, contextAccountId } from "@/server/x/context";
 
 const SELECT_COLS = `s.id, s.kind, s.ai_summary, s.saved_at, s.bookmarked_at,
   s.triage_status, s.category_id, s.info_type,
-  p.posted_at, p.author_username, p.text, p.lang, p.url,
+  p.posted_at, p.author_username, p.author_name, p.author_avatar_url,
+  p.text, p.lang, p.url,
   ${ARTICLE_EXCERPT_SQL},
   ${LIST_MEDIA_SQL}`;
 

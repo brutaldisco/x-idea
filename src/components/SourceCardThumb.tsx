@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
+import { SourceThumbFallback } from "@/components/SourceThumbFallback";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 
 export function SourceCardThumb({
@@ -19,6 +20,10 @@ export function SourceCardThumb({
   mediaType,
   videoSaveStatus,
   videoRelPath,
+  authorAvatarUrl,
+  authorName,
+  authorUsername,
+  avatarSize = "sm",
   children,
 }: {
   sourceId: string;
@@ -33,6 +38,10 @@ export function SourceCardThumb({
   mediaType?: string | null;
   videoSaveStatus?: string | null;
   videoRelPath?: string | null;
+  authorAvatarUrl?: string | null;
+  authorName?: string | null;
+  authorUsername?: string | null;
+  avatarSize?: "sm" | "md" | "lg";
   children?: ReactNode;
 }) {
   const playable =
@@ -40,7 +49,15 @@ export function SourceCardThumb({
   const [imageFailed, setImageFailed] = useState(false);
 
   const image = imageFailed ? (
-    <span className={`block bg-paper ${imageClassName}`} aria-hidden />
+    <SourceThumbFallback
+      sourceId={sourceId}
+      authorAvatarUrl={authorAvatarUrl}
+      authorName={authorName}
+      authorUsername={authorUsername}
+      avatarSize={avatarSize}
+      shareTransition={false}
+      className={`h-full w-full bg-paper ${imageClassName}`}
+    />
   ) : (
     <Image
       src={thumbUrl}
