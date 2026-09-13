@@ -19,7 +19,10 @@ describe("totalBytesFromResponseHeaders", () => {
   it("ignores missing or zero lengths", () => {
     expect(totalBytesFromResponseHeaders(new Headers(), 200)).toBeNull();
     expect(
-      totalBytesFromResponseHeaders(new Headers({ "content-length": "0" }), 200),
+      totalBytesFromResponseHeaders(
+        new Headers({ "content-length": "0" }),
+        200,
+      ),
     ).toBeNull();
     expect(
       totalBytesFromResponseHeaders(

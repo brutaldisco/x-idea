@@ -27,9 +27,7 @@ describe("probeDirectTotalBytes", () => {
   it("falls back to Range 0-0 when HEAD has no length", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(
-        new Response(null, { status: 405, headers: {} }),
-      )
+      .mockResolvedValueOnce(new Response(null, { status: 405, headers: {} }))
       .mockResolvedValueOnce(
         new Response("x", {
           status: 206,
