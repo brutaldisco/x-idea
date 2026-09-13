@@ -6,6 +6,7 @@ import {
   withHtmlMark,
   withoutHtmlMark,
 } from "@/lib/article-html";
+import { HAS_NATIVE_COVER_SQL } from "@/lib/article-thumb";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import {
@@ -462,12 +463,7 @@ export async function refreshXArticleCovers(limit = 2): Promise<number> {
           WHERE a.original_url LIKE '%/i/article/%'
             AND (a.thumbnail_url IS NULL OR a.thumbnail_url = '')
             AND IFNULL(p.raw_payload_json, '') NOT LIKE '%"article_cover_checked":true%'
-            AND NOT EXISTS (
-              SELECT 1 FROM media_assets m
-              WHERE m.x_post_id = p.id
-                AND m.type = 'photo'
-                AND IFNULL(m.media_key, '') NOT LIKE 'article-og:%'
-            )
+            AND NOT ${HAS_NATIVE_COVER_SQL}
             AND NOT EXISTS (
               SELECT 1 FROM media_assets m
               WHERE m.x_post_id = p.id

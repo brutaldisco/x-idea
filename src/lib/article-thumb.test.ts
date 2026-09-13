@@ -4,6 +4,8 @@ import {
   articleThumbMediaKey,
   firstContentImage,
   isArticleThumbMediaKey,
+  mediaCoverRank,
+  pickCoverMedia,
   resolveStoredThumbnail,
 } from "./article-thumb";
 
@@ -48,6 +50,58 @@ describe("firstContentImage", () => {
         "https://gigazine.net",
       ),
     ).toBe("https://i.gzn.jp/img/a/00.png");
+  });
+});
+
+describe("mediaCoverRank / pickCoverMedia", () => {
+  it("puts video ahead of any still image", () => {
+    expect(mediaCoverRank({ type: "video" })).toBe(0);
+    expect(mediaCoverRank({ type: "animated_gif" })).toBe(0);
+    expect(mediaCoverRank({ type: "photo", mediaKey: "3_111" })).toBe(1);
+    expect(
+      mediaCoverRank({ type: "photo", mediaKey: "article-og:01ABC" }),
+    ).toBe(2);
+    expect(
+      pickCoverMedia([
+        {
+          id: "og",
+          type: "photo",
+          mediaKey: "article-og:01ABC",
+          createdAt: "2026-01-01",
+        },
+        {
+          id: "shot",
+          type: "photo",
+          mediaKey: "3_111",
+          createdAt: "2026-01-02",
+        },
+        {
+          id: "clip",
+          type: "video",
+          mediaKey: "7_222",
+          createdAt: "2026-01-03",
+        },
+      ])?.id,
+    ).toBe("clip");
+  });
+
+  it("uses a native photo before an article og image", () => {
+    expect(
+      pickCoverMedia([
+        {
+          id: "og",
+          type: "photo",
+          mediaKey: "article-og:01ABC",
+          createdAt: "2026-01-01",
+        },
+        {
+          id: "shot",
+          type: "photo",
+          mediaKey: "3_111",
+          createdAt: "2026-01-02",
+        },
+      ])?.id,
+    ).toBe("shot");
   });
 });
 

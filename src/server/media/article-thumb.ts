@@ -4,7 +4,7 @@ import {
   absoluteHttpUrl,
   articleThumbMediaKey,
   firstContentImage,
-  isArticleThumbMediaKey,
+  HAS_NATIVE_COVER_SQL,
 } from "@/lib/article-thumb";
 import { newId } from "@/lib/ids";
 import { fetchArticlePage } from "@/server/fetch/article";
@@ -74,12 +74,7 @@ export async function backfillArticleThumbs(input?: {
               a.thumbnail_url = ''
               AND IFNULL(a.fetch_error, '') IN ('excluded_domain', 'robots_disallow', 'x_status')
             )
-            AND NOT EXISTS (
-              SELECT 1 FROM media_assets m
-              WHERE m.x_post_id = p.id
-                AND m.type = 'photo'
-                AND IFNULL(m.media_key, '') NOT LIKE 'article-og:%'
-            )
+            AND NOT ${HAS_NATIVE_COVER_SQL}
             AND NOT EXISTS (
               SELECT 1 FROM media_assets m
               WHERE m.x_post_id = p.id
@@ -250,19 +245,28 @@ async function upsertArticleThumb(input: {
   mediaKey: string;
   url: string;
 }): Promise<number> {
+  const native = await getClient().execute({
+    sql: `SELECT 1 FROM media_assets
+          WHERE x_post_id = ?
+            AND (
+              type IN ('video', 'animated_gif')
+              OR (
+                type = 'photo'
+                AND IFNULL(media_key, '') NOT LIKE 'article-og:%'
+              )
+            )
+          LIMIT 1`,
+    args: [input.postId],
+  });
+  if (native.rows[0]) {
+    return 0;
+  }
   const photos = await getClient().execute({
     sql: `SELECT id, media_key FROM media_assets
           WHERE x_post_id = ? AND type = 'photo'
           LIMIT 8`,
     args: [input.postId],
   });
-  const realPhoto = photos.rows.find(
-    (row) =>
-      !isArticleThumbMediaKey(row.media_key ? String(row.media_key) : null),
-  );
-  if (realPhoto) {
-    return 0;
-  }
   const mine = photos.rows.find(
     (row) => String(row.media_key ?? "") === input.mediaKey,
   );

@@ -1,6 +1,6 @@
 import { getClient, isDbConfigured } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
-import { MEDIA_PHOTO_FIRST_SQL } from "@/lib/article-thumb";
+import { MEDIA_COVER_ORDER_SQL } from "@/lib/article-thumb";
 import type { ChromeTranslationView } from "@/lib/chrome-translate";
 import {
   formatDuration,
@@ -219,7 +219,7 @@ async function loadMedia(postId: string): Promise<MediaItem[]> {
                  (SELECT vd.bytes FROM video_downloads vd
                   WHERE vd.media_id = m.id LIMIT 1) AS video_bytes
           FROM media_assets m WHERE m.x_post_id = ?
-          ORDER BY ${MEDIA_PHOTO_FIRST_SQL} LIMIT 8`,
+          ORDER BY ${MEDIA_COVER_ORDER_SQL} LIMIT 8`,
     args: [postId],
   });
   return result.rows.map((row) => asMedia(row as Record<string, unknown>));

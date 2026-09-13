@@ -90,5 +90,46 @@ export function resolveStoredThumbnail(input: {
   );
 }
 
-export const MEDIA_PHOTO_FIRST_SQL =
-  "CASE WHEN m.type = 'photo' THEN 0 ELSE 1 END, m.created_at ASC";
+/** Library カード / Reader ヒーローのカバー順。動画が静止画より先。 */
+export const MEDIA_COVER_ORDER_SQL =
+  "CASE WHEN m.type IN ('video', 'animated_gif') THEN 0 WHEN m.type = 'photo' AND IFNULL(m.media_key, '') NOT LIKE 'article-og:%' THEN 1 WHEN m.type = 'photo' THEN 2 ELSE 3 END, m.created_at ASC";
+
+export const HAS_NATIVE_COVER_SQL = `EXISTS (
+  SELECT 1 FROM media_assets cover
+  WHERE cover.x_post_id = p.id
+    AND (
+      cover.type IN ('video', 'animated_gif')
+      OR (
+        cover.type = 'photo'
+        AND IFNULL(cover.media_key, '') NOT LIKE 'article-og:%'
+      )
+    )
+)`;
+
+export function mediaCoverRank(input: {
+  type: string;
+  mediaKey?: string | null;
+}): number {
+  if (input.type === "video" || input.type === "animated_gif") {
+    return 0;
+  }
+  if (input.type === "photo") {
+    return isArticleThumbMediaKey(input.mediaKey) ? 2 : 1;
+  }
+  return 3;
+}
+
+export function pickCoverMedia<
+  T extends { type: string; mediaKey?: string | null; createdAt?: string },
+>(items: T[]): T | null {
+  if (items.length === 0) {
+    return null;
+  }
+  return [...items].sort((left, right) => {
+    const rank = mediaCoverRank(left) - mediaCoverRank(right);
+    if (rank !== 0) {
+      return rank;
+    }
+    return (left.createdAt ?? "").localeCompare(right.createdAt ?? "");
+  })[0];
+}
