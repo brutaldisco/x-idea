@@ -93,3 +93,7 @@ export function withHtmlMark(html: string, mark: string): string {
   }
   return `${html}${mark}`;
 }
+
+export function withoutHtmlMark(html: string, mark: string): string {
+  return html.replaceAll(mark, "");
+}

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  canonicalXArticleUrl,
   extractHttpUrls,
   hostOf,
   isExcludedDomain,
   normalizeUrl,
   shouldFetchArticle,
+  xArticleIdFromUrl,
 } from "./url";
 
 describe("normalizeUrl", () => {
@@ -28,6 +30,19 @@ describe("extractHttpUrls", () => {
         "see https://example.com/a, and https://x.com/i/article/1",
       ),
     ).toEqual(["https://example.com/a", "https://x.com/i/article/1"]);
+  });
+});
+
+describe("canonicalXArticleUrl", () => {
+  it("rewrites http and twitter hosts to https://x.com/i/article/{id}", () => {
+    expect(canonicalXArticleUrl("http://x.com/i/article/99")).toBe(
+      "https://x.com/i/article/99",
+    );
+    expect(canonicalXArticleUrl("https://twitter.com/i/article/99")).toBe(
+      "https://x.com/i/article/99",
+    );
+    expect(xArticleIdFromUrl("https://x.com/i/article/99?foo=1")).toBe("99");
+    expect(canonicalXArticleUrl("https://example.com/i/article/99")).toBeNull();
   });
 });
 

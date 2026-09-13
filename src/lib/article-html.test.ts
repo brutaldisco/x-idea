@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   imgParagraphs,
   isLikelyImageUrl,
+  NO_COVER_MARK,
   restoreStrippedImages,
   sanitizeArticleHtml,
+  withHtmlMark,
+  withoutHtmlMark,
 } from "./article-html";
 
 describe("isLikelyImageUrl", () => {
@@ -46,6 +49,14 @@ describe("sanitizeArticleHtml", () => {
     );
     expect(html).toContain('src="https://cdn.example/a.jpg"');
     expect(html).toContain("<img");
+  });
+});
+
+describe("html marks", () => {
+  it("adds and removes the no-cover mark", () => {
+    const marked = withHtmlMark("<p>body</p>", NO_COVER_MARK);
+    expect(marked).toContain(NO_COVER_MARK);
+    expect(withoutHtmlMark(marked, NO_COVER_MARK)).toBe("<p>body</p>");
   });
 });
 

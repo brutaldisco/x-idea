@@ -19,7 +19,7 @@ export class XApiError extends Error {
 export const TWEET_FIELDS =
   "id,text,author_id,created_at,lang,entities,attachments,referenced_tweets,conversation_id,note_tweet,article";
 export const TWEET_EXPANSIONS =
-  "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id";
+  "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id,article.cover_media,article.media_entities";
 export const USER_FIELDS = "username,name,profile_image_url";
 export const MEDIA_FIELDS =
   "media_key,type,url,preview_image_url,alt_text,duration_ms,width,height,variants";

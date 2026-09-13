@@ -1,14 +1,29 @@
 import sanitizeHtml from "sanitize-html";
 import { getClient } from "@/db/client";
-import { imgParagraphs, NO_COVER_MARK, withHtmlMark } from "@/lib/article-html";
+import {
+  imgParagraphs,
+  NO_COVER_MARK,
+  withHtmlMark,
+  withoutHtmlMark,
+} from "@/lib/article-html";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
-import { hostOf, isXArticleUrl, normalizeUrl } from "@/server/ingest/url";
+import {
+  canonicalXArticleUrl,
+  hostOf,
+  isXArticleUrl,
+  normalizeUrl,
+  xArticleIdFromUrl,
+} from "@/server/ingest/url";
 import { enqueueEnrichBatch } from "@/server/jobs/enrich";
-import { attachArticleThumbnail } from "@/server/media/article-thumb";
+import {
+  attachArticleThumbnail,
+  attachArticleThumbsForSource,
+} from "@/server/media/article-thumb";
 import { getXAccountSecret } from "@/server/x/account";
 import { fetchTweetById } from "@/server/x/client";
 import {
+  hasUnresolvedArticleMedia,
   tweetText,
   type XTweet,
   xArticleBody,
@@ -18,6 +33,18 @@ import {
 import { ensureValidToken } from "@/server/x/token";
 
 const MIN_BODY = 400;
+const COVER_CHECKED_MARK = "article_cover_checked";
+
+export function shouldHydrateXArticle(input: {
+  hasBody: boolean;
+  needsCover: boolean;
+  coverChecked: boolean;
+}): boolean {
+  if (!input.hasBody) {
+    return true;
+  }
+  return input.needsCover && !input.coverChecked;
+}
 
 function articleHtml(body: string, images: readonly string[] = []): string {
   const escaped = body
@@ -70,7 +97,8 @@ export async function persistNativeXArticle(
   if (!permalink) {
     return false;
   }
-  const normalized = normalizeUrl(permalink);
+  const normalized =
+    canonicalXArticleUrl(permalink) ?? normalizeUrl(permalink);
   const title = tweet.article?.title?.trim() || null;
   const description = tweet.article?.preview_text?.trim() || null;
   const images = xArticleImageUrls(tweet);
@@ -79,13 +107,9 @@ export async function persistNativeXArticle(
   const postBody = tweetText(tweet);
   const client = getClient();
 
-  const existing = await client.execute({
-    sql: "SELECT id, content_text, content_html, thumbnail_url FROM articles WHERE normalized_url = ? LIMIT 1",
-    args: [normalized],
-  });
-  let articleId = existing.rows[0]?.id ? String(existing.rows[0].id) : null;
-  const already =
-    String(existing.rows[0]?.content_text ?? "").trim().length >= MIN_BODY;
+  const existing = await findExistingXArticle(sourceId, permalink, normalized);
+  let articleId = existing?.id ?? null;
+  const already = (existing?.bodyLen ?? 0) >= MIN_BODY;
   if (!articleId) {
     articleId = newId();
     await client.execute({
@@ -96,8 +120,8 @@ export async function persistNativeXArticle(
       args: [
         articleId,
         normalized,
-        permalink,
-        hostOf(permalink),
+        normalized,
+        hostOf(normalized),
         title,
         description,
         cover,
@@ -108,6 +132,7 @@ export async function persistNativeXArticle(
   } else if (!already) {
     await client.execute({
       sql: `UPDATE articles SET
+        normalized_url = ?,
         original_url = ?,
         domain = ?,
         title = COALESCE(?, title),
@@ -120,8 +145,9 @@ export async function persistNativeXArticle(
         fetched_at = datetime('now')
         WHERE id = ?`,
       args: [
-        permalink,
-        hostOf(permalink),
+        normalized,
+        normalized,
+        hostOf(normalized),
         title,
         description,
         cover,
@@ -135,17 +161,26 @@ export async function persistNativeXArticle(
       articleId,
       cover,
       images,
-      existing.rows[0]?.content_html
-        ? String(existing.rows[0].content_html)
-        : "",
+      existing?.contentHtml ?? "",
     );
+    if (existing && existing.normalizedUrl !== normalized) {
+      await client.execute({
+        sql: `UPDATE articles SET
+                normalized_url = ?,
+                original_url = ?,
+                domain = ?
+              WHERE id = ?`,
+        args: [normalized, normalized, hostOf(normalized), articleId],
+      });
+    }
   }
 
   await client.execute({
     sql: `INSERT OR IGNORE INTO source_articles (source_id, article_id, link_url)
           VALUES (?, ?, ?)`,
-    args: [sourceId, articleId, permalink],
+    args: [sourceId, articleId, normalized],
   });
+  await unlinkExtraXArticles(sourceId, articleId);
 
   if (postId && postBody.length > 0) {
     await client.execute({
@@ -168,6 +203,88 @@ export async function persistNativeXArticle(
   return true;
 }
 
+async function findExistingXArticle(
+  sourceId: string,
+  permalink: string,
+  normalized: string,
+): Promise<{
+  id: string;
+  bodyLen: number;
+  contentHtml: string;
+  normalizedUrl: string;
+} | null> {
+  const articleKey = xArticleIdFromUrl(permalink) ?? "";
+  const like = articleKey ? `%/i/article/${articleKey}%` : "";
+  const linked = await getClient().execute({
+    sql: `SELECT a.id, a.content_text, a.content_html, a.normalized_url
+          FROM source_articles sa
+          JOIN articles a ON a.id = sa.article_id
+          WHERE sa.source_id = ?
+            AND a.original_url LIKE '%/i/article/%'
+          ORDER BY CASE
+            WHEN ? != '' AND (a.original_url LIKE ? OR a.normalized_url LIKE ?)
+              THEN 0
+            ELSE 1
+          END,
+          length(IFNULL(a.content_text, '')) DESC
+          LIMIT 1`,
+    args: [sourceId, like, like, like],
+  });
+  const found = linked.rows[0]?.id
+    ? linked
+    : await getClient().execute({
+        sql: `SELECT a.id, a.content_text, a.content_html, a.normalized_url
+              FROM articles a
+              WHERE a.normalized_url IN (?, ?)
+                 OR a.original_url IN (?, ?)
+                 OR (? != '' AND (a.original_url LIKE ? OR a.normalized_url LIKE ?))
+              ORDER BY CASE WHEN a.normalized_url = ? THEN 0 ELSE 1 END
+              LIMIT 1`,
+        args: [
+          normalized,
+          normalizeUrl(permalink),
+          normalized,
+          permalink,
+          like,
+          like,
+          like,
+          normalized,
+        ],
+      });
+  const row = found.rows[0];
+  if (!row?.id) {
+    return null;
+  }
+  return {
+    id: String(row.id),
+    bodyLen: String(row.content_text ?? "").trim().length,
+    contentHtml: row.content_html ? String(row.content_html) : "",
+    normalizedUrl: row.normalized_url ? String(row.normalized_url) : "",
+  };
+}
+
+async function unlinkExtraXArticles(
+  sourceId: string,
+  keepArticleId: string,
+): Promise<void> {
+  const extras = await getClient().execute({
+    sql: `SELECT sa.article_id
+          FROM source_articles sa
+          JOIN articles a ON a.id = sa.article_id
+          WHERE sa.source_id = ?
+            AND sa.article_id != ?
+            AND a.original_url LIKE '%/i/article/%'
+          LIMIT 8`,
+    args: [sourceId, keepArticleId],
+  });
+  for (const row of extras.rows) {
+    await getClient().execute({
+      sql: "DELETE FROM source_articles WHERE source_id = ? AND article_id = ?",
+      args: [sourceId, String(row.article_id)],
+    });
+  }
+}
+
 async function applyXArticleCover(
   articleId: string,
   cover: string | null,
@@ -181,10 +298,14 @@ async function applyXArticleCover(
             WHERE id = ?`,
       args: [cover, articleId],
     });
-    if (!currentHtml.includes("<img") && images.length > 0) {
+    let next = withoutHtmlMark(currentHtml, NO_COVER_MARK);
+    if (!next.includes("<img") && images.length > 0) {
+      next = `${imgParagraphs(images)}${next}`;
+    }
+    if (next !== currentHtml) {
       await getClient().execute({
         sql: "UPDATE articles SET content_html = ? WHERE id = ?",
-        args: [`${imgParagraphs(images)}${currentHtml}`, articleId],
+        args: [next, articleId],
       });
     }
     return;
@@ -221,8 +342,7 @@ export async function hydrateXArticleFromApi(
     sql: `SELECT MAX(length(COALESCE(a.content_text, ''))) AS n,
                  MAX(CASE
                    WHEN a.original_url LIKE '%/i/article/%'
-                    AND a.thumbnail_url IS NULL
-                    AND IFNULL(a.content_html, '') NOT LIKE '%x-idea:no-cover%'
+                    AND (a.thumbnail_url IS NULL OR a.thumbnail_url = '')
                    THEN 1 ELSE 0 END) AS need_cover
           FROM source_articles sa
           JOIN articles a ON a.id = sa.article_id
@@ -232,9 +352,15 @@ export async function hydrateXArticleFromApi(
   });
   const hasBody = Number(existing.rows[0]?.n ?? 0) >= MIN_BODY;
   const needCover = Number(existing.rows[0]?.need_cover ?? 0) === 1;
-  if (hasBody && !needCover) {
+  if (
+    !shouldHydrateXArticle({
+      hasBody,
+      needsCover: needCover,
+      coverChecked: payloadCoverChecked(source.raw_payload_json),
+    })
+  ) {
     if (!payloadHydrated(source.raw_payload_json)) {
-      await markHydrated(String(source.post_id));
+      await markHydrated(String(source.post_id), { coverChecked: false });
     }
     return false;
   }
@@ -247,10 +373,21 @@ export async function hydrateXArticleFromApi(
     const token = await ensureValidToken(account);
     const page = await fetchTweetById(token, String(source.tweet_id));
     const tweet = page.tweets[0];
-    const saved = tweet
-      ? await persistNativeXArticle(sourceId, tweet, String(source.post_id))
-      : false;
-    await markHydrated(String(source.post_id));
+    let saved = false;
+    if (tweet) {
+      saved = await persistNativeXArticle(
+        sourceId,
+        tweet,
+        String(source.post_id),
+      );
+      if (!saved) {
+        await applyCoverFromTweet(sourceId, tweet);
+      }
+    }
+    await markHydrated(String(source.post_id), {
+      coverChecked: !tweet || !hasUnresolvedArticleMedia(tweet),
+    });
+    await attachArticleThumbsForSource(sourceId, { allowRefetch: false });
     return saved;
   } catch (error) {
     logger.warn({ err: error, sourceId }, "x article hydrate skipped");
@@ -290,13 +427,25 @@ export async function hydrateArticleRowFromTweet(
     const page = await fetchTweetById(token, String(row.tweet_id));
     const tweet = page.tweets[0];
     if (!tweet) {
+      await markHydrated(String(row.post_id), { coverChecked: true });
       return false;
     }
-    return persistNativeXArticle(
+    const saved = await persistNativeXArticle(
       String(row.source_id),
       tweet,
       String(row.post_id),
     );
+    if (!saved) {
+      await applyCoverFromTweet(String(row.source_id), tweet);
+    }
+    await markHydrated(String(row.post_id), {
+      coverChecked: !hasUnresolvedArticleMedia(tweet),
+    });
+    await attachArticleThumbnail(articleId, { allowRefetch: false });
+    await attachArticleThumbsForSource(String(row.source_id), {
+      allowRefetch: false,
+    });
+    return saved;
   } catch (error) {
     logger.warn({ err: error, articleId }, "x article row hydrate skipped");
     return false;
@@ -313,7 +462,7 @@ export async function refreshXArticleCovers(limit = 2): Promise<number> {
           JOIN x_posts p ON p.id = s.x_post_id
           WHERE a.original_url LIKE '%/i/article/%'
             AND (a.thumbnail_url IS NULL OR a.thumbnail_url = '')
-            AND IFNULL(a.content_html, '') NOT LIKE '%x-idea:no-cover%'
+            AND IFNULL(p.raw_payload_json, '') NOT LIKE '%"article_cover_checked":true%'
             AND NOT EXISTS (
               SELECT 1 FROM media_assets m
               WHERE m.x_post_id = p.id
@@ -362,6 +511,31 @@ async function markNoCoverIfStillMissing(articleId: string): Promise<void> {
   });
 }
 
+async function applyCoverFromTweet(
+  sourceId: string,
+  tweet: XTweet,
+): Promise<void> {
+  const images = xArticleImageUrls(tweet);
+  const cover = images[0] ?? null;
+  const found = await getClient().execute({
+    sql: `SELECT a.id, a.content_html
+          FROM source_articles sa
+          JOIN articles a ON a.id = sa.article_id
+          WHERE sa.source_id = ?
+            AND a.original_url LIKE '%/i/article/%'
+          LIMIT 8`,
+    args: [sourceId],
+  });
+  for (const row of found.rows) {
+    await applyXArticleCover(
+      String(row.id),
+      cover,
+      images,
+      row.content_html ? String(row.content_html) : "",
+    );
+  }
+}
+
 function payloadHydrated(raw: unknown): boolean {
   if (typeof raw !== "string" || !raw) {
     return false;
@@ -374,9 +548,30 @@ function payloadHydrated(raw: unknown): boolean {
   }
 }
 
-async function markHydrated(postId: string): Promise<void> {
+export function payloadCoverChecked(raw: unknown): boolean {
+  if (typeof raw !== "string" || !raw) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(raw) as { article_cover_checked?: unknown };
+    return parsed.article_cover_checked === true;
+  } catch {
+    return false;
+  }
+}
+
+async function markHydrated(
+  postId: string,
+  options?: { coverChecked?: boolean },
+): Promise<void> {
   await getClient().execute({
     sql: `UPDATE x_posts SET raw_payload_json = ? WHERE id = ?`,
-    args: [JSON.stringify({ article_hydrated: true }), postId],
+    args: [
+      JSON.stringify({
+        article_hydrated: true,
+        ...(options?.coverChecked ? { [COVER_CHECKED_MARK]: true } : {}),
+      }),
+      postId,
+    ],
   });
 }

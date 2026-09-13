@@ -40,6 +40,30 @@ export function isXStatusUrl(url: string): boolean {
   }
 }
 
+const X_ARTICLE_ID = /\/i\/article\/(\d+)/i;
+
+export function xArticleIdFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (
+      host !== "x.com" &&
+      host !== "twitter.com" &&
+      host !== "mobile.twitter.com"
+    ) {
+      return null;
+    }
+    return parsed.pathname.match(X_ARTICLE_ID)?.[1] ?? null;
+  } catch {
+    return url.match(X_ARTICLE_ID)?.[1] ?? null;
+  }
+}
+
+export function canonicalXArticleUrl(url: string): string | null {
+  const id = xArticleIdFromUrl(url);
+  return id ? `https://x.com/i/article/${id}` : null;
+}
+
 export function isXArticleUrl(url: string): boolean {
   try {
     const parsed = new URL(url);

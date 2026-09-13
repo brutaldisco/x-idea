@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   bookmarkErrorAction,
   collectUntilHead,
+  hasUnresolvedArticleMedia,
   isGoneTweetError,
   isReply,
   lookupGapActions,
@@ -80,6 +81,67 @@ describe("X Article fields", () => {
       "https://pbs.twimg.com/media/cover.jpg",
       "https://pbs.twimg.com/media/inline.jpg",
     ]);
+  });
+
+  it("resolves article media_key strings via includes.media", () => {
+    const page = parseBookmarksPage({
+      data: [
+        {
+          id: "9",
+          text: "https://t.co/article",
+          article: {
+            id: "99",
+            title: "Grok article",
+            plain_text: "body ".repeat(80),
+            cover_media: "3_2089676448218894336",
+            media_entities: ["3_2089676448218894336", "3_inline"],
+          },
+        },
+      ],
+      includes: {
+        media: [
+          {
+            media_key: "3_2089676448218894336",
+            type: "photo",
+            url: "https://pbs.twimg.com/media/cover.jpg",
+          },
+          {
+            media_key: "3_inline",
+            type: "photo",
+            preview_image_url: "https://pbs.twimg.com/media/inline.jpg",
+          },
+        ],
+      },
+    });
+    const tweet = page.tweets[0];
+    expect(tweet.article?.coverUrl).toBe(
+      "https://pbs.twimg.com/media/cover.jpg",
+    );
+    expect(xArticleImageUrls(tweet)).toEqual([
+      "https://pbs.twimg.com/media/cover.jpg",
+      "https://pbs.twimg.com/media/inline.jpg",
+    ]);
+    expect(hasUnresolvedArticleMedia(tweet)).toBe(false);
+  });
+
+  it("keeps unresolved media keys when includes.media is empty", () => {
+    const page = parseBookmarksPage({
+      data: [
+        {
+          id: "9",
+          text: "https://t.co/article",
+          article: {
+            id: "99",
+            title: "Grok article",
+            plain_text: "body ".repeat(80),
+            cover_media: "3_2089676448218894336",
+            media_entities: ["3_2089676448218894336"],
+          },
+        },
+      ],
+    });
+    expect(page.tweets[0]?.article?.coverUrl).toBeUndefined();
+    expect(hasUnresolvedArticleMedia(page.tweets[0])).toBe(true);
   });
 
   it("reads card images from url entities", () => {

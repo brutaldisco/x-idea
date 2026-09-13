@@ -25,7 +25,7 @@ export async function runTick(source: TickSource): Promise<{
   const scheduled = await evaluateSchedules();
   await enqueueEnrichIfPending();
   await backfillArticleThumbs({ limit: 8 });
-  await refreshXArticleCovers(2);
+  await refreshXArticleCovers(4);
   await enqueueArticleHtmlRefetch(4);
   const { ran, failed } = await runJobs({ max: 5 });
   return { ok: true, source, reclaimed, scheduled, ran, failed };

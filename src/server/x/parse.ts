@@ -7,6 +7,8 @@ export type XArticle = {
   preview_text?: string;
   coverUrl?: string;
   mediaUrls?: string[];
+  coverMediaKey?: string;
+  mediaKeys?: string[];
   entities?: {
     code?: { content?: string }[];
   };
@@ -320,7 +322,9 @@ function asArticle(value: unknown): XArticle | undefined {
       })
     : undefined;
   const mediaUrls = asMediaUrls(row.media_entities);
+  const mediaKeys = asMediaKeys(row.media_entities);
   const coverUrl = asMediaUrl(row.cover_media) ?? mediaUrls[0];
+  const coverMediaKey = coverUrl ? undefined : asMediaKey(row.cover_media);
   const article: XArticle = {
     id: typeof row.id === "string" ? row.id : undefined,
     title: typeof row.title === "string" ? row.title : undefined,
@@ -329,6 +333,8 @@ function asArticle(value: unknown): XArticle | undefined {
       typeof row.preview_text === "string" ? row.preview_text : undefined,
     coverUrl: coverUrl ?? undefined,
     mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+    coverMediaKey: coverMediaKey ?? undefined,
+    mediaKeys: mediaKeys.length > 0 ? mediaKeys : undefined,
     entities: code && code.length > 0 ? { code } : undefined,
   };
   if (
@@ -336,11 +342,68 @@ function asArticle(value: unknown): XArticle | undefined {
     !article.title &&
     !article.plain_text &&
     !article.preview_text &&
-    !article.coverUrl
+    !article.coverUrl &&
+    !article.coverMediaKey
   ) {
     return undefined;
   }
   return article;
+}
+
+function asMediaKey(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 2) {
+    return value;
+  }
+  const row = asRecord(value);
+  if (row && typeof row.media_key === "string") {
+    return row.media_key;
+  }
+  return null;
+}
+
+function asMediaKeys(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  const out: string[] = [];
+  for (const item of items.slice(0, 16)) {
+    const key = asMediaKey(item);
+    if (key && !out.includes(key)) {
+      out.push(key);
+    }
+  }
+  return out;
+}
+
+function mediaHttpUrl(item: XMedia | undefined): string | undefined {
+  if (item?.url?.startsWith("http")) {
+    return item.url;
+  }
+  if (item?.preview_image_url?.startsWith("http")) {
+    return item.preview_image_url;
+  }
+  return undefined;
+}
+
+function resolveArticleMedia(
+  article: XArticle | undefined,
+  media: Map<string, XMedia>,
+): XArticle | undefined {
+  if (!article) {
+    return article;
+  }
+  const coverUrl =
+    article.coverUrl ?? mediaHttpUrl(media.get(article.coverMediaKey ?? ""));
+  const mediaUrls = [...(article.mediaUrls ?? [])];
+  for (const key of article.mediaKeys ?? []) {
+    const url = mediaHttpUrl(media.get(key));
+    if (url && !mediaUrls.includes(url)) {
+      mediaUrls.push(url);
+    }
+  }
+  return {
+    ...article,
+    coverUrl: coverUrl ?? mediaUrls[0],
+    mediaUrls: mediaUrls.length > 0 ? mediaUrls.slice(0, 8) : undefined,
+  };
 }
 
 function asMediaUrl(value: unknown): string | null {
@@ -382,6 +445,20 @@ function urlEntityImage(item: {
     }
   }
   return undefined;
+}
+
+export function hasUnresolvedArticleMedia(tweet: XTweet): boolean {
+  const article = tweet.article;
+  if (!article) {
+    return false;
+  }
+  if (article.coverMediaKey && !article.coverUrl) {
+    return true;
+  }
+  return (
+    (article.mediaKeys?.length ?? 0) > 0 &&
+    (article.mediaUrls?.length ?? 0) === 0
+  );
 }
 
 export function xArticleImageUrls(tweet: XTweet): string[] {
@@ -485,11 +562,22 @@ export function parseBookmarksPage(payload: unknown): BookmarksPage {
     }
   }
   const meta = asRecord(root.meta);
+  const tweetsWithMedia = tweets.map((tweet) => ({
+    ...tweet,
+    article: resolveArticleMedia(tweet.article, media),
+  }));
+  const includedWithMedia = new Map<string, XTweet>();
+  for (const [id, tweet] of includedTweets) {
+    includedWithMedia.set(id, {
+      ...tweet,
+      article: resolveArticleMedia(tweet.article, media),
+    });
+  }
   return {
-    tweets,
+    tweets: tweetsWithMedia,
     users,
     media,
-    includedTweets,
+    includedTweets: includedWithMedia,
     errors,
     nextToken:
       meta && typeof meta.next_token === "string" ? meta.next_token : null,

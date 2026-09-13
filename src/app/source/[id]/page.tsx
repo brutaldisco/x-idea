@@ -92,10 +92,10 @@ export default async function SourcePage({
           accountId: source.xAccountId,
           limit: 8,
         });
-        await refreshXArticleCovers(2);
+        await refreshXArticleCovers(4);
       } else {
         await backfillArticleThumbs({ limit: 8 });
-        await refreshXArticleCovers(2);
+        await refreshXArticleCovers(4);
       }
       await enqueueArticleHtmlRefetch(2);
       await runJobs({ max: 6 });
