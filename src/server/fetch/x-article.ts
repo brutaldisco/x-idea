@@ -97,8 +97,7 @@ export async function persistNativeXArticle(
   if (!permalink) {
     return false;
   }
-  const normalized =
-    canonicalXArticleUrl(permalink) ?? normalizeUrl(permalink);
+  const normalized = canonicalXArticleUrl(permalink) ?? normalizeUrl(permalink);
   const title = tweet.article?.title?.trim() || null;
   const description = tweet.article?.preview_text?.trim() || null;
   const images = xArticleImageUrls(tweet);
