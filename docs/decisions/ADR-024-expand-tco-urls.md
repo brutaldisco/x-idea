@@ -1,4 +1,4 @@
-# ADR-023: 記事・投稿の t.co は API の expanded_url に展開する
+# ADR-024: 記事・投稿の t.co は API の expanded_url に展開する
 
 - 日付: 2026-09-14
 - 状態: 採用
@@ -19,4 +19,4 @@ X の本文（`tweet.text` / `note_tweet.text` / `article.plain_text`）はリ�
 
 - Reader の原文・記事に出るリンクが X アプリと同じ外部 URL になる。
 - 原文カラムの書き換えは URL 展開のみ（AI は触れない）。
-- 記事 HTML のプレーンな URL は `<a href>` にする。
+- 記事 HTML のプレーンな URL を `<a href>` にする。
