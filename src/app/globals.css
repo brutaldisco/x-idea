@@ -126,6 +126,12 @@ body {
   overflow-wrap: anywhere;
 }
 
+.article-body,
+.reader-body.article-body {
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+}
+
 .article-body a {
   color: var(--color-accent);
   text-decoration: underline;

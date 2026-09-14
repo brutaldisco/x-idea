@@ -143,10 +143,14 @@ export function ChromeTranslate({
         </button>
       </div>
       {showTranslation ? (
-        <div className="mt-3 rounded-xl border border-line bg-paper px-3 py-2">
+        <div className="mt-3 rounded-xl border border-line bg-paper px-2 py-2">
           <p className="text-ink-2 text-xs">Chrome 翻訳</p>
           <ReaderBody
-            className="reader-body mt-1"
+            className={
+              kind === "article"
+                ? "article-body reader-body mt-1"
+                : "reader-body mt-1"
+            }
             text={translated ?? ""}
             readable
           />

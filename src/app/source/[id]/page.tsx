@@ -109,7 +109,7 @@ export default async function SourcePage({
     : null;
 
   return (
-    <main className="scroll-smooth px-3 pt-8 pb-8 min-[48rem]:px-6">
+    <main className="scroll-smooth px-2 pt-8 pb-8 min-[48rem]:px-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <LibraryBackLink />
@@ -253,7 +253,7 @@ export default async function SourcePage({
       <section id="summary" className="mt-10 scroll-mt-16">
         {hasSummary ? (
           <div
-            className="notranslate rounded-[var(--radius-card)] border border-ai/30 bg-ai-soft p-5 min-[48rem]:px-8 min-[48rem]:py-8"
+            className="notranslate rounded-[var(--radius-card)] border border-ai/30 bg-ai-soft px-2 py-5 min-[48rem]:px-8 min-[48rem]:py-8"
             lang="ja"
             translate="no"
           >
@@ -297,7 +297,7 @@ export default async function SourcePage({
             </dl>
           </div>
         ) : (
-          <div className="rounded-[var(--radius-card)] border border-dashed border-line p-5">
+          <div className="rounded-[var(--radius-card)] border border-dashed border-line px-2 py-5 min-[48rem]:px-8 min-[48rem]:py-8">
             <p className="text-ai text-xs">✦ AI 要約</p>
             <p className="mt-2 text-ink-2 text-sm">まだ要約がありません。</p>
           </div>

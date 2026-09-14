@@ -15,7 +15,7 @@ export function ReaderSegments({
   ];
   return (
     <nav
-      className="notranslate sticky top-0 z-10 -mx-3 mt-5 border-line border-b bg-paper px-3 py-2 min-[48rem]:-mx-6 min-[48rem]:px-6"
+      className="notranslate sticky top-0 z-10 -mx-2 mt-5 border-line border-b bg-paper px-2 py-2 min-[48rem]:-mx-6 min-[48rem]:px-6"
       lang="ja"
       translate="no"
     >
