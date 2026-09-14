@@ -493,7 +493,17 @@ export async function markVideoDownloading(
   if (!accountId) {
     throw new AppError("VALIDATION", "アカウントを選んでください");
   }
-  await ownedItem(id, accountId);
+  const item = await ownedItem(id, accountId);
+  // failed からの直接再開はキュー上限のカウントが変わらないよう、
+  // 先に queued へ戻してから downloading にする（ADR-023）
+  if (item.status === "failed") {
+    await getClient().execute({
+      sql: `UPDATE video_downloads SET
+              status = 'queued', error = NULL, queued_at = datetime('now')
+            WHERE id = ?`,
+      args: [id],
+    });
+  }
   await getClient().execute({
     sql: `UPDATE video_downloads SET status = 'downloading', error = NULL
           WHERE id = ? AND status IN ('queued', 'failed')`,

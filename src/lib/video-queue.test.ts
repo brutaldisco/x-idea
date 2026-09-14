@@ -44,8 +44,12 @@ describe("isResumableVideoQueueStatus", () => {
     expect(isResumableVideoQueueStatus("queued", false)).toBe(true);
     expect(isResumableVideoQueueStatus("downloading", false)).toBe(true);
     expect(isResumableVideoQueueStatus("downloading", true)).toBe(false);
-    expect(isResumableVideoQueueStatus("failed", false)).toBe(false);
     expect(isResumableVideoQueueStatus("ready", false)).toBe(false);
+  });
+
+  it("lets failed items resume from their saved progress", () => {
+    expect(isResumableVideoQueueStatus("failed", false)).toBe(true);
+    expect(isResumableVideoQueueStatus("failed", true)).toBe(true);
   });
 });
 

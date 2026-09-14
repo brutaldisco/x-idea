@@ -15,6 +15,13 @@ export const DIRECT_PARALLEL = 4;
 export const DIRECT_CHUNK_MAX = 8 * MB;
 
 /**
+ * 動画どうしの同時ダウンロード数。1 本の内部で DIRECT_PARALLEL 本の
+ * 接続を使うため、ファイル間は 2 本までに抑えて帯域を分け合う。
+ * 1 本が失敗・中断しても残りは止まらない（ADR-023）。
+ */
+export const VIDEO_FILE_PARALLEL = 2;
+
+/**
  * 直接ダウンロードのチャンクサイズ。小さいファイルでも全ワーカーに仕事が
  * 行くよう total / DIRECT_PARALLEL を目安にし、1〜8MB に収める。
  */

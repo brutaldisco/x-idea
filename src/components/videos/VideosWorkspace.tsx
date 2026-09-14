@@ -16,7 +16,7 @@ import {
   mediaVideoUrlApiPath,
   parseVideoSourcePayload,
 } from "@/lib/media-video-api";
-import { initialVideoDownloadPlan } from "@/lib/video-download-plan";
+import { VIDEO_FILE_PARALLEL } from "@/lib/video-download-plan";
 import { isIncompleteVideoFile } from "@/lib/video-files";
 import { useVideoSaveFolder } from "@/lib/video-folder";
 import {
@@ -181,9 +181,8 @@ export function VideosWorkspace({
 
   useEffect(() => {
     const onOffline = () => {
-      abortRef.current?.abort();
+      // 全体は止めない。各ダウンロードが自分で失敗→再開対象に戻る（ADR-023）
       setOfflineHint(true);
-      setBusy(false);
     };
     const onOnline = () => {
       setOfflineHint(true);
@@ -255,7 +254,8 @@ export function VideosWorkspace({
       setMessage("フォルダへの書き込みを許可してください");
       return;
     }
-    // queued に加えて、このタブで動いていない downloading（中断分）も拾う
+    // queued に加えて、failed（途中から再開）と、このタブで動いていない
+    // downloading（中断分）も拾う。1 本の失敗で残りが止まらないようにする（ADR-023）
     const resumable = data.queue.filter((item) =>
       isResumableVideoQueueStatus(item.status, activeRef.current.has(item.id)),
     );
@@ -277,13 +277,9 @@ export function VideosWorkspace({
     let doneBytes = 0;
     let doneCount = 0;
     let failCount = 0;
-    const maxEstimated = Math.max(
-      0,
-      ...chosen.map((item) => item.estimatedBytes ?? 0),
-    );
-    const parallel = initialVideoDownloadPlan(
-      maxEstimated > 0 ? maxEstimated : null,
-    ).parallel;
+    // 1 本の内部で 4 接続を使うため、ファイル間は 2 本までに抑える。
+    // 1 本が失敗・中断しても残りのワーカーは止まらない（ADR-023）
+    const parallel = VIDEO_FILE_PARALLEL;
     let cursor = 0;
 
     const runItem = async (item: (typeof chosen)[number]) => {
@@ -503,15 +499,6 @@ export function VideosWorkspace({
     await refresh();
   }
 
-  async function retryItem(id: string) {
-    await fetch(`/api/videos/queue/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "retry" }),
-    });
-    await refresh();
-  }
-
   async function createFolder() {
     const name = window.prompt("フォルダ名");
     if (!name) {
@@ -698,7 +685,7 @@ export function VideosWorkspace({
     [data.queue],
   );
 
-  // 開始対象: queued + このタブで動いていない downloading（中断分）
+  // 開始対象: queued + failed（途中から再開）+ このタブで動いていない downloading（中断分）
   const resumableItems = useMemo(
     () =>
       data.queue.filter((item) =>
@@ -875,7 +862,7 @@ export function VideosWorkspace({
             ) : null}
             {offlineHint ? (
               <p className="mt-2 text-warn text-xs">
-                回線が切れました。つながったら「すべて開始」か選んだ件で再開できます。
+                回線が切れました。つながったら「すべて開始」か各動画の「途中から再開」で続きから取り直せます。
               </p>
             ) : null}
             {data.queue.length === 0 ? (
@@ -904,12 +891,12 @@ export function VideosWorkspace({
                   const downloading = Boolean(prog);
                   const statusLabel = interrupted
                     ? "中断しています（再開できます）"
-                    : videoQueueStatusLabel(
-                        downloading && item.status !== "failed"
-                          ? "downloading"
-                          : item.status,
-                        pct,
-                      );
+                    : item.status === "failed"
+                      ? "失敗（途中から再開できます）"
+                      : videoQueueStatusLabel(
+                          downloading ? "downloading" : item.status,
+                          pct,
+                        );
                   const fileMeta = formatVideoQueueMeta({
                     bytes: item.bytes,
                     estimatedBytes: item.estimatedBytes,
@@ -998,13 +985,23 @@ export function VideosWorkspace({
                             </span>
                           ) : null}
                           {item.status === "failed" ? (
-                            <button
-                              type="button"
-                              className="text-accent text-xs hover:underline"
-                              onClick={() => void retryItem(item.id)}
-                            >
-                              再試行
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                disabled={busy || !supported || !linked}
+                                className="text-accent text-xs hover:underline disabled:opacity-40"
+                                onClick={() => void startDownloads([item.id])}
+                              >
+                                途中から再開
+                              </button>
+                              <button
+                                type="button"
+                                className="text-ink-2 text-xs hover:underline"
+                                onClick={() => void cancelItem(item)}
+                              >
+                                取消
+                              </button>
+                            </>
                           ) : (
                             <>
                               {item.status === "queued" ? (

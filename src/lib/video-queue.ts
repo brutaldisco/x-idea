@@ -23,12 +23,18 @@ export function isVideoMediaType(type: string | null | undefined): boolean {
  * ダウンロード実行の対象にできるか。
  * queued はそのまま。downloading は、このタブで実際に動いていない
  * （= 以前のセッションや通信途絶で取り残された）ものだけ再開対象にする。
+ * failed は途中ファイルと進捗を残しているので、そのまま続きから再開できる
+ * （ADR-023。キュー上限の更新はサーバー側で別途行う）。
  */
 export function isResumableVideoQueueStatus(
   status: string,
   active: boolean,
 ): boolean {
-  return status === "queued" || (status === "downloading" && !active);
+  return (
+    status === "queued" ||
+    status === "failed" ||
+    (status === "downloading" && !active)
+  );
 }
 
 export function canShowSaveVideosMenu(input: {
