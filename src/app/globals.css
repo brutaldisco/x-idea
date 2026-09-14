@@ -128,8 +128,8 @@ body {
 
 .article-body,
 .reader-body.article-body {
-  font-size: 1rem;
-  letter-spacing: 0.03em;
+  font-size: 0.9375rem;
+  letter-spacing: 0.06em;
 }
 
 .article-body a {
