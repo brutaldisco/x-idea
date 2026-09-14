@@ -15,7 +15,11 @@ import {
   enqueueArticleHtmlRefetch,
   enqueuePendingArticleFetches,
 } from "@/server/fetch/enqueue-pending";
-import { refreshXArticleCovers } from "@/server/fetch/x-article";
+import { backfillStoredTco } from "@/server/fetch/expand-stored-tco";
+import {
+  refreshXArticleCovers,
+  refreshXArticlesWithShortLinks,
+} from "@/server/fetch/x-article";
 import {
   applyBookmarkPageErrors,
   ingestBookmark,
@@ -173,6 +177,8 @@ async function syncOneAccount(
     await enqueuePendingMediaDownloads(account.id);
     await enqueuePendingArticleFetches(8);
     await backfillArticleThumbs({ accountId: account.id, limit: 8 });
+    await backfillStoredTco(16);
+    await refreshXArticlesWithShortLinks(2);
     await refreshXArticleCovers(2);
     await enqueueArticleHtmlRefetch(4);
     await markXAccountSynced(account.id, newHead);
@@ -335,6 +341,8 @@ async function syncOneAccountBackfill(
     await enqueuePendingMediaDownloads(account.id);
     await enqueuePendingArticleFetches(8);
     await backfillArticleThumbs({ accountId: account.id, limit: 8 });
+    await backfillStoredTco(16);
+    await refreshXArticlesWithShortLinks(2);
     await refreshXArticleCovers(2);
     await enqueueArticleHtmlRefetch(4);
     await writeRun({

@@ -12,7 +12,7 @@ X の本文（`tweet.text` / `note_tweet.text` / `article.plain_text`）はリ�
 
 1. **表示も保存も** `unwound_url` → `expanded_url` の順で外部 URL に置き換える。X の省略表示（`display_url`）は使わない。
 2. 展開マップは `tweet.entities.urls` + `note_tweet.entities.urls` を投稿カード用、`article.entities.urls` を `article_urls` として `raw_entities_json` に残す。記事本文中の URL は別記事取得の対象にしない。
-3. 既存の t.co 本文は Reader 表示時に同じマップで展開し、X Article は本文に t.co が残っていれば再ハイドレートして書き換える。
+3. 既存の t.co 本文は Reader 表示時に同じマップで展開する。保存済み `raw_entities_json` で展開できる行は tick / 同期で DB を書き換える。X Article 本文に t.co が残っていれば再ハイドレートして書き換える。
 4. t.co を HTTP で辿って解決しない。展開先は API エンティティだけを正とする。
 
 ## 影響

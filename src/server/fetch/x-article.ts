@@ -479,6 +479,35 @@ export async function hydrateArticleRowFromTweet(
   }
 }
 
+export async function refreshXArticlesWithShortLinks(
+  limit = 4,
+): Promise<number> {
+  const cap = Math.min(8, Math.max(1, limit));
+  const found = await getClient().execute({
+    sql: `SELECT DISTINCT a.id
+          FROM articles a
+          JOIN source_articles sa ON sa.article_id = a.id
+          JOIN sources s ON s.id = sa.source_id
+          JOIN x_posts p ON p.id = s.x_post_id
+          WHERE a.original_url LIKE '%/i/article/%'
+            AND (
+              a.content_text LIKE '%://t.co/%'
+              OR a.content_html LIKE '%://t.co/%'
+              OR p.text LIKE '%://t.co/%'
+            )
+          ORDER BY a.fetched_at DESC
+          LIMIT ?`,
+    args: [cap],
+  });
+  let saved = 0;
+  for (const row of found.rows) {
+    if (await hydrateArticleRowFromTweet(String(row.id))) {
+      saved += 1;
+    }
+  }
+  return saved;
+}
+
 export async function refreshXArticleCovers(limit = 2): Promise<number> {
   const cap = Math.min(8, Math.max(1, limit));
   const found = await getClient().execute({

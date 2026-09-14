@@ -22,9 +22,11 @@ import {
   enqueuePendingArticleFetches,
   refreshSourceArticleHtml,
 } from "@/server/fetch/enqueue-pending";
+import { backfillStoredTco } from "@/server/fetch/expand-stored-tco";
 import {
   hydrateXArticleFromApi,
   refreshXArticleCovers,
+  refreshXArticlesWithShortLinks,
 } from "@/server/fetch/x-article";
 import { runJobs } from "@/server/jobs/runner";
 import {
@@ -92,9 +94,13 @@ export default async function SourcePage({
           accountId: source.xAccountId,
           limit: 8,
         });
+        await backfillStoredTco(16);
+        await refreshXArticlesWithShortLinks(4);
         await refreshXArticleCovers(4);
       } else {
         await backfillArticleThumbs({ limit: 8 });
+        await backfillStoredTco(16);
+        await refreshXArticlesWithShortLinks(4);
         await refreshXArticleCovers(4);
       }
       await enqueueArticleHtmlRefetch(2);
