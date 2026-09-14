@@ -1,4 +1,16 @@
+import {
+  expandTcoInText,
+  expansionsFromUrlEntities,
+  type UrlEntityLike,
+} from "@/lib/expand-tco";
 import { isXArticleUrl } from "@/server/ingest/url";
+
+export type XUrlEntity = UrlEntityLike & {
+  display_url?: string;
+  title?: string;
+  description?: string;
+  images?: { url?: string }[];
+};
 
 export type XArticle = {
   id?: string;
@@ -11,6 +23,7 @@ export type XArticle = {
   mediaKeys?: string[];
   entities?: {
     code?: { content?: string }[];
+    urls?: XUrlEntity[];
   };
 };
 
@@ -21,17 +34,10 @@ export type XTweet = {
   created_at?: string;
   lang?: string;
   conversation_id?: string;
-  note_tweet?: { text?: string };
+  note_tweet?: { text?: string; entities?: { urls?: XUrlEntity[] } };
   article?: XArticle;
   entities?: {
-    urls?: {
-      expanded_url?: string;
-      unwound_url?: string;
-      url?: string;
-      title?: string;
-      description?: string;
-      images?: { url?: string }[];
-    }[];
+    urls?: XUrlEntity[];
   };
   attachments?: { media_keys?: string[] };
   referenced_tweets?: { type: string; id: string }[];
@@ -148,6 +154,24 @@ export type BookmarksPage = {
   resourcesRead: number;
 };
 
+function tweetLinkEntities(tweet: XTweet): XUrlEntity[] {
+  return [
+    ...(tweet.entities?.urls ?? []),
+    ...(tweet.note_tweet?.entities?.urls ?? []),
+  ];
+}
+
+function articleLinkEntities(article: XArticle | undefined): XUrlEntity[] {
+  return article?.entities?.urls ?? [];
+}
+
+export function tweetUrlExpansions(tweet: XTweet) {
+  return expansionsFromUrlEntities([
+    ...tweetLinkEntities(tweet),
+    ...articleLinkEntities(tweet.article),
+  ]);
+}
+
 export function xArticleBody(article: XArticle | undefined): string {
   if (!article) {
     return "";
@@ -163,15 +187,21 @@ export function xArticleBody(article: XArticle | undefined): string {
       parts.push(code);
     }
   }
-  return parts.join("\n\n");
+  return expandTcoInText(
+    parts.join("\n\n"),
+    expansionsFromUrlEntities(articleLinkEntities(article)),
+  );
 }
 
 export function tweetText(tweet: XTweet): string {
   const note = tweet.note_tweet?.text?.trim();
   if (note) {
-    return note;
+    return expandTcoInText(note, tweetUrlExpansions(tweet));
   }
-  const articleBody = xArticleBody(tweet.article);
+  const articleBody = expandTcoInText(
+    xArticleBody(tweet.article),
+    tweetUrlExpansions(tweet),
+  );
   if (articleBody) {
     const title = tweet.article?.title?.trim();
     if (title && !articleBody.startsWith(title)) {
@@ -179,7 +209,21 @@ export function tweetText(tweet: XTweet): string {
     }
     return articleBody;
   }
-  return tweet.text;
+  return expandTcoInText(tweet.text, tweetUrlExpansions(tweet));
+}
+
+/** 投稿カード用。記事本文中の URL は含めない（別記事として取りに行かない）。 */
+export function tweetEntitiesForStorage(tweet: XTweet): string | null {
+  const urls = tweetLinkEntities(tweet);
+  const articleUrls = articleLinkEntities(tweet.article);
+  if (urls.length === 0 && articleUrls.length === 0 && !tweet.entities) {
+    return null;
+  }
+  return JSON.stringify({
+    ...(tweet.entities ?? {}),
+    urls: urls.length > 0 ? urls : tweet.entities?.urls,
+    ...(articleUrls.length > 0 ? { article_urls: articleUrls } : {}),
+  });
 }
 
 export function isReply(tweet: XTweet): boolean {
@@ -211,6 +255,10 @@ export type TweetLink = {
   description?: string;
   image?: string;
 };
+
+export function tweetCardLinks(tweet: XTweet): TweetLink[] {
+  return tweetUrlEntries({ urls: tweetLinkEntities(tweet) });
+}
 
 export function tweetUrlEntries(
   entities: XTweet["entities"] | unknown,
@@ -244,7 +292,7 @@ export function tweetUrlEntries(
 }
 
 export function tweetUrls(tweet: XTweet): string[] {
-  return tweetUrlEntries(tweet.entities).map((item) => item.url);
+  return tweetCardLinks(tweet).map((item) => item.url);
 }
 
 export function xArticlePermalink(tweet: XTweet): string | null {
@@ -287,6 +335,9 @@ function asTweet(value: unknown): XTweet | null {
     return null;
   }
   const note = asRecord(row.note_tweet);
+  const noteUrls = note
+    ? parseUrlEntities(asRecord(note.entities)?.urls)
+    : undefined;
   return {
     id: row.id,
     text: typeof row.text === "string" ? row.text : "",
@@ -296,7 +347,12 @@ function asTweet(value: unknown): XTweet | null {
     conversation_id:
       typeof row.conversation_id === "string" ? row.conversation_id : undefined,
     note_tweet:
-      note && typeof note.text === "string" ? { text: note.text } : undefined,
+      note && typeof note.text === "string"
+        ? {
+            text: note.text,
+            entities: noteUrls ? { urls: noteUrls } : undefined,
+          }
+        : undefined,
     article: asArticle(row.article),
     entities: row.entities as XTweet["entities"],
     attachments: row.attachments as XTweet["attachments"],
@@ -321,6 +377,7 @@ function asArticle(value: unknown): XArticle | undefined {
           : [];
       })
     : undefined;
+  const urls = parseUrlEntities(entities?.urls);
   const mediaUrls = asMediaUrls(row.media_entities);
   const mediaKeys = asMediaKeys(row.media_entities);
   const coverUrl = asMediaUrl(row.cover_media) ?? mediaUrls[0];
@@ -335,7 +392,10 @@ function asArticle(value: unknown): XArticle | undefined {
     mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
     coverMediaKey: coverMediaKey ?? undefined,
     mediaKeys: mediaKeys.length > 0 ? mediaKeys : undefined,
-    entities: code && code.length > 0 ? { code } : undefined,
+    entities:
+      (code && code.length > 0) || urls
+        ? { ...(code && code.length > 0 ? { code } : {}), urls }
+        : undefined,
   };
   if (
     !article.id &&
@@ -433,6 +493,53 @@ function asMediaUrls(value: unknown): string[] {
     }
   }
   return out;
+}
+
+function parseUrlEntities(value: unknown): XUrlEntity[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const out: XUrlEntity[] = [];
+  for (const item of value.slice(0, 32)) {
+    const row = asRecord(item);
+    if (!row) {
+      continue;
+    }
+    const url = typeof row.url === "string" ? row.url : undefined;
+    const expanded =
+      typeof row.expanded_url === "string" ? row.expanded_url : undefined;
+    const unwound =
+      typeof row.unwound_url === "string" ? row.unwound_url : undefined;
+    if (!url && !expanded && !unwound) {
+      continue;
+    }
+    out.push({
+      url,
+      expanded_url: expanded,
+      unwound_url: unwound,
+      display_url:
+        typeof row.display_url === "string" ? row.display_url : undefined,
+      title: typeof row.title === "string" ? row.title : undefined,
+      description:
+        typeof row.description === "string" ? row.description : undefined,
+      images: urlEntityImages(row.images),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function urlEntityImages(value: unknown): { url?: string }[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const images: { url?: string }[] = [];
+  for (const item of value.slice(0, 4)) {
+    const row = asRecord(item);
+    if (row && typeof row.url === "string" && row.url.startsWith("http")) {
+      images.push({ url: row.url });
+    }
+  }
+  return images.length > 0 ? images : undefined;
 }
 
 function urlEntityImage(item: {

@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import { splitHttpUrls } from "@/lib/linkify";
 
 const IMAGE_EXT = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)(?:$|\?)/i;
 
@@ -43,6 +44,55 @@ export function escapeHtmlAttr(value: string): string {
     .replaceAll("<", "&lt;");
 }
 
+export function escapeHtmlText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function decodeHtmlText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+export function linkifyHttpUrlHtml(href: string, label = href): string {
+  return `<a href="${escapeHtmlAttr(href)}" rel="noreferrer" target="_blank">${escapeHtmlText(label)}</a>`;
+}
+
+export function linkifyPlainText(text: string): string {
+  return splitHttpUrls(text)
+    .map((part) => {
+      const escaped = escapeHtmlText(part.text).replaceAll("\n", "<br />");
+      return part.href ? linkifyHttpUrlHtml(part.href, part.text) : escaped;
+    })
+    .join("");
+}
+
+/** プレーンな `<p>` 内の http(s) URL を `<a>` にする。既存のリンク・画像は触らない。 */
+export function linkifyPlainUrlsInHtml(html: string): string {
+  if (!html || !/https?:\/\//i.test(html)) {
+    return html;
+  }
+  return html.replace(/<p\b([^>]*)>([\s\S]*?)<\/p>/gi, (full, attrs, inner) => {
+    if (/<(?!br\s*\/?)[a-z]/i.test(String(inner))) {
+      return full;
+    }
+    const text = decodeHtmlText(String(inner));
+    if (!/https?:\/\//i.test(text)) {
+      return full;
+    }
+    return `<p${attrs}>${linkifyPlainText(text)}</p>`;
+  });
+}
+
 export function imgParagraphs(urls: readonly string[]): string {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -80,7 +130,7 @@ export function sanitizeArticleHtml(html: string, base: string): string {
   const cleaned = sanitizeHtml(html, {
     allowedTags: [...sanitizeHtml.defaults.allowedTags, "img"],
     allowedAttributes: {
-      a: ["href", "title"],
+      a: ["href", "title", "rel", "target"],
       img: ["src", "alt", "width", "height"],
     },
   });

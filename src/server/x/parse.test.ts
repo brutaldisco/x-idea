@@ -9,6 +9,7 @@ import {
   isReply,
   lookupGapActions,
   parseBookmarksPage,
+  tweetEntitiesForStorage,
   tweetText,
   tweetUrlEntries,
   tweetUrls,
@@ -142,6 +143,87 @@ describe("X Article fields", () => {
     });
     expect(page.tweets[0]?.article?.coverUrl).toBeUndefined();
     expect(hasUnresolvedArticleMedia(page.tweets[0])).toBe(true);
+  });
+
+  it("expands t.co in article.plain_text via article.entities.urls", () => {
+    const page = parseBookmarksPage({
+      data: [
+        {
+          id: "9",
+          text: "https://t.co/article",
+          entities: {
+            urls: [
+              {
+                url: "https://t.co/article",
+                expanded_url: "https://x.com/i/article/99",
+              },
+            ],
+          },
+          article: {
+            id: "99",
+            title: "Links",
+            plain_text: "資料は https://t.co/JWMgU9C16v です",
+            entities: {
+              urls: [
+                {
+                  url: "https://t.co/JWMgU9C16v",
+                  expanded_url: "https://github.com/acme/repo",
+                  display_url: "github.com/acme/repo",
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+    const tweet = page.tweets[0];
+    expect(xArticleBody(tweet.article)).toBe(
+      "資料は https://github.com/acme/repo です",
+    );
+    expect(tweetText(tweet)).toContain("https://github.com/acme/repo");
+    expect(tweetText(tweet)).not.toContain("t.co");
+    const stored = JSON.parse(tweetEntitiesForStorage(tweet) ?? "{}") as {
+      urls?: { expanded_url?: string }[];
+      article_urls?: { expanded_url?: string }[];
+    };
+    expect(stored.urls?.[0]?.expanded_url).toBe("https://x.com/i/article/99");
+    expect(stored.article_urls?.[0]?.expanded_url).toBe(
+      "https://github.com/acme/repo",
+    );
+  });
+
+  it("expands t.co in note_tweet and short tweet text", () => {
+    expect(
+      tweetText({
+        id: "1",
+        text: "see https://t.co/abcd",
+        note_tweet: {
+          text: "長い本文 https://t.co/abcd",
+          entities: {
+            urls: [
+              {
+                url: "https://t.co/abcd",
+                expanded_url: "https://example.com/paper",
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe("長い本文 https://example.com/paper");
+    expect(
+      tweetText({
+        id: "2",
+        text: "see https://t.co/abcd",
+        entities: {
+          urls: [
+            {
+              url: "https://t.co/abcd",
+              expanded_url: "https://example.com/paper",
+            },
+          ],
+        },
+      }),
+    ).toBe("see https://example.com/paper");
   });
 
   it("reads card images from url entities", () => {

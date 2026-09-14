@@ -22,9 +22,9 @@ import {
   isReply,
   lookupGapActions,
   replyToTweetId,
+  tweetCardLinks,
   tweetIdFromError,
   tweetText,
-  tweetUrlEntries,
   type XApiErrorItem,
   type XTweet,
 } from "@/server/x/parse";
@@ -213,7 +213,7 @@ export async function ingestBookmark(input: {
     args: [sourceId, input.accountId, postId, input.tweet.lang ?? null],
   });
 
-  await attachArticleLinks(sourceId, tweetUrlEntries(input.tweet.entities));
+  await attachArticleLinks(sourceId, tweetCardLinks(input.tweet));
   await attachNativeXArticle(sourceId, input.tweet, postId);
   await upsertFts(sourceId, tweetText(input.tweet));
   await enqueueContextJobs({

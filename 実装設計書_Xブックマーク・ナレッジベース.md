@@ -824,6 +824,7 @@ article_fetch(url):
 
 - 別 X 投稿（`/status/`）：`x_posts` に保存し関係記録。記事化しない。
 - X Articles（`/i/article/` など）：HTML スクレイプではなく Bookmarks / Tweet lookup の `article.plain_text` を使う。表紙は `cover_media` / `media_entities`（media_key のときは `article.cover_media` / `article.media_entities` 展開で `includes.media` に解決）。取れた本文を `articles` と投稿本文に保存し Reader に表示。取れなければカードのタイトル／概要。長文 `note_tweet` は投稿本文として扱う。
+- 本文・投稿の `t.co` は `article.entities.urls` / `note_tweet.entities.urls` / `tweet.entities.urls` の `unwound_url` または `expanded_url` に置き換えて保存・表示する（X アプリと同じ外部 URL。省略形の `display_url` は使わない）。既存の t.co 本文は Reader 表示と再ハイドレートで同じ展開をする。X Article 本文中の外部 URL は別記事として取得しない。
 
 ### 15.4 著作権・規約
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   imgParagraphs,
   isLikelyImageUrl,
+  linkifyPlainText,
+  linkifyPlainUrlsInHtml,
   NO_COVER_MARK,
   restoreStrippedImages,
   sanitizeArticleHtml,
@@ -57,6 +59,24 @@ describe("html marks", () => {
     const marked = withHtmlMark("<p>body</p>", NO_COVER_MARK);
     expect(marked).toContain(NO_COVER_MARK);
     expect(withoutHtmlMark(marked, NO_COVER_MARK)).toBe("<p>body</p>");
+  });
+});
+
+describe("linkifyPlainUrlsInHtml", () => {
+  it("wraps bare urls in a paragraph", () => {
+    expect(linkifyPlainText("see https://example.com/a")).toContain(
+      'href="https://example.com/a"',
+    );
+    expect(
+      linkifyPlainUrlsInHtml("<p>see https://example.com/a</p>"),
+    ).toContain('href="https://example.com/a"');
+  });
+
+  it("leaves existing links and images alone", () => {
+    const linked = '<p><a href="https://example.com/a">a</a></p>';
+    const image = '<p><img src="https://cdn.example/a.jpg" alt=""></p>';
+    expect(linkifyPlainUrlsInHtml(linked)).toBe(linked);
+    expect(linkifyPlainUrlsInHtml(image)).toBe(image);
   });
 });
 

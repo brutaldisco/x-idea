@@ -3,6 +3,11 @@ import { ensureSchema } from "@/db/ensure";
 import { MEDIA_COVER_ORDER_SQL } from "@/lib/article-thumb";
 import type { ChromeTranslationView } from "@/lib/chrome-translate";
 import {
+  expandTcoInText,
+  expansionsFromEntitiesJson,
+  parseEntitiesJson,
+} from "@/lib/expand-tco";
+import {
   formatDuration,
   parseVariantsJson,
   videoVariantMeta,
@@ -130,6 +135,17 @@ function asMedia(row: Record<string, unknown>): MediaItem {
   };
 }
 
+function expandStoredText(
+  text: string,
+  entitiesJson: unknown,
+  extraJson?: unknown,
+): string {
+  return expandTcoInText(text, [
+    ...expansionsFromEntitiesJson(entitiesJson),
+    ...expansionsFromEntitiesJson(extraJson),
+  ]);
+}
+
 function asPost(row: Record<string, unknown>, media: MediaItem[]): PostCard {
   let quoted: PostCard["quotedSnapshot"] = null;
   if (row.quoted_snapshot_json) {
@@ -142,6 +158,15 @@ function asPost(row: Record<string, unknown>, media: MediaItem[]): PostCard {
       quoted = null;
     }
   }
+  const entities = parseEntitiesJson(
+    row.raw_entities_json ? String(row.raw_entities_json) : null,
+  );
+  if (quoted?.text) {
+    quoted = {
+      ...quoted,
+      text: expandStoredText(quoted.text, quoted, entities),
+    };
+  }
   return {
     id: String(row.id),
     tweetId: String(row.tweet_id),
@@ -149,7 +174,7 @@ function asPost(row: Record<string, unknown>, media: MediaItem[]): PostCard {
       ? String(row.conversation_id)
       : String(row.tweet_id),
     url: String(row.url),
-    text: String(row.text ?? ""),
+    text: expandStoredText(String(row.text ?? ""), entities),
     lang: row.lang ? String(row.lang) : null,
     authorUsername: row.author_username ? String(row.author_username) : null,
     authorName: row.author_name ? String(row.author_name) : null,
@@ -229,7 +254,8 @@ async function loadPostByTweetId(tweetId: string): Promise<PostCard | null> {
   const result = await getClient().execute({
     sql: `SELECT id, tweet_id, conversation_id, url, text, lang, author_username,
                  author_name, author_avatar_url, posted_at, is_reply,
-                 reply_to_tweet_id, quoted_tweet_id, quoted_snapshot_json
+                 reply_to_tweet_id, quoted_tweet_id, quoted_snapshot_json,
+                 raw_entities_json
           FROM x_posts WHERE tweet_id = ? LIMIT 1`,
     args: [tweetId],
   });
@@ -260,7 +286,8 @@ export async function getSourceDetail(
                  p.id AS post_id, p.tweet_id, p.url, p.text, p.lang,
                  p.author_username, p.author_name, p.author_avatar_url,
                  p.posted_at, p.is_reply, p.reply_to_tweet_id, p.quoted_tweet_id,
-                 p.quoted_snapshot_json, p.conversation_id, p.thread_root_id
+                 p.quoted_snapshot_json, p.raw_entities_json, p.conversation_id,
+                 p.thread_root_id
           FROM sources s
           JOIN x_posts p ON p.id = s.x_post_id
           LEFT JOIN categories c ON c.id = s.category_id
@@ -289,6 +316,7 @@ export async function getSourceDetail(
       reply_to_tweet_id: row.reply_to_tweet_id,
       quoted_tweet_id: row.quoted_tweet_id,
       quoted_snapshot_json: row.quoted_snapshot_json,
+      raw_entities_json: row.raw_entities_json,
     },
     await loadMedia(String(row.post_id)),
   );
@@ -304,7 +332,7 @@ export async function getSourceDetail(
     sql: `SELECT id, tweet_id, conversation_id, url, text, lang, author_username,
                  author_name, author_avatar_url, posted_at, is_reply,
                  reply_to_tweet_id, quoted_tweet_id, quoted_snapshot_json,
-                 author_id
+                 raw_entities_json, author_id
           FROM x_posts
           WHERE conversation_id = ? AND tweet_id != ?
           ORDER BY posted_at ASC, tweet_id ASC
@@ -373,14 +401,21 @@ export async function getSourceDetail(
     args: [id],
   });
 
+  const postEntities = parseEntitiesJson(
+    row.raw_entities_json ? String(row.raw_entities_json) : null,
+  );
   const articleRows = articles.rows.map((item) => ({
     id: String(item.id),
     title: item.title ? String(item.title) : null,
     url: String(item.original_url),
     scope: String(item.fetch_scope),
     description: item.description ? String(item.description) : null,
-    contentText: item.content_text ? String(item.content_text) : null,
-    contentHtml: item.content_html ? String(item.content_html) : null,
+    contentText: item.content_text
+      ? expandStoredText(String(item.content_text), postEntities)
+      : null,
+    contentHtml: item.content_html
+      ? expandStoredText(String(item.content_html), postEntities)
+      : null,
   }));
 
   const translations = await loadChromeTranslations([

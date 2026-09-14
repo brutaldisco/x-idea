@@ -1,5 +1,6 @@
 import { ChromeTranslate } from "@/components/ChromeTranslate";
 import { ReaderBody } from "@/components/ReaderBody";
+import { linkifyPlainUrlsInHtml } from "@/lib/article-html";
 import {
   articleTranslateSource,
   translatableProps,
@@ -34,7 +35,9 @@ export function ArticleBlock({
     translatedAt: string;
   } | null;
 }) {
-  const html = contentHtml?.trim() ? reflowArticleHtml(contentHtml.trim()) : "";
+  const html = contentHtml?.trim()
+    ? linkifyPlainUrlsInHtml(reflowArticleHtml(contentHtml.trim()))
+    : "";
   const text = contentText?.trim() || description?.trim() || "";
   const heading = title?.trim() || url;
   const fetched = scope === "full" || scope === "partial";

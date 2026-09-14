@@ -2,11 +2,13 @@ import sanitizeHtml from "sanitize-html";
 import { getClient } from "@/db/client";
 import {
   imgParagraphs,
+  linkifyPlainText,
   NO_COVER_MARK,
   withHtmlMark,
   withoutHtmlMark,
 } from "@/lib/article-html";
 import { HAS_NATIVE_COVER_SQL } from "@/lib/article-thumb";
+import { containsTco, expandTcoInText } from "@/lib/expand-tco";
 import { newId } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import {
@@ -25,7 +27,9 @@ import { getXAccountSecret } from "@/server/x/account";
 import { fetchTweetById } from "@/server/x/client";
 import {
   hasUnresolvedArticleMedia,
+  tweetEntitiesForStorage,
   tweetText,
+  tweetUrlExpansions,
   type XTweet,
   xArticleBody,
   xArticleImageUrls,
@@ -40,25 +44,25 @@ export function shouldHydrateXArticle(input: {
   hasBody: boolean;
   needsCover: boolean;
   coverChecked: boolean;
+  hasShortLinks?: boolean;
 }): boolean {
-  if (!input.hasBody) {
+  if (!input.hasBody || input.hasShortLinks) {
     return true;
   }
   return input.needsCover && !input.coverChecked;
 }
 
 function articleHtml(body: string, images: readonly string[] = []): string {
-  const escaped = body
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-  const html = `${imgParagraphs(images)}${escaped
+  const html = `${imgParagraphs(images)}${body
     .split(/\n{2,}/)
-    .map((part) => `<p>${part.replaceAll("\n", "<br />")}</p>`)
+    .map((part) => `<p>${linkifyPlainText(part)}</p>`)
     .join("")}`;
   return sanitizeHtml(html, {
-    allowedTags: ["p", "br", "img"],
-    allowedAttributes: { img: ["src", "alt"] },
+    allowedTags: ["p", "br", "img", "a"],
+    allowedAttributes: {
+      img: ["src", "alt"],
+      a: ["href", "title", "rel", "target"],
+    },
   });
 }
 
@@ -90,7 +94,10 @@ export async function persistNativeXArticle(
   tweet: XTweet,
   postId?: string,
 ): Promise<boolean> {
-  const body = xArticleBody(tweet.article);
+  const body = expandTcoInText(
+    xArticleBody(tweet.article),
+    tweetUrlExpansions(tweet),
+  );
   if (!body) {
     return false;
   }
@@ -110,6 +117,9 @@ export async function persistNativeXArticle(
   const existing = await findExistingXArticle(sourceId, permalink, normalized);
   let articleId = existing?.id ?? null;
   const already = (existing?.bodyLen ?? 0) >= MIN_BODY;
+  const rewriteUrls =
+    Boolean(existing) &&
+    (containsTco(existing?.contentHtml) || containsTco(existing?.contentText));
   if (!articleId) {
     articleId = newId();
     await client.execute({
@@ -129,7 +139,7 @@ export async function persistNativeXArticle(
         body.slice(0, 100_000),
       ],
     });
-  } else if (!already) {
+  } else if (!already || rewriteUrls) {
     await client.execute({
       sql: `UPDATE articles SET
         normalized_url = ?,
@@ -182,12 +192,21 @@ export async function persistNativeXArticle(
   });
   await unlinkExtraXArticles(sourceId, articleId);
 
-  if (postId && postBody.length > 0) {
-    await client.execute({
-      sql: `UPDATE x_posts SET text = ?, fetched_at = datetime('now')
-            WHERE id = ? AND length(text) < ?`,
-      args: [postBody, postId, postBody.length],
-    });
+  if (postId) {
+    const entitiesJson = tweetEntitiesForStorage(tweet);
+    if (entitiesJson) {
+      await client.execute({
+        sql: "UPDATE x_posts SET raw_entities_json = ? WHERE id = ?",
+        args: [entitiesJson, postId],
+      });
+    }
+    if (postBody.length > 0) {
+      await client.execute({
+        sql: `UPDATE x_posts SET text = ?, fetched_at = datetime('now')
+              WHERE id = ? AND (length(text) < ? OR text LIKE '%://t.co/%')`,
+        args: [postBody, postId, postBody.length],
+      });
+    }
   }
 
   await updateFts(sourceId, title, body, postBody);
@@ -211,6 +230,7 @@ async function findExistingXArticle(
   id: string;
   bodyLen: number;
   contentHtml: string;
+  contentText: string;
   normalizedUrl: string;
 } | null> {
   const articleKey = xArticleIdFromUrl(permalink) ?? "";
@@ -259,6 +279,7 @@ async function findExistingXArticle(
     id: String(row.id),
     bodyLen: String(row.content_text ?? "").trim().length,
     contentHtml: row.content_html ? String(row.content_html) : "",
+    contentText: row.content_text ? String(row.content_text) : "",
     normalizedUrl: row.normalized_url ? String(row.normalized_url) : "",
   };
 }
@@ -343,7 +364,11 @@ export async function hydrateXArticleFromApi(
                  MAX(CASE
                    WHEN a.original_url LIKE '%/i/article/%'
                     AND (a.thumbnail_url IS NULL OR a.thumbnail_url = '')
-                   THEN 1 ELSE 0 END) AS need_cover
+                   THEN 1 ELSE 0 END) AS need_cover,
+                 MAX(CASE
+                   WHEN a.content_text LIKE '%://t.co/%'
+                     OR a.content_html LIKE '%://t.co/%'
+                   THEN 1 ELSE 0 END) AS has_tco
           FROM source_articles sa
           JOIN articles a ON a.id = sa.article_id
           WHERE sa.source_id = ?
@@ -352,11 +377,13 @@ export async function hydrateXArticleFromApi(
   });
   const hasBody = Number(existing.rows[0]?.n ?? 0) >= MIN_BODY;
   const needCover = Number(existing.rows[0]?.need_cover ?? 0) === 1;
+  const hasShortLinks = Number(existing.rows[0]?.has_tco ?? 0) === 1;
   if (
     !shouldHydrateXArticle({
       hasBody,
       needsCover: needCover,
       coverChecked: payloadCoverChecked(source.raw_payload_json),
+      hasShortLinks,
     })
   ) {
     if (!payloadHydrated(source.raw_payload_json)) {

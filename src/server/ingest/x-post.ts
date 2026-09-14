@@ -7,6 +7,7 @@ import {
   isReply,
   quotedTweetId,
   replyToTweetId,
+  tweetEntitiesForStorage,
   tweetText,
   type XTweet,
 } from "@/server/x/parse";
@@ -67,7 +68,7 @@ export async function upsertXPost(input: {
       replyToTweetId(input.tweet),
       quoted,
       quotedTweet ? JSON.stringify(quotedTweet) : null,
-      input.tweet.entities ? JSON.stringify(input.tweet.entities) : null,
+      tweetEntitiesForStorage(input.tweet),
     ],
   });
   return { postId, created: true };

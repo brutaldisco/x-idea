@@ -5,6 +5,7 @@ import { persistNativeXArticle } from "@/server/fetch/x-article";
 import {
   extractHttpUrls,
   hostOf,
+  isXArticleUrl,
   normalizeUrl,
   shouldFetchArticle,
 } from "@/server/ingest/url";
@@ -66,9 +67,11 @@ export function collectArticleLinks(input: {
   text: string;
   entitiesJson?: string | null;
 }): TweetLink[] {
-  const fromEntities = tweetUrlEntries(
-    input.entitiesJson ? safeJson(input.entitiesJson) : null,
-  );
+  const parsed = input.entitiesJson ? safeJson(input.entitiesJson) : null;
+  const fromEntities = tweetUrlEntries(parsed);
+  if (fromEntities.some((item) => isXArticleUrl(item.url))) {
+    return fromEntities.slice(0, 8);
+  }
   const known = new Set(fromEntities.map((item) => item.url));
   const extra: TweetLink[] = [];
   for (const url of extractHttpUrls(input.text)) {

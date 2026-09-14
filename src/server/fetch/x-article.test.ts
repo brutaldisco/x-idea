@@ -38,6 +38,17 @@ describe("shouldHydrateXArticle", () => {
       }),
     ).toBe(false);
   });
+
+  it("retries when saved body still has t.co links", () => {
+    expect(
+      shouldHydrateXArticle({
+        hasBody: true,
+        needsCover: false,
+        coverChecked: true,
+        hasShortLinks: true,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("payloadCoverChecked", () => {
