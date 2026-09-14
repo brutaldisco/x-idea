@@ -61,7 +61,7 @@ export function ArticleBlock({
     ) : null;
 
   return (
-    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-3 min-[48rem]:px-8 min-[48rem]:py-8">
+    <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 px-2 py-3 min-[48rem]:px-8 min-[48rem]:py-8">
       <div className="mb-6 flex items-start justify-between gap-3">
         <h3 className="min-w-0 text-[1.2rem] font-medium leading-snug">
           {heading}
@@ -82,7 +82,7 @@ export function ArticleBlock({
       ) : text ? (
         <ReaderBody
           id={bodyId}
-          className="reader-body mt-8"
+          className="article-body reader-body mt-8"
           text={text.length > 12_000 ? `${text.slice(0, 12_000)}…` : text}
           readable
           {...attrs}
