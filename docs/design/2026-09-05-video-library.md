@@ -144,7 +144,8 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 | `POST /api/videos/[id]/move` `{ folder_id }` | フォルダ移動（DB 更新。実ファイル移動はクライアントが実施） |
 | `DELETE /api/videos/[id]` | ライブラリから削除（DB 行削除。実ファイル削除はクライアントが実施） |
 | `POST /api/videos/folders` `{ name, account_id }` / `DELETE /api/videos/folders/[id]` | フォルダ作成／削除 |
-| `GET /api/media/[id]/file` | 動画本体の **Range 対応プロキシ**（max `bit_rate` の mp4。`maxDuration = 300`） |
+| `GET /api/media/[id]/url` | CDN mp4 URL と総サイズ `bytes`（サーバーが HEAD / Range 0-0）。`?redirect=1` は 302 のみ |
+| `GET /api/media/[id]/file` | 動画本体の **Range 対応プロキシ**（max `bit_rate` の mp4。`maxDuration = 300`。直接取得不能時の最後手段） |
 
 - すべて `isSameOrigin` チェックつき（`GET /api/media/[id]/file` は既存メディア配信と同じゲート方針）。
 - 動画 URL が無い既存行は `refreshMediaFromTweet`（tweet lookup、1 回だけ）で補完してからプロキシする（既存挙動を踏襲）。
@@ -159,7 +160,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 3. 1 件の処理：
    - ルート → `{x_account_id}` →（あれば）フォルダ、の順にディレクトリハンドルを `getDirectoryHandle(..., { create: true })` で解決。
    - ファイル `{tweet_id}_{media_key}.mp4` を `getFileHandle({ create: true })` → 各チャンクを `createWritable({ keepExistingData: true })` で `seek(start)` → `write()`。
-   - **1〜32MB の可変チャンク**で `Range: bytes=offset-` を `GET /api/media/[id]/file` に投げ、本文はストリームで `write()` しながら受信量を進捗バーへ出す。最初の応答の `Content-Range` から総サイズを得てパーセントに反映。総サイズが無い間はパーセントを出さず、概算サイズがあれば `4.6 MB / 約 38.7 MB` とバーだけ出す（100% 扱いにしない）。
+   - 先に `GET /api/media/[id]/url` で CDN URL と `bytes` を取り、**ブラウザから CDN へ直接** Range 取得する（ADR-021。4 並列、`referrerPolicy: no-referrer`）。総サイズ不明や並列失敗時は同じ URL の逐次 Range。それも失敗したときだけ `GET /api/media/[id]/file` のプロキシ逐次。本文はストリームで `write()` しながら受信量を進捗バーへ出す。総サイズが無い間はパーセントを出さず、概算サイズがあれば `4.6 MB / 約 38.7 MB` とバーだけ出す（100% 扱いにしない）。
    - 各チャンクの実測速度で次のチャンクサイズを上下する（速いほど大きく、遅いほど小さく）。
    - 失敗（タイムアウト・ネットワーク断・429/5xx）は **指数バックオフ**（0.5 秒〜最大 10 秒）で同じオフセットから再試行し、チャンクサイズを半減（最小 1MB）。規定回数（低速ほど多め、2〜5 回）を超えたら `failed`。**30 秒間 1 バイトも受信できないチャンクは無応答とみなして切断し、同じリトライに乗せる**（無音ストールでキュー全体が止まるのを防ぐ）。
    - 進捗（`received` バイト数）は IndexedDB に保存し、**ページを閉じても途中再開**できる。進捗の消去は完了登録が確認できてから（登録だけ失敗した場合に最初から取り直さないため）。
@@ -175,7 +176,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 ### 4.6 非対応ブラウザのフォールバック
 
 - Safari / Firefox では Videos タブの保存機能を無効化し、「このブラウザではフォルダ保存に対応していません。Chrome / Edge で開いてください」と案内。
-- その場合でも `<a href="/api/media/[id]/file" download>` による **通常ダウンロード**（OS のダウンロードフォルダへ）だけは使えるようにする。ただしライブラリ管理・プレーヤーの対象外であることを明記する。
+- その場合でも `<a href="/api/media/[id]/url?redirect=1" download rel="noreferrer">` による **通常ダウンロード**（CDN へ 302。OS のダウンロードフォルダへ）だけは使えるようにする。ただしライブラリ管理・プレーヤーの対象外であることを明記する。
 
 ## 5. 画面設計
 

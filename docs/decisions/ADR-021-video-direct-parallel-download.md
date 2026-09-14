@@ -1,8 +1,8 @@
 # ADR-021: 動画ダウンロードは CDN 直接・4 並列 Range 取得にする
 
 - 日付: 2026-09-13
-- 状態: 採用（ADR-007 のダウンロード経路に関する部分を改定）
-- 関連: ADR-007、設計書 8 章（SC-15）/ 14.6、`docs/design/2026-09-05-video-library.md`
+- 状態: 採用（ADR-007 のダウンロード経路に関する部分を改定。2026-09-13 追記: サイズ探知と再生経路）
+- 関連: ADR-007、設計書 8 章（SC-15）/ 14.6、`docs/design/2026-09-05-video-library.md`、T-615 / T-616
 
 ## 文脈
 
@@ -11,22 +11,24 @@
   - 4 並列 Range: 合計 ~4.6MB/s（約 40 倍）
   - 8 並列: 合計 ~3.2MB/s（逆に低下。4〜6 並列が最適）
 - また CDN は `access-control-allow-origin` を要求元オリジンに合わせて返すため、**ブラウザからの直接フェッチが CORS 上可能**（2026-09-13 実測）。`Content-Range` は expose されないが `Content-Length` は CORS セーフリスト済みで読める。
-- プロキシ経由は Vercel Hobby の帯域（100GB/月）を GB 単位で消費し、`maxDuration = 300` の制約も受ける。
+- プロキシ経由は Vercel の Origin Transfer / Function 入出力を GB 単位で消費する。ブラウザ → `/file` → CDN は往復で約 2 倍計上される。一括保存で Hobby 枠を超える。
+- 初版は総サイズを **ブラウザ HEAD** に依存した。HEAD 未対応・CORS で読めない・アプリ origin の Referer 拒否だと並列に入れず、**全バイトがプロキシへ落ちた**。
 
 ## 決定
 
-1. ダウンロード開始時に `GET /api/media/[id]/url` で CDN URL を解決し、**ブラウザから video.twimg.com へ直接・4 並列の Range 取得**でダウンロードする（`DIRECT_PARALLEL = 4`）。
-2. 総サイズは **HEAD の `Content-Length`** で取得する（`Content-Range` は CORS で expose されないため）。
+1. ダウンロード開始時に `GET /api/media/[id]/url` で CDN URL を解決し、**ブラウザから video.twimg.com へ直接・4 並列の Range 取得**でダウンロードする（`DIRECT_PARALLEL = 4`）。クライアント fetch は `referrerPolicy: "no-referrer"`（アプリ origin の Referer を付けない）。
+2. 総サイズは **サーバーが CDN へ HEAD、だめなら Range `bytes=0-0`** して JSON の `bytes` で返す。本文は取らない。クライアント HEAD 成功は並列の前提にしない。`bytes` が無いときだけブラウザで同じ順の探知を試す。
 3. チャンクは `total / 4` を目安に **1〜8MB**（`directChunkBytes`）。小さいファイルでも全ワーカーに仕事が行くようにする。
 4. File System Access API は 1 ファイル同時 1 writable なので、**取得は並列・書き込みはオフセット順に直列化**する。レジューム基準（IndexedDB の進捗）は書き込み済み位置だけを記録し、表示用の受信量と分ける。
-5. HEAD 失敗・CORS 失敗・Range 無視（200 応答）などのときは **従来のプロキシ逐次経路へフォールバック**する。プロキシ経路は残す。
+5. 並列失敗・総サイズ不明のときは **同じ CDN URL への逐次 Range** を先に試す。CORS / 403 / Range 無視（200 かつ offset>0）などで直接が使えないときだけ **従来のプロキシ逐次**（`GET /api/media/[id]/file`）へ落ちる。プロキシ経路は残す。
 6. 30 秒無応答の切断リトライ・指数バックオフ・「停止」ボタンによる中断・`queued` への復帰は直接経路でも同じ方針を維持する。
 7. **エラーで失敗した動画は途中ファイルと進捗（IndexedDB）を残す**（2026-09-13 改定。従来は失敗時に破棄していた）。「再試行」で書き込み済み位置から再開できる。`failed` のパスは途中ファイル掃除の保護対象に加え、明示的な「途中ファイルを削除」でのみ消す。取消・再生できない途中ファイルは従来どおり削除する。
+8. ローカルファイルが無い再生と、Safari/Firefox の「ファイルを保存」は `GET /api/media/[id]/url?redirect=1`（302 のみ、`rel=noreferrer`）。`<video>` は `referrerPolicy="no-referrer"`。CDN 再生が失敗したときだけ `/file?inline=1` に戻す。画質（最大 `bit_rate`）は変えない。
 
 ## 影響
 
 - 大きな動画のダウンロードが実測で約 40 倍速くなる（2.4GB で 5〜6 時間 → 10 分前後）。
-- Vercel の帯域・ファンクション実行時間を動画転送で消費しなくなる。
+- 通常経路では Vercel の帯域・ファンクション実行時間を動画本体で消費しない（JSON / 302 のみ）。
 - CDN の CORS 応答が将来変わった場合は自動的にプロキシ経路へ落ちるため、機能は劣化するが壊れない。
 - CDN URL（認証不要の公開リンク）がブラウザに渡る。もともとプロキシ経由で同じ内容を誰でも取得できたため、公開範囲は変わらない。
 - `/api/media/[id]/url` は Service Worker の cache-first 対象に含めない（`/file` と同じくバイパス）。これに伴い SW キャッシュバージョンを `x-idea-v7` に上げる（ADR-016 の `v6` を更新）。

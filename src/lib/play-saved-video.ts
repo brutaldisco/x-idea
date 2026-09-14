@@ -1,3 +1,4 @@
+import { mediaVideoRedirectPath } from "@/lib/media-video-api";
 import { parseVideoRelPath } from "@/lib/video-path";
 import {
   ensureWritePermission,
@@ -26,5 +27,5 @@ export async function resolveSavedVideoUrl(input: {
       }
     }
   }
-  return { url: `/api/media/${input.mediaId}/file?inline=1` };
+  return { url: mediaVideoRedirectPath(input.mediaId) };
 }

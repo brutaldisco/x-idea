@@ -19,7 +19,7 @@ function urlForRow(row: MediaRow): string | null {
 /**
  * 動画の mp4 URL を解決する。variants が無ければポストを取り直して補完する。
  * `/api/media/[id]/file`（プロキシ配信）と `/api/media/[id]/url`
- * （CDN 直接ダウンロード用、ADR-021）の共通ロジック。
+ * （CDN 直接ダウンロード用、ADR-021。JSON は `bytes` も返す）の共通ロジック。
  */
 export async function resolveVideoDownloadUrl(
   mediaId: string,

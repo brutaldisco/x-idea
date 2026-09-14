@@ -18,7 +18,7 @@ export function refererFromUrl(url: string | null | undefined): string | null {
 export async function fetchRemoteMedia(
   url: string,
   range?: string | null,
-  extra?: { referer?: string | null },
+  extra?: { referer?: string | null; method?: string; signal?: AbortSignal },
 ): Promise<Response> {
   const headers: Record<string, string> = { ...MEDIA_FETCH_HEADERS };
   if (range) {
@@ -29,9 +29,11 @@ export async function fetchRemoteMedia(
     headers.Referer = referer;
   }
   return fetch(url, {
+    method: extra?.method ?? "GET",
     cache: "no-store",
     redirect: "follow",
     headers,
+    signal: extra?.signal,
   });
 }
 

@@ -1,6 +1,13 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { mediaVideoProxyFallbackPath } from "@/lib/media-video-api";
 import {
   exitFullscreen,
   getFullscreenElement,
@@ -55,6 +62,22 @@ export function VideoPlayer({
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [shellFullscreen, setShellFullscreen] = useState(false);
+  const [playbackUrl, setPlaybackUrl] = useState(url);
+
+  useEffect(() => {
+    setPlaybackUrl(url);
+  }, [url]);
+
+  useLayoutEffect(() => {
+    const el = videoRef.current;
+    if (!el) {
+      return;
+    }
+    el.setAttribute("referrerpolicy", "no-referrer");
+    if (el.getAttribute("src") !== playbackUrl) {
+      el.src = playbackUrl;
+    }
+  }, [playbackUrl]);
 
   useEffect(() => {
     function sync() {
@@ -158,8 +181,13 @@ export function VideoPlayer({
         playsInline
         controlsList="nofullscreen"
         loop={repeat === "one"}
-        src={url}
         className="min-h-0 w-full flex-1 bg-black object-contain outline-none"
+        onError={() => {
+          const fallback = mediaVideoProxyFallbackPath(playbackUrl);
+          if (fallback) {
+            setPlaybackUrl(fallback);
+          }
+        }}
         onDoubleClick={() => void toggleFullscreen()}
         onLoadedData={(event) => {
           void event.currentTarget.play().catch(() => undefined);

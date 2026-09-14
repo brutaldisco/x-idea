@@ -11,6 +11,11 @@ import {
   VideoPlayer,
 } from "@/components/videos/VideoPlayer";
 import { formatBytes } from "@/lib/bytes";
+import {
+  mediaVideoRedirectPath,
+  mediaVideoUrlApiPath,
+  parseVideoSourcePayload,
+} from "@/lib/media-video-api";
 import { initialVideoDownloadPlan } from "@/lib/video-download-plan";
 import { isIncompleteVideoFile } from "@/lib/video-files";
 import { useVideoSaveFolder } from "@/lib/video-folder";
@@ -306,18 +311,21 @@ export function VideosWorkspace({
         }));
         // CDN 直接ダウンロード用の URL を解決（失敗時はプロキシ経路で進む）
         let directUrl: string | null = null;
+        let directBytes: number | null = null;
         try {
-          const urlRes = await fetch(`/api/media/${item.mediaId}/url`, {
+          const urlRes = await fetch(mediaVideoUrlApiPath(item.mediaId), {
             cache: "no-store",
           });
           if (urlRes.ok) {
-            const payload = (await urlRes.json()) as { url?: unknown };
-            if (typeof payload.url === "string" && payload.url.length > 0) {
-              directUrl = payload.url;
+            const parsed = parseVideoSourcePayload(await urlRes.json());
+            if (parsed) {
+              directUrl = parsed.url;
+              directBytes = parsed.bytes;
             }
           }
         } catch {
           directUrl = null;
+          directBytes = null;
         }
         const result = await downloadVideoFile({
           downloadId: item.id,
@@ -326,6 +334,7 @@ export function VideosWorkspace({
           root: handle,
           estimatedBytes: item.estimatedBytes,
           directUrl,
+          directBytes,
           signal: controller.signal,
           onProgress: (received, total) => {
             setProgress((prev) => ({
@@ -1029,8 +1038,9 @@ export function VideosWorkspace({
                           )}
                           {!supported ? (
                             <a
-                              href={`/api/media/${item.mediaId}/file`}
+                              href={mediaVideoRedirectPath(item.mediaId)}
                               download
+                              rel="noreferrer"
                               className="text-accent text-xs hover:underline"
                             >
                               ファイルを保存

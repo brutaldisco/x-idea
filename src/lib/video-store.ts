@@ -1,4 +1,8 @@
 import {
+  probeDirectTotalBytes,
+  VIDEO_CDN_FETCH_INIT,
+} from "@/lib/video-direct-fetch";
+import {
   DIRECT_PARALLEL,
   directChunkBytes,
   initialVideoDownloadPlan,
@@ -329,7 +333,7 @@ function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-async function fetchVideoChunk(input: {
+async function fetchProxyVideoChunk(input: {
   mediaId: string;
   start: number;
   end: number;
@@ -351,6 +355,59 @@ async function fetchVideoChunk(input: {
     throw error;
   }
   return res;
+}
+
+async function fetchDirectVideoChunk(
+  url: string,
+  start: number,
+  end: number,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const res = await fetch(url, {
+    ...VIDEO_CDN_FETCH_INIT,
+    headers: { Range: `bytes=${start}-${end}` },
+    signal,
+  });
+  if (res.status === 416 || res.status === 206) {
+    return res;
+  }
+  if (res.status === 200 && start === 0) {
+    return res;
+  }
+  const error = new Error(`direct range failed (${res.status})`) as Error & {
+    retryable?: boolean;
+  };
+  error.retryable = isRetryableStatus(res.status);
+  throw error;
+}
+
+async function fetchVideoChunk(input: {
+  mediaId: string;
+  start: number;
+  end: number;
+  signal?: AbortSignal;
+  directUrl?: string | null;
+  onDirectFailed?: () => void;
+}): Promise<Response> {
+  if (input.directUrl) {
+    try {
+      return await fetchDirectVideoChunk(
+        input.directUrl,
+        input.start,
+        input.end,
+        input.signal,
+      );
+    } catch (error) {
+      if ((error as { name?: string }).name === "AbortError") {
+        throw error;
+      }
+      if ((error as { retryable?: boolean }).retryable) {
+        throw error;
+      }
+      input.onDirectFailed?.();
+    }
+  }
+  return fetchProxyVideoChunk(input);
 }
 
 async function writeChunkToFile(
@@ -382,9 +439,12 @@ async function downloadVideoChunk(input: {
   plan: VideoDownloadPlan;
   signal?: AbortSignal;
   onBytes: (n: number) => void | Promise<void>;
+  directUrl?: string | null;
+  onDirectFailed?: () => void;
 }): Promise<{ written: number; status: number; total: number }> {
   let attempt = 0;
   let chunk = Math.max(VIDEO_CHUNK_MIN, input.end - input.start + 1);
+  let directUrl = input.directUrl ?? null;
   for (;;) {
     if (input.signal?.aborted) {
       throw abortError();
@@ -418,6 +478,11 @@ async function downloadVideoChunk(input: {
         start: input.start,
         end,
         signal: stallController.signal,
+        directUrl,
+        onDirectFailed: () => {
+          directUrl = null;
+          input.onDirectFailed?.();
+        },
       });
       if (res.status === 416) {
         return { written: 0, status: 416, total: parseTotal(res, 0) };
@@ -467,28 +532,18 @@ async function downloadVideoChunk(input: {
 }
 
 /**
- * CDN 直接取得の総サイズを HEAD で調べる。
- * Content-Range は CORS で expose されないため Content-Length を使う。
- * 失敗（CORS・ネットワーク等）は null を返し、呼び出し側がプロキシへ落ちる。
+ * CDN 直接取得の総サイズ。サーバーが返した bytes を優先し、
+ * 無ければブラウザで HEAD → Range 0-0 を試す（ADR-021）。
  */
-async function fetchDirectTotalBytes(
-  url: string,
-  signal?: AbortSignal,
-): Promise<number | null> {
-  try {
-    const res = await fetch(url, {
-      method: "HEAD",
-      cache: "no-store",
-      signal,
-    });
-    if (!res.ok) {
-      return null;
-    }
-    const length = Number(res.headers.get("content-length") ?? 0);
-    return length > 0 ? length : null;
-  } catch {
-    return null;
+async function resolveDirectTotalBytes(input: {
+  url: string;
+  hintedBytes?: number | null;
+  signal?: AbortSignal;
+}): Promise<number | null> {
+  if (input.hintedBytes && input.hintedBytes > 0) {
+    return input.hintedBytes;
   }
+  return probeDirectTotalBytes(input.url, input.signal);
 }
 
 /**
@@ -524,7 +579,7 @@ async function fetchRangeBytes(input: {
     let received = 0;
     try {
       const res = await fetch(input.url, {
-        cache: "no-store",
+        ...VIDEO_CDN_FETCH_INIT,
         headers: { Range: `bytes=${input.start}-${input.end}` },
         signal: stallController.signal,
       });
@@ -701,6 +756,8 @@ export async function downloadVideoFile(input: {
   estimatedBytes?: number | null;
   /** あれば CDN から直接・並列で取得し、失敗時はプロキシ経路へ落ちる（ADR-021） */
   directUrl?: string | null;
+  /** `/url` がサーバー側で読んだ総バイト。HEAD なしでも並列できる */
+  directBytes?: number | null;
   signal?: AbortSignal;
   onProgress?: (received: number, total: number) => void;
 }): Promise<{ bytes: number; relPath: string }> {
@@ -750,22 +807,28 @@ export async function downloadVideoFile(input: {
 
   // CDN 直接・並列取得を先に試す（ADR-021）。
   // video.twimg.com はコネクション単位のスロットルのため、並列 Range の方が
-  // プロキシ逐次より桁違いに速い。失敗時は書き込み済み位置からプロキシ経路へ落ちる。
-  if (input.directUrl && !input.signal?.aborted) {
-    const headTotal = await fetchDirectTotalBytes(
-      input.directUrl,
-      input.signal,
-    );
-    if (headTotal && headTotal <= offset) {
+  // プロキシ逐次より桁違いに速い。失敗時は書き込み済み位置から
+  // CDN 逐次→プロキシ逐次へ落ちる。
+  let directUrl = input.directUrl ?? null;
+  const disableDirect = () => {
+    directUrl = null;
+  };
+  if (directUrl && !input.signal?.aborted) {
+    const knownTotal = await resolveDirectTotalBytes({
+      url: directUrl,
+      hintedBytes: input.directBytes,
+      signal: input.signal,
+    });
+    if (knownTotal && knownTotal <= offset) {
       // すでに取り終わっている（完了登録だけ失敗したケース）
       return { bytes: offset, relPath: input.relPath };
     }
-    if (headTotal && headTotal > offset) {
-      total = headTotal;
+    if (knownTotal && knownTotal > offset) {
+      total = knownTotal;
       emit(true);
       try {
         const written = await downloadDirectToFile({
-          url: input.directUrl,
+          url: directUrl,
           file,
           offset,
           total,
@@ -829,6 +892,8 @@ export async function downloadVideoFile(input: {
         plan,
         signal: input.signal,
         onBytes,
+        directUrl,
+        onDirectFailed: disableDirect,
       });
       if (result.status === 416) {
         break;
