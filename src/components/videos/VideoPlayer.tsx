@@ -148,7 +148,7 @@ export function VideoPlayer({
     >
       <div className="flex shrink-0 items-start justify-between gap-3 p-3">
         <div className="min-w-0">
-          <p className="truncate text-sm">{title}</p>
+          <p className="truncate text-sm text-neutral-500">{title}</p>
           <p className="text-xs text-white/55">
             {folderLabel}
             {total > 0 ? ` · ${index + 1} / ${total}` : ""}
