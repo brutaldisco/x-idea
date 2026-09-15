@@ -3,6 +3,7 @@ import {
   folderPlaylist,
   parseRepeatMode,
   stepPlaylist,
+  toggleRepeatMode,
 } from "./video-playlist";
 
 const library = [
@@ -37,5 +38,13 @@ describe("parseRepeatMode", () => {
   it("defaults to folder loop", () => {
     expect(parseRepeatMode(null)).toBe("folder");
     expect(parseRepeatMode("one")).toBe("one");
+  });
+});
+
+describe("toggleRepeatMode", () => {
+  it("turns the active mode off, and switches to the other", () => {
+    expect(toggleRepeatMode("folder", "folder")).toBe("off");
+    expect(toggleRepeatMode("off", "one")).toBe("one");
+    expect(toggleRepeatMode("one", "folder")).toBe("folder");
   });
 });

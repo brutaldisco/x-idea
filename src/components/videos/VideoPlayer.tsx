@@ -17,8 +17,9 @@ import {
 } from "@/lib/video-fullscreen";
 import {
   parseRepeatMode,
-  REPEAT_MODES,
+  REPEAT_TOGGLE_MODES,
   type RepeatMode,
+  toggleRepeatMode,
 } from "@/lib/video-playlist";
 
 const STORAGE_KEY = "x-idea-video-repeat";
@@ -204,22 +205,22 @@ export function VideoPlayer({
           </IconButton>
         </div>
         <div className="flex flex-wrap gap-1">
-          {REPEAT_MODES.map((mode) => {
+          {REPEAT_TOGGLE_MODES.map((mode, index) => {
             const active = repeat === mode.id;
             return (
               <IconButton
                 key={mode.id}
                 label={mode.label}
+                tip
+                tipAlign={
+                  index === REPEAT_TOGGLE_MODES.length - 1 ? "end" : "center"
+                }
                 pressed={active}
-                onClick={() => onRepeatChange(mode.id)}
+                onClick={() =>
+                  onRepeatChange(toggleRepeatMode(repeat, mode.id))
+                }
               >
-                {mode.id === "off" ? (
-                  <RepeatOffIcon />
-                ) : mode.id === "one" ? (
-                  <RepeatOneIcon />
-                ) : (
-                  <FolderLoopIcon />
-                )}
+                {mode.id === "one" ? <RepeatOneIcon /> : <FolderLoopIcon />}
               </IconButton>
             );
           })}
@@ -229,26 +230,89 @@ export function VideoPlayer({
   );
 }
 
+const TIP_SHOW_MS = 150;
+
 function IconButton({
   label,
   children,
   disabled,
   pressed,
+  tip,
+  tipAlign = "center",
   onClick,
 }: {
   label: string;
   children: ReactNode;
   disabled?: boolean;
   pressed?: boolean;
+  tip?: boolean;
+  tipAlign?: "center" | "end";
   onClick: () => void;
 }) {
-  return (
+  const [showTip, setShowTip] = useState(false);
+  const tipTimer = useRef<number | null>(null);
+  const hovered = useRef(false);
+
+  function clearTipTimer() {
+    if (tipTimer.current != null) {
+      window.clearTimeout(tipTimer.current);
+      tipTimer.current = null;
+    }
+  }
+
+  function openTip() {
+    clearTipTimer();
+    tipTimer.current = window.setTimeout(() => {
+      setShowTip(true);
+    }, TIP_SHOW_MS);
+  }
+
+  function closeTip() {
+    clearTipTimer();
+    setShowTip(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (tipTimer.current != null) {
+        window.clearTimeout(tipTimer.current);
+      }
+    };
+  }, []);
+
+  const button = (
     <button
       type="button"
-      title={label}
+      title={tip ? undefined : label}
       aria-label={label}
       aria-pressed={pressed}
       disabled={disabled}
+      onMouseEnter={
+        tip
+          ? () => {
+              hovered.current = true;
+              openTip();
+            }
+          : undefined
+      }
+      onMouseLeave={
+        tip
+          ? () => {
+              hovered.current = false;
+              closeTip();
+            }
+          : undefined
+      }
+      onFocus={tip ? openTip : undefined}
+      onBlur={
+        tip
+          ? () => {
+              if (!hovered.current) {
+                closeTip();
+              }
+            }
+          : undefined
+      }
       onClick={(event) => {
         event.currentTarget.blur();
         onClick();
@@ -261,6 +325,26 @@ function IconButton({
     >
       {children}
     </button>
+  );
+
+  if (!tip) {
+    return button;
+  }
+
+  return (
+    <span className="relative">
+      {button}
+      {showTip ? (
+        <span
+          role="tooltip"
+          className={`pointer-events-none absolute bottom-full z-10 mb-2 whitespace-nowrap rounded-md bg-white/90 px-2 py-1 text-black text-xs ${
+            tipAlign === "end" ? "right-0" : "left-1/2 -translate-x-1/2"
+          }`}
+        >
+          {label}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -295,18 +379,6 @@ function SkipForwardIcon() {
     <PlayerIcon>
       <polygon points="5 4 15 12 5 20 5 4" />
       <line x1="19" x2="19" y1="5" y2="19" />
-    </PlayerIcon>
-  );
-}
-
-function RepeatOffIcon() {
-  return (
-    <PlayerIcon>
-      <path d="m17 2 4 4-4 4" />
-      <path d="M3 11V9a4 4 0 0 1 4-4h10" />
-      <path d="m7 22-4-4 4-4" />
-      <path d="M21 13v2a4 4 0 0 1-4 4H7" />
-      <path d="M4 4l16 16" />
     </PlayerIcon>
   );
 }

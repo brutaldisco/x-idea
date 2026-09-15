@@ -1,10 +1,20 @@
 export type RepeatMode = "off" | "one" | "folder";
 
-export const REPEAT_MODES: { id: RepeatMode; label: string }[] = [
-  { id: "off", label: "リピートなし" },
-  { id: "one", label: "1本リピート" },
-  { id: "folder", label: "フォルダをループ" },
+/** プレーヤー右下に出す繰り返し。どちらも押していなければくり返さない */
+export const REPEAT_TOGGLE_MODES: {
+  id: Exclude<RepeatMode, "off">;
+  label: string;
+}[] = [
+  { id: "one", label: "この動画をくり返す" },
+  { id: "folder", label: "フォルダ内を順に再生" },
 ];
+
+export function toggleRepeatMode(
+  current: RepeatMode,
+  next: Exclude<RepeatMode, "off">,
+): RepeatMode {
+  return current === next ? "off" : next;
+}
 
 export function parseRepeatMode(raw: string | null | undefined): RepeatMode {
   return raw === "one" || raw === "folder" || raw === "off" ? raw : "folder";
