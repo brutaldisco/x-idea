@@ -212,6 +212,7 @@ export function VideoPlayer({
                 key={mode.id}
                 label={mode.label}
                 tip
+                soft
                 tipAlign={
                   index === REPEAT_TOGGLE_MODES.length - 1 ? "end" : "center"
                 }
@@ -239,6 +240,7 @@ function IconButton({
   pressed,
   tip,
   tipAlign = "center",
+  soft,
   onClick,
 }: {
   label: string;
@@ -247,6 +249,7 @@ function IconButton({
   pressed?: boolean;
   tip?: boolean;
   tipAlign?: "center" | "end";
+  soft?: boolean;
   onClick: () => void;
 }) {
   const [showTip, setShowTip] = useState(false);
@@ -319,7 +322,9 @@ function IconButton({
       }}
       className={`inline-flex size-8 items-center justify-center rounded-full outline-none disabled:opacity-40 ${
         pressed
-          ? "bg-white text-black"
+          ? soft
+            ? "border border-white/35 bg-white/12 text-white/80"
+            : "bg-white text-black"
           : "border border-white/25 text-white hover:bg-white/10"
       }`}
     >
