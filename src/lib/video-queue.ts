@@ -1,3 +1,5 @@
+import { VIDEO_LEASE_STALE_MS } from "@/lib/video-download-plan";
+
 export const VIDEO_MEDIA_TYPES = ["video", "animated_gif"] as const;
 
 export type VideoEnqueueStatus =
@@ -35,6 +37,32 @@ export function isResumableVideoQueueStatus(
     status === "failed" ||
     (status === "downloading" && !active)
   );
+}
+
+/** DB の UTC タイムスタンプ（"YYYY-MM-DD HH:MM:SS"）を epoch ms に直す */
+export function parseDbUtcMs(text: string): number | null {
+  const iso = text.includes("T") ? text : `${text.replace(" ", "T")}Z`;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * downloading のリースが切れているか（= 中断とみなせるか）（ADR-025）。
+ * lastProgressAt が null（ハートビート導入前の行）なら中断扱い。
+ * リースが生きている downloading は別タブで実行中なので触らない。
+ */
+export function isVideoLeaseStale(
+  lastProgressAt: string | null,
+  now = Date.now(),
+): boolean {
+  if (!lastProgressAt) {
+    return true;
+  }
+  const at = parseDbUtcMs(lastProgressAt);
+  if (at == null) {
+    return true;
+  }
+  return now - at > VIDEO_LEASE_STALE_MS;
 }
 
 export function canShowSaveVideosMenu(input: {

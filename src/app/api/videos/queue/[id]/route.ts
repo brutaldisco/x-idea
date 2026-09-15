@@ -2,7 +2,11 @@ import { connection } from "next/server";
 import { ensureSchema } from "@/db/ensure";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
-import { markVideoDownloading, updateVideoQueue } from "@/server/videos/queue";
+import {
+  markVideoDownloading,
+  markVideoProgress,
+  updateVideoQueue,
+} from "@/server/videos/queue";
 import { getAccountContext } from "@/server/x/context";
 
 export const instant = false;
@@ -24,11 +28,22 @@ export async function POST(
     const body = (await request.json().catch(() => ({}))) as {
       action?: string;
       error?: string;
+      received?: number;
+      total?: number;
     };
     const ctx = await getAccountContext();
     if (body.action === "start") {
+      // リースが生きている（別タブで実行中の）ときは 409 が返る（ADR-025）
       await markVideoDownloading(id, ctx);
       return Response.json({ ok: true, status: "downloading" });
+    }
+    if (body.action === "progress") {
+      // ハートビート: 最終生存時刻と停止位置を残す（ADR-025）
+      await markVideoProgress(id, ctx, {
+        received: body.received,
+        total: body.total,
+      });
+      return Response.json({ ok: true });
     }
     if (
       body.action !== "cancel" &&

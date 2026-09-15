@@ -2,6 +2,7 @@ import { getClient } from "@/db/client";
 import { ensureSchema } from "@/db/ensure";
 import { AppError } from "@/lib/errors";
 import { newId } from "@/lib/ids";
+import { VIDEO_LEASE_STALE_MS } from "@/lib/video-download-plan";
 import { collectSavedVideoRelPaths } from "@/lib/video-files";
 import {
   isSafeVideoRelPath,
@@ -43,6 +44,10 @@ export type VideoItem = {
   error: string | null;
   queuedAt: string;
   downloadedAt: string | null;
+  /** ダウンロード中のハートビート最終受信時刻（ADR-025）。停止位置の手がかり */
+  lastProgressAt: string | null;
+  progressBytes: number | null;
+  progressTotal: number | null;
   tweetId: string;
   mediaKey: string;
   sourceId: string | null;
@@ -88,6 +93,11 @@ function asItem(row: Record<string, unknown>): VideoItem {
     error: row.error ? String(row.error) : null,
     queuedAt: String(row.queued_at),
     downloadedAt: row.downloaded_at ? String(row.downloaded_at) : null,
+    lastProgressAt: row.last_progress_at ? String(row.last_progress_at) : null,
+    progressBytes:
+      row.progress_bytes == null ? null : Number(row.progress_bytes),
+    progressTotal:
+      row.progress_total == null ? null : Number(row.progress_total),
     tweetId: String(row.tweet_id ?? ""),
     mediaKey: String(row.media_key ?? ""),
     sourceId: row.source_id ? String(row.source_id) : null,
@@ -190,6 +200,7 @@ export async function listVideoLibrary(
     client.execute({
       sql: `SELECT d.id, d.media_id, d.x_account_id, d.folder_id, d.status,
                    d.rel_path, d.bytes, d.error, d.queued_at, d.downloaded_at,
+                   d.last_progress_at, d.progress_bytes, d.progress_total,
                    f.name AS folder_name, m.media_key, m.duration_ms,
                    m.width, m.height, m.variants_json,
                    p.tweet_id, p.text, p.author_username, p.url AS post_url,
@@ -398,6 +409,7 @@ export async function loadVideoItem(id: string): Promise<VideoItem> {
   const result = await getClient().execute({
     sql: `SELECT d.id, d.media_id, d.x_account_id, d.folder_id, d.status,
                  d.rel_path, d.bytes, d.error, d.queued_at, d.downloaded_at,
+                 d.last_progress_at, d.progress_bytes, d.progress_total,
                  f.name AS folder_name, m.media_key, m.duration_ms,
                  m.width, m.height, m.variants_json,
                  p.tweet_id, p.text, p.author_username, p.url AS post_url,
@@ -494,6 +506,9 @@ export async function markVideoDownloading(
     throw new AppError("VALIDATION", "アカウントを選んでください");
   }
   const item = await ownedItem(id, accountId);
+  if (item.status === "ready" || item.status === "canceled") {
+    throw new AppError("CONFLICT", "開始できる状態ではありません");
+  }
   // failed からの直接再開はキュー上限のカウントが変わらないよう、
   // 先に queued へ戻してから downloading にする（ADR-023）
   if (item.status === "failed") {
@@ -504,11 +519,64 @@ export async function markVideoDownloading(
       args: [id],
     });
   }
-  await getClient().execute({
-    sql: `UPDATE video_downloads SET status = 'downloading', error = NULL
-          WHERE id = ? AND status IN ('queued', 'failed')`,
-    args: [id],
+  // リース（ADR-025）: ハートビートが生きている downloading は別タブで
+  // 実行中なので取らない。途絶えた（= 中断した）ものだけ再開を許可する。
+  const staleCutoff = dbUtcTimestamp(-VIDEO_LEASE_STALE_MS);
+  const result = await getClient().execute({
+    sql: `UPDATE video_downloads SET
+            status = 'downloading', error = NULL,
+            last_progress_at = datetime('now')
+          WHERE id = ? AND (
+            status = 'queued' OR
+            (status = 'downloading' AND
+              (last_progress_at IS NULL OR last_progress_at < ?))
+          )`,
+    args: [id, staleCutoff],
   });
+  if (result.rowsAffected === 0) {
+    throw new AppError("CONFLICT", "別のタブで実行中です", { status: 409 });
+  }
+}
+
+/**
+ * ダウンロード中のハートビート（ADR-025）。最終生存時刻と停止位置を残す。
+ * downloading 以外は更新しない（取り消し済み等を蘇らせない）。best-effort。
+ */
+export async function markVideoProgress(
+  id: string,
+  ctx: AccountContext,
+  input: { received?: unknown; total?: unknown },
+): Promise<void> {
+  const accountId = contextAccountId(ctx);
+  if (!accountId) {
+    throw new AppError("VALIDATION", "アカウントを選んでください");
+  }
+  await ownedItem(id, accountId);
+  const received = asNonNegativeInt(input.received);
+  const total = asNonNegativeInt(input.total);
+  await getClient().execute({
+    sql: `UPDATE video_downloads SET
+            last_progress_at = datetime('now'),
+            progress_bytes = COALESCE(?, progress_bytes),
+            progress_total = COALESCE(?, progress_total)
+          WHERE id = ? AND status = 'downloading'`,
+    args: [received, total, id],
+  });
+}
+
+function asNonNegativeInt(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  return Math.round(value);
+}
+
+/** SQLite datetime('now') と同じ書式（UTC "YYYY-MM-DD HH:MM:SS"）を作る */
+function dbUtcTimestamp(offsetMs = 0): string {
+  return new Date(Date.now() + offsetMs)
+    .toISOString()
+    .slice(0, 19)
+    .replace("T", " ");
 }
 
 export async function completeVideoDownload(
@@ -533,9 +601,17 @@ export async function completeVideoDownload(
   await getClient().execute({
     sql: `UPDATE video_downloads SET
             status = 'ready', rel_path = ?, bytes = ?, error = NULL,
-            downloaded_at = datetime('now')
+            downloaded_at = datetime('now'),
+            last_progress_at = datetime('now'),
+            progress_bytes = ?, progress_total = ?
           WHERE id = ?`,
-    args: [input.relPath, Math.round(input.bytes), id],
+    args: [
+      input.relPath,
+      Math.round(input.bytes),
+      Math.round(input.bytes),
+      Math.round(input.bytes),
+      id,
+    ],
   });
   return loadVideoItem(id);
 }

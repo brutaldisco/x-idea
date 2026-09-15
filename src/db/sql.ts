@@ -35,6 +35,7 @@ const MIGRATION_FILES = [
   "0014_taxonomy_color.sql",
   "0015_account_video_folder.sql",
   "0016_chrome_translations.sql",
+  "0017_video_download_heartbeat.sql",
 ];
 
 export function loadInitSql(): string {

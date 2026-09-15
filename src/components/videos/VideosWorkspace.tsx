@@ -16,7 +16,10 @@ import {
   mediaVideoUrlApiPath,
   parseVideoSourcePayload,
 } from "@/lib/media-video-api";
-import { VIDEO_FILE_PARALLEL } from "@/lib/video-download-plan";
+import {
+  VIDEO_FILE_PARALLEL,
+  VIDEO_HEARTBEAT_MS,
+} from "@/lib/video-download-plan";
 import { isIncompleteVideoFile } from "@/lib/video-files";
 import { useVideoSaveFolder } from "@/lib/video-folder";
 import {
@@ -31,7 +34,10 @@ import {
   videoDownloadPercent,
   videoQueueStatusLabel,
 } from "@/lib/video-progress";
-import { isResumableVideoQueueStatus } from "@/lib/video-queue";
+import {
+  isResumableVideoQueueStatus,
+  isVideoLeaseStale,
+} from "@/lib/video-queue";
 import {
   clearProgress,
   discardPartialVideoFiles,
@@ -133,6 +139,7 @@ export function VideosWorkspace({
   const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef<Set<string>>(new Set());
   const sweptRef = useRef(false);
+  const autoResumeRef = useRef(false);
   const [offlineHint, setOfflineHint] = useState(false);
   const [queueOpen, setQueueOpen] = useState(initialQueueOpen);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -148,6 +155,7 @@ export function VideosWorkspace({
 
   useEffect(() => {
     sweptRef.current = false;
+    autoResumeRef.current = false;
     setRoot(null);
     if (!accountId) {
       return;
@@ -178,6 +186,48 @@ export function VideosWorkspace({
       }
     })();
   }, [accountId, root, linked, data.protectedRelPaths]);
+
+  // 前のセッションで中断したダウンロードを自動で再開する（ADR-025）。
+  // 対象はリース切れの downloading だけ。queued（手動停止を含む）や
+  // failed（原因を見てから再開したいもの）は自動では動かさない。
+  const startDownloadsRef = useRef<((ids?: string[]) => Promise<void>) | null>(
+    null,
+  );
+  useEffect(() => {
+    startDownloadsRef.current = startDownloads;
+  });
+  useEffect(() => {
+    if (
+      autoResumeRef.current ||
+      !accountId ||
+      !root ||
+      !linked ||
+      busy ||
+      !navigator.onLine
+    ) {
+      return;
+    }
+    const interrupted = data.queue.filter(
+      (item) =>
+        item.status === "downloading" &&
+        !activeRef.current.has(item.id) &&
+        isVideoLeaseStale(item.lastProgressAt),
+    );
+    if (interrupted.length === 0) {
+      return;
+    }
+    autoResumeRef.current = true;
+    void (async () => {
+      // ページを開いただけなので許可プロンプトは出さず、許可済みのときだけ再開する
+      if (!(await hasWritePermission(root))) {
+        return;
+      }
+      setMessage(
+        `中断した ${interrupted.length} 件のダウンロードを自動で再開します`,
+      );
+      await startDownloadsRef.current?.(interrupted.map((item) => item.id));
+    })();
+  }, [accountId, root, linked, busy, data.queue]);
 
   useEffect(() => {
     const onOffline = () => {
@@ -255,9 +305,16 @@ export function VideosWorkspace({
       return;
     }
     // queued に加えて、failed（途中から再開）と、このタブで動いていない
-    // downloading（中断分）も拾う。1 本の失敗で残りが止まらないようにする（ADR-023）
-    const resumable = data.queue.filter((item) =>
-      isResumableVideoQueueStatus(item.status, activeRef.current.has(item.id)),
+    // downloading（中断分）も拾う。1 本の失敗で残りが止まらないようにする（ADR-023）。
+    // リースが生きている downloading は別タブの実行中なので触らない（ADR-025）
+    const resumable = data.queue.filter(
+      (item) =>
+        isResumableVideoQueueStatus(
+          item.status,
+          activeRef.current.has(item.id),
+        ) &&
+        (item.status !== "downloading" ||
+          isVideoLeaseStale(item.lastProgressAt)),
     );
     const chosen = ids?.length
       ? resumable.filter((item) => ids.includes(item.id))
@@ -277,6 +334,7 @@ export function VideosWorkspace({
     let doneBytes = 0;
     let doneCount = 0;
     let failCount = 0;
+    let skipCount = 0;
     // 1 本の内部で 4 接続を使うため、ファイル間は 2 本までに抑える。
     // 1 本が失敗・中断しても残りのワーカーは止まらない（ADR-023）
     const parallel = VIDEO_FILE_PARALLEL;
@@ -285,12 +343,37 @@ export function VideosWorkspace({
     const runItem = async (item: (typeof chosen)[number]) => {
       activeRef.current.add(item.id);
       const relPath = suggestedRelPath(item);
+      // ハートビート（ADR-025）: 生存確認と停止位置をサーバーへ残す。
+      // 進捗コールバック（バックグラウンドでも動く）とタイマーの両方から送る
+      const beat = { lastAt: 0, received: 0, total: 0 };
+      const sendHeartbeat = () => {
+        const now = Date.now();
+        if (now - beat.lastAt < VIDEO_HEARTBEAT_MS) {
+          return;
+        }
+        beat.lastAt = now;
+        void fetch(`/api/videos/queue/${item.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "progress",
+            received: beat.received,
+            total: beat.total,
+          }),
+        }).catch(() => undefined);
+      };
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
       try {
-        await fetch(`/api/videos/queue/${item.id}`, {
+        const startRes = await fetch(`/api/videos/queue/${item.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "start" }),
         });
+        if (startRes.status === 409) {
+          // 別のタブがリースを持っている（ADR-025）。失敗にはせず残す
+          skipCount += 1;
+          return;
+        }
         setData((prev) => ({
           ...prev,
           queuedCount:
@@ -305,6 +388,7 @@ export function VideosWorkspace({
           ...prev,
           [item.id]: { received: 0, total: 0 },
         }));
+        heartbeatTimer = setInterval(sendHeartbeat, VIDEO_HEARTBEAT_MS);
         // CDN 直接ダウンロード用の URL を解決（失敗時はプロキシ経路で進む）
         let directUrl: string | null = null;
         let directBytes: number | null = null;
@@ -333,6 +417,9 @@ export function VideosWorkspace({
           directBytes,
           signal: controller.signal,
           onProgress: (received, total) => {
+            beat.received = received;
+            beat.total = total;
+            sendHeartbeat();
             setProgress((prev) => ({
               ...prev,
               [item.id]: { received, total },
@@ -403,6 +490,9 @@ export function VideosWorkspace({
           ),
         }));
       } finally {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+        }
         activeRef.current.delete(item.id);
       }
     };
@@ -435,6 +525,9 @@ export function VideosWorkspace({
       }
       if (failCount > 0) {
         parts.push(`${failCount} 件失敗`);
+      }
+      if (skipCount > 0) {
+        parts.push(`${skipCount} 件は別のタブで実行中`);
       }
       if (doneBytes > 0 && elapsed > 0) {
         parts.push(
@@ -685,14 +778,18 @@ export function VideosWorkspace({
     [data.queue],
   );
 
-  // 開始対象: queued + failed（途中から再開）+ このタブで動いていない downloading（中断分）
+  // 開始対象: queued + failed（途中から再開）+ このタブで動いていない downloading（中断分）。
+  // リースが生きている downloading は別タブの実行中なので除く（ADR-025）
   const resumableItems = useMemo(
     () =>
-      data.queue.filter((item) =>
-        isResumableVideoQueueStatus(
-          item.status,
-          activeRef.current.has(item.id),
-        ),
+      data.queue.filter(
+        (item) =>
+          isResumableVideoQueueStatus(
+            item.status,
+            activeRef.current.has(item.id),
+          ) &&
+          (item.status !== "downloading" ||
+            isVideoLeaseStale(item.lastProgressAt)),
       ),
     [data.queue],
   );
@@ -886,17 +983,30 @@ export function VideosWorkspace({
                     total,
                     item.estimatedBytes,
                   );
-                  // このタブで進捗のない downloading は中断（別セッションの取り残し）
-                  const interrupted = item.status === "downloading" && !prog;
+                  // このタブで進捗のない downloading は、リースが生きていれば
+                  // 別タブの実行中、切れていれば中断（別セッションの取り残し）
+                  const otherTabActive =
+                    item.status === "downloading" &&
+                    !prog &&
+                    !isVideoLeaseStale(item.lastProgressAt);
+                  const interrupted =
+                    item.status === "downloading" && !prog && !otherTabActive;
                   const downloading = Boolean(prog);
-                  const statusLabel = interrupted
-                    ? "中断しています（再開できます）"
-                    : item.status === "failed"
-                      ? "失敗（途中から再開できます）"
-                      : videoQueueStatusLabel(
-                          downloading ? "downloading" : item.status,
-                          pct,
-                        );
+                  const statusLabel = otherTabActive
+                    ? "別のタブで実行中です"
+                    : interrupted
+                      ? "中断しています（再開できます）"
+                      : item.status === "failed"
+                        ? "失敗（途中から再開できます）"
+                        : videoQueueStatusLabel(
+                            downloading ? "downloading" : item.status,
+                            pct,
+                          );
+                  // ハートビートが残した停止位置（ADR-025）
+                  const savedLabel =
+                    item.progressBytes != null && item.progressBytes > 0
+                      ? `${formatBytes(item.progressBytes)} まで保存済み`
+                      : null;
                   const fileMeta = formatVideoQueueMeta({
                     bytes: item.bytes,
                     estimatedBytes: item.estimatedBytes,
@@ -942,7 +1052,12 @@ export function VideosWorkspace({
                             : ""}
                           {item.excerpt || item.tweetId}
                         </p>
-                        <p className="text-ink-2 text-xs">{statusLabel}</p>
+                        <p className="text-ink-2 text-xs">
+                          {statusLabel}
+                          {savedLabel && !downloading
+                            ? `（${savedLabel}）`
+                            : ""}
+                        </p>
                         {downloading ? (
                           <div className="mt-1.5 flex items-center gap-2">
                             <div

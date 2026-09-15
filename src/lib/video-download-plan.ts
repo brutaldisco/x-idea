@@ -21,6 +21,17 @@ export const DIRECT_CHUNK_MAX = 8 * MB;
  */
 export const VIDEO_FILE_PARALLEL = 2;
 
+/** ダウンロード中の生存確認（ハートビート）をサーバーへ送る間隔（ADR-025） */
+export const VIDEO_HEARTBEAT_MS = 8_000;
+
+/**
+ * downloading のリース有効時間（ADR-025）。この間ハートビートが途絶えたら
+ * 中断（前のセッションの取り残し）とみなし、別タブ・別セッションからの
+ * 再開を許可する。バックグラウンドタブのタイマー絞り込み（約 1 分に
+ * 1 回まで）を吸収できるよう 90 秒と長めに取る。
+ */
+export const VIDEO_LEASE_STALE_MS = 90_000;
+
 /**
  * 直接ダウンロードのチャンクサイズ。小さいファイルでも全ワーカーに仕事が
  * 行くよう total / DIRECT_PARALLEL を目安にし、1〜8MB に収める。
