@@ -17,9 +17,10 @@ export const PWA_DESCRIPTION = "X ブックマークのパーソナルナレッ�
 export const PWA_START_URL = "/today";
 export const PWA_OFFLINE_PATH = "/offline";
 export const PWA_SW_PATH = "/sw.js";
-export const PWA_THEME_COLOR = "#2A3040";
 export const PWA_BACKGROUND_COLOR = "#F6F3EB";
 export const PWA_BACKGROUND_COLOR_DARK = "#1A2030";
+/** Mac / Windows Chrome の standalone タイトルバー（ADR-008） */
+export const PWA_TITLE_BAR_COLOR = "#000000";
 
 export function isPwaPublicPath(pathname: string): boolean {
   return (

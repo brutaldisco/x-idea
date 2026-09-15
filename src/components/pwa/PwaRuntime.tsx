@@ -1,11 +1,29 @@
 "use client";
 
 import { useEffect } from "react";
-import { PWA_SW_PATH } from "@/lib/pwa";
-import { setInstallPrompt } from "@/lib/pwa-install";
+import { PWA_SW_PATH, PWA_TITLE_BAR_COLOR } from "@/lib/pwa";
+import { isStandaloneDisplay, setInstallPrompt } from "@/lib/pwa-install";
+
+function applyStandaloneTitleBar() {
+  if (!isStandaloneDisplay()) {
+    return;
+  }
+  const metas = document.querySelectorAll('meta[name="theme-color"]');
+  if (metas.length === 0) {
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    meta.setAttribute("content", PWA_TITLE_BAR_COLOR);
+    document.head.prepend(meta);
+    return;
+  }
+  for (const meta of metas) {
+    meta.setAttribute("content", PWA_TITLE_BAR_COLOR);
+  }
+}
 
 export function PwaRuntime() {
   useEffect(() => {
+    applyStandaloneTitleBar();
     if (!("serviceWorker" in navigator)) {
       return;
     }

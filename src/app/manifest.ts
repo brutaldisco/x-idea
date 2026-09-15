@@ -5,7 +5,7 @@ import {
   PWA_NAME,
   PWA_SHORT_NAME,
   PWA_START_URL,
-  PWA_THEME_COLOR,
+  PWA_TITLE_BAR_COLOR,
   pwaIconSrc,
 } from "@/lib/pwa";
 
@@ -21,7 +21,7 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     background_color: PWA_BACKGROUND_COLOR,
-    theme_color: PWA_THEME_COLOR,
+    theme_color: PWA_TITLE_BAR_COLOR,
     categories: ["productivity", "education"],
     icons: [
       {

@@ -1834,7 +1834,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 
 ## 26. PWA・オフライン・プッシュ通知
 
-- **マニフェスト**：`src/app/manifest.ts` → `/manifest.webmanifest`。`display: standalone`、`start_url: /today`、アイコン（192 / 512 と maskable）、`share_target: { action: '/capture', method: 'GET', params: { title, text, url } }`（Android Chrome）。
+- **マニフェスト**：`src/app/manifest.ts` → `/manifest.webmanifest`。`display: standalone`、`start_url: /today`、アイコン（192 / 512 と maskable）、`theme_color: #000000`（Mac / Windows Chrome の standalone タイトルバー。通常タブの `theme-color` は紙色のまま）、`share_target: { action: '/capture', method: 'GET', params: { title, text, url } }`（Android Chrome）。
 - **Service Worker**：`public/sw.js`（ADR-008 / ADR-016）。App Shell と静的資産はプリキャッシュ。`/api/sources*` は Stale-While-Revalidate（上限 200、TTL 10 分）。サムネ `/api/media/*`（`file` / `url` 以外）は cache-first。Reader（`/source/*`）は直近閲覧 100 件。navigate の RUNTIME は 30 件。オフライン時はバナー＋`/offline`＋読み取り専用。動画 Range・同期・ジョブは SW を通さない。
 - **インストール案内**：Settings / オンボーディング STEP 5 / `beforeinstallprompt`。iOS は共有シートの手順。
 - **iOS 注意**：Push・Badging は「ホーム画面に追加」した PWA のみ（iOS 16.4+）。Web Share Target 非対応 → **iOS ショートカット**（共有シート→「x-idea に保存」→ `POST /api/capture` に Bearer）を Settings から導入案内（ショートカットの iCloud リンクを用意 **[仮定]**）。キャッシュは 7 日で消える前提。

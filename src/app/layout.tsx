@@ -10,6 +10,7 @@ import {
   PWA_BACKGROUND_COLOR_DARK,
   PWA_DESCRIPTION,
   PWA_NAME,
+  PWA_TITLE_BAR_COLOR,
   pwaIconSrc,
 } from "@/lib/pwa";
 import "./globals.css";
@@ -56,6 +57,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
+    { media: "(display-mode: standalone)", color: PWA_TITLE_BAR_COLOR },
+    {
+      media: "(display-mode: window-controls-overlay)",
+      color: PWA_TITLE_BAR_COLOR,
+    },
     { media: "(prefers-color-scheme: light)", color: PWA_BACKGROUND_COLOR },
     {
       media: "(prefers-color-scheme: dark)",

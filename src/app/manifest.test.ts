@@ -8,6 +8,7 @@ describe("web app manifest", () => {
     expect(data.short_name).toBe("x-idea");
     expect(data.start_url).toBe("/today");
     expect(data.display).toBe("standalone");
+    expect(data.theme_color).toBe("#000000");
     expect(data.prefer_related_applications).not.toBe(true);
     const sizes = new Set(data.icons?.map((icon) => icon.sizes));
     expect(sizes.has("192x192")).toBe(true);
