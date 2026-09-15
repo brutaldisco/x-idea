@@ -148,8 +148,8 @@ export function VideoPlayer({
     >
       <div className="flex shrink-0 items-start justify-between gap-3 p-3">
         <div className="min-w-0">
-          <p className="truncate text-sm text-neutral-500">{title}</p>
-          <p className="text-xs text-white/55">
+          <p className="truncate text-sm text-neutral-600">{title}</p>
+          <p className="text-neutral-600 text-xs">
             {folderLabel}
             {total > 0 ? ` · ${index + 1} / ${total}` : ""}
           </p>
@@ -162,16 +162,9 @@ export function VideoPlayer({
           >
             {shellFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
           </IconButton>
-          <button
-            type="button"
-            className="shrink-0 rounded-full px-3 py-1 text-sm text-white outline-none hover:bg-white/10"
-            onClick={(event) => {
-              event.currentTarget.blur();
-              onClose();
-            }}
-          >
-            閉じる
-          </button>
+          <IconButton label="閉じる" onClick={onClose}>
+            <CloseIcon />
+          </IconButton>
         </div>
       </div>
       <video
@@ -347,6 +340,15 @@ function FullscreenIcon() {
       <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
       <path d="M3 16v3a2 2 0 0 0 2 2h3" />
       <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+    </PlayerIcon>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <PlayerIcon>
+      <path d="M18 6 6 18" />
+      <path d="M6 6l12 12" />
     </PlayerIcon>
   );
 }
