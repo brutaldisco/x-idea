@@ -1,5 +1,86 @@
 import { formatBytes } from "@/lib/bytes";
 
+/** 速度計算に使う直近ウィンドウ */
+export const VIDEO_SPEED_WINDOW_MS = 4_000;
+/** 速度を出すまでの最短観測時間（立ち上がりの暴れを抑える） */
+export const VIDEO_SPEED_MIN_MS = 400;
+/**
+ * これ以上の一括増加はレジューム位置の同期とみなし、速度サンプルをリセットする。
+ * 4 並列 × 8MB が一気に揃っても超えない余裕を取る。
+ */
+export const VIDEO_SPEED_JUMP_BYTES = 64 * 1024 * 1024;
+
+export type VideoSpeedSample = { at: number; received: number };
+
+function pruneSpeedSamples(
+  samples: VideoSpeedSample[],
+  now: number,
+): VideoSpeedSample[] {
+  const cutoff = now - VIDEO_SPEED_WINDOW_MS;
+  const kept = samples.filter((sample) => sample.at >= cutoff);
+  return kept.length > 0 ? kept : samples.slice(-1);
+}
+
+/**
+ * 受信量の時系列を直近ウィンドウに足す。巻き戻しやレジューム同期の
+ * 大きな跳びはサンプルを捨ててやり直す。
+ */
+export function appendVideoSpeedSample(
+  samples: VideoSpeedSample[],
+  received: number,
+  now = Date.now(),
+): VideoSpeedSample[] {
+  const last = samples[samples.length - 1];
+  if (last && received < last.received) {
+    return [{ at: now, received }];
+  }
+  if (last && received - last.received > VIDEO_SPEED_JUMP_BYTES) {
+    return [{ at: now, received }];
+  }
+  if (last && received === last.received && now - last.at < 200) {
+    return pruneSpeedSamples(samples, now);
+  }
+  return pruneSpeedSamples([...samples, { at: now, received }], now);
+}
+
+/** 直近ウィンドウの平均バイト/秒。観測が足りなければ null */
+export function videoDownloadBytesPerSec(
+  samples: VideoSpeedSample[],
+  now = Date.now(),
+): number | null {
+  if (samples.length < 2) {
+    return null;
+  }
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const elapsedMs = Math.max(last.at, now) - first.at;
+  if (elapsedMs < VIDEO_SPEED_MIN_MS) {
+    return null;
+  }
+  const gained = last.received - first.received;
+  if (gained < 0) {
+    return null;
+  }
+  return gained / (elapsedMs / 1000);
+}
+
+/** `12.3 MB/s`。観測前は null（呼び出し側で「計測中」などにする） */
+export function formatDownloadSpeed(bytesPerSec: number | null): string | null {
+  if (bytesPerSec == null || !Number.isFinite(bytesPerSec) || bytesPerSec < 0) {
+    return null;
+  }
+  return `${formatBytes(bytesPerSec)}/s`;
+}
+
+export function nextVideoDownloadSpeed(
+  samples: VideoSpeedSample[],
+  received: number,
+  now = Date.now(),
+): { samples: VideoSpeedSample[]; bps: number | null } {
+  const next = appendVideoSpeedSample(samples, received, now);
+  return { samples: next, bps: videoDownloadBytesPerSec(next, now) };
+}
+
 export function videoDownloadPercent(
   received: number,
   total: number,

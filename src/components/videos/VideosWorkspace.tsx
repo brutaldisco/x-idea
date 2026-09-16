@@ -29,6 +29,9 @@ import {
   stepPlaylist,
 } from "@/lib/video-playlist";
 import {
+  formatDownloadSpeed,
+  nextVideoDownloadSpeed,
+  type VideoSpeedSample,
   videoDownloadBarPercent,
   videoDownloadByteLabel,
   videoDownloadPercent,
@@ -129,8 +132,9 @@ export function VideosWorkspace({
   const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [progress, setProgress] = useState<
-    Record<string, { received: number; total: number }>
+    Record<string, { received: number; total: number; bps: number | null }>
   >({});
+  const speedSamplesRef = useRef<Map<string, VideoSpeedSample[]>>(new Map());
   const [playing, setPlaying] = useState<{
     item: VideoItem;
     url: string;
@@ -253,6 +257,38 @@ export function VideosWorkspace({
     };
   }, [playing]);
 
+  // バイトが増えなくても直近ウィンドウを進めて速度を減衰させる。
+  // 大きなファイルでパーセントが動かなくても、止まっているかが分かる。
+  useEffect(() => {
+    if (!busy) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setProgress((prev) => {
+        const ids = Object.keys(prev);
+        if (ids.length === 0) {
+          return prev;
+        }
+        let changed = false;
+        const next = { ...prev };
+        for (const id of ids) {
+          const current = next[id];
+          const { samples, bps } = nextVideoDownloadSpeed(
+            speedSamplesRef.current.get(id) ?? [],
+            current.received,
+          );
+          speedSamplesRef.current.set(id, samples);
+          if (bps !== current.bps) {
+            next[id] = { ...current, bps };
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 500);
+    return () => clearInterval(timer);
+  }, [busy]);
+
   async function resolveRoot() {
     if (!accountId) {
       return null;
@@ -274,6 +310,30 @@ export function VideosWorkspace({
 
   function itemRelPath(item: VideoItem): string {
     return item.relPath ?? suggestedRelPath(item);
+  }
+
+  function applyItemProgress(id: string, received: number, total: number) {
+    const { samples, bps } = nextVideoDownloadSpeed(
+      speedSamplesRef.current.get(id) ?? [],
+      received,
+    );
+    speedSamplesRef.current.set(id, samples);
+    setProgress((prev) => ({
+      ...prev,
+      [id]: { received, total, bps },
+    }));
+  }
+
+  function clearItemProgress(id: string) {
+    speedSamplesRef.current.delete(id);
+    setProgress((prev) => {
+      if (!(id in prev)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
   async function discardItemFiles(
@@ -384,9 +444,10 @@ export function VideosWorkspace({
             entry.id === item.id ? { ...entry, status: "downloading" } : entry,
           ),
         }));
+        speedSamplesRef.current.set(item.id, []);
         setProgress((prev) => ({
           ...prev,
-          [item.id]: { received: 0, total: 0 },
+          [item.id]: { received: 0, total: 0, bps: null },
         }));
         heartbeatTimer = setInterval(sendHeartbeat, VIDEO_HEARTBEAT_MS);
         // CDN 直接ダウンロード用の URL を解決（失敗時はプロキシ経路で進む）
@@ -422,10 +483,7 @@ export function VideosWorkspace({
             beat.received = received;
             beat.total = total;
             sendHeartbeat();
-            setProgress((prev) => ({
-              ...prev,
-              [item.id]: { received, total },
-            }));
+            applyItemProgress(item.id, received, total);
           },
         });
         doneBytes += result.bytes;
@@ -436,11 +494,7 @@ export function VideosWorkspace({
         });
         await clearProgress(item.id);
         // 完了したものから即座にライブラリへ出す
-        setProgress((prev) => {
-          const next = { ...prev };
-          delete next[item.id];
-          return next;
-        });
+        clearItemProgress(item.id);
         setData((prev) => ({
           ...prev,
           queue: prev.queue.filter((entry) => entry.id !== item.id),
@@ -453,11 +507,7 @@ export function VideosWorkspace({
         if ((error as { name?: string }).name === "AbortError") {
           // 停止: 途中まで保存されているので queued に戻して再開可能にする
           await requeueItem(item.id);
-          setProgress((prev) => {
-            const next = { ...prev };
-            delete next[item.id];
-            return next;
-          });
+          clearItemProgress(item.id);
           setData((prev) => ({
             ...prev,
             queuedCount: prev.queue.some(
@@ -483,6 +533,7 @@ export function VideosWorkspace({
         });
         // 途中ファイルと進捗（IndexedDB）は残す。「再試行」で続きから取り直せる。
         // 明示的に消したいときはキューの「途中ファイルを削除」を使う
+        clearItemProgress(item.id);
         setData((prev) => ({
           ...prev,
           queue: prev.queue.map((entry) =>
@@ -993,7 +1044,11 @@ export function VideosWorkspace({
                     !isVideoLeaseStale(item.lastProgressAt);
                   const interrupted =
                     item.status === "downloading" && !prog && !otherTabActive;
-                  const downloading = Boolean(prog);
+                  const downloading =
+                    Boolean(prog) && item.status === "downloading";
+                  const speedLabel = downloading
+                    ? (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
+                    : null;
                   const statusLabel = otherTabActive
                     ? "別のタブで実行中です"
                     : interrupted
@@ -1004,6 +1059,9 @@ export function VideosWorkspace({
                             downloading ? "downloading" : item.status,
                             pct,
                           );
+                  const statusWithSpeed = speedLabel
+                    ? `${statusLabel} · ${speedLabel}`
+                    : statusLabel;
                   // ハートビートが残した停止位置（ADR-025）
                   const savedLabel =
                     item.progressBytes != null && item.progressBytes > 0
@@ -1054,8 +1112,8 @@ export function VideosWorkspace({
                             : ""}
                           {item.excerpt || item.tweetId}
                         </p>
-                        <p className="text-ink-2 text-xs">
-                          {statusLabel}
+                        <p className="tabular-nums text-ink-2 text-xs">
+                          {statusWithSpeed}
                           {savedLabel && !downloading
                             ? `（${savedLabel}）`
                             : ""}
@@ -1068,12 +1126,15 @@ export function VideosWorkspace({
                               aria-valuemin={0}
                               aria-valuemax={100}
                               aria-valuenow={barPct ?? undefined}
-                              aria-label={
+                              aria-label={[
                                 byteLabel ??
-                                (pct != null
-                                  ? `ダウンロード ${pct}%`
-                                  : "ダウンロード中")
-                              }
+                                  (pct != null
+                                    ? `ダウンロード ${pct}%`
+                                    : "ダウンロード中"),
+                                speedLabel,
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
                             >
                               {barPct != null ? (
                                 <div
@@ -1084,9 +1145,12 @@ export function VideosWorkspace({
                                 <div className="h-full w-1/3 bg-accent motion-safe:animate-pulse" />
                               )}
                             </div>
-                            <span className="shrink-0 tabular-nums text-ink-2 text-xs">
-                              {byteLabel ??
-                                (pct != null ? `${pct}%` : "準備中")}
+                            <span className="shrink-0 text-right tabular-nums text-ink-2 text-xs">
+                              <span className="block">
+                                {byteLabel ??
+                                  (pct != null ? `${pct}%` : "準備中")}
+                              </span>
+                              <span className="block">{speedLabel}</span>
                             </span>
                           </div>
                         ) : null}
