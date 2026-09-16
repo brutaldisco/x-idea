@@ -390,23 +390,22 @@ export function VideosWorkspace({
         }));
         heartbeatTimer = setInterval(sendHeartbeat, VIDEO_HEARTBEAT_MS);
         // CDN 直接ダウンロード用の URL を解決（失敗時はプロキシ経路で進む）
-        let directUrl: string | null = null;
-        let directBytes: number | null = null;
-        try {
-          const urlRes = await fetch(mediaVideoUrlApiPath(item.mediaId), {
-            cache: "no-store",
-          });
-          if (urlRes.ok) {
-            const parsed = parseVideoSourcePayload(await urlRes.json());
-            if (parsed) {
-              directUrl = parsed.url;
-              directBytes = parsed.bytes;
+        const resolveDirectUrl = async () => {
+          try {
+            const urlRes = await fetch(mediaVideoUrlApiPath(item.mediaId), {
+              cache: "no-store",
+            });
+            if (urlRes.ok) {
+              return parseVideoSourcePayload(await urlRes.json());
             }
+          } catch {
+            // プロキシ経路で進む
           }
-        } catch {
-          directUrl = null;
-          directBytes = null;
-        }
+          return null;
+        };
+        const initial = await resolveDirectUrl();
+        const directUrl = initial?.url ?? null;
+        const directBytes = initial?.bytes ?? null;
         const result = await downloadVideoFile({
           downloadId: item.id,
           mediaId: item.mediaId,
@@ -415,6 +414,9 @@ export function VideosWorkspace({
           estimatedBytes: item.estimatedBytes,
           directUrl,
           directBytes,
+          // 502 等で両経路が失敗したとき、URL を取り直して CDN 直接から
+          // もう一度だけ試す（ADR-026）
+          refreshDirectUrl: resolveDirectUrl,
           signal: controller.signal,
           onProgress: (received, total) => {
             beat.received = received;

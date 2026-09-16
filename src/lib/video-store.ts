@@ -333,6 +333,15 @@ function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
+type DownloadError = Error & { retryable?: boolean; status?: number };
+
+function downloadError(message: string, status: number): DownloadError {
+  const error = new Error(message) as DownloadError;
+  error.retryable = isRetryableStatus(status);
+  error.status = status;
+  return error;
+}
+
 async function fetchProxyVideoChunk(input: {
   mediaId: string;
   start: number;
@@ -348,11 +357,7 @@ async function fetchProxyVideoChunk(input: {
     return res;
   }
   if (!res.ok && res.status !== 206) {
-    const error = new Error(`download failed (${res.status})`) as Error & {
-      retryable?: boolean;
-    };
-    error.retryable = isRetryableStatus(res.status);
-    throw error;
+    throw downloadError(`download failed (${res.status})`, res.status);
   }
   return res;
 }
@@ -374,10 +379,10 @@ async function fetchDirectVideoChunk(
   if (res.status === 200 && start === 0) {
     return res;
   }
-  const error = new Error(`direct range failed (${res.status})`) as Error & {
-    retryable?: boolean;
-  };
-  error.retryable = isRetryableStatus(res.status);
+  const error = downloadError(
+    `direct range failed (${res.status})`,
+    res.status,
+  );
   throw error;
 }
 
@@ -410,30 +415,25 @@ async function fetchVideoChunk(input: {
   return fetchProxyVideoChunk(input);
 }
 
-async function writeChunkToFile(
-  file: FileSystemFileHandle,
+/**
+ * 開き済みの writable に 1 チャンクを書く。createWritable({keepExistingData:true})
+ * は既存内容を一時ファイルへコピーするため、チャンクごとに開き直すと
+ * ファイルが大きくなるほど急激に遅くなる（ADR-026）。writable は呼び出し側が
+ * 1 回だけ開いて使い回す。
+ */
+async function writeChunkToWritable(
+  writable: FileSystemWritableFileStream,
   res: Response,
   start: number,
   onBytes: (n: number) => void | Promise<void>,
 ): Promise<number> {
-  const writable = await file.createWritable({
-    keepExistingData: true,
-  });
-  try {
-    await writable.seek(start);
-    return await writeResponseStream(res, writable, onBytes);
-  } finally {
-    try {
-      await writable.close();
-    } catch {
-      // ignore
-    }
-  }
+  await writable.seek(start);
+  return writeResponseStream(res, writable, onBytes);
 }
 
 async function downloadVideoChunk(input: {
   mediaId: string;
-  file: FileSystemFileHandle;
+  writable: FileSystemWritableFileStream;
   start: number;
   end: number;
   plan: VideoDownloadPlan;
@@ -487,8 +487,8 @@ async function downloadVideoChunk(input: {
       if (res.status === 416) {
         return { written: 0, status: 416, total: parseTotal(res, 0) };
       }
-      const written = await writeChunkToFile(
-        input.file,
+      const written = await writeChunkToWritable(
+        input.writable,
         res,
         input.start,
         onBytes,
@@ -520,7 +520,12 @@ async function downloadVideoChunk(input: {
           : error;
       }
       chunk = Math.max(VIDEO_CHUNK_MIN, Math.floor(chunk / 2));
-      const delay = Math.min(10_000, 500 * 2 ** (attempt - 1));
+      // 5xx はサーバー側の回復に時間がかかるので長めに待つ（ADR-026）
+      const status = (error as DownloadError).status;
+      const delay =
+        status != null && status >= 500
+          ? Math.min(30_000, 2_000 * 2 ** (attempt - 1))
+          : Math.min(10_000, 500 * 2 ** (attempt - 1));
       await sleep(delay, input.signal);
     } finally {
       if (stallTimer) {
@@ -586,13 +591,7 @@ async function fetchRangeBytes(input: {
       // Range を無視した 200 などは並列方式と相性が悪いので失敗扱いにし、
       // 呼び出し側のプロキシ経路フォールバックに任せる
       if (res.status !== 206 || !res.body) {
-        const error = new Error(
-          `direct range failed (${res.status})`,
-        ) as Error & {
-          retryable?: boolean;
-        };
-        error.retryable = isRetryableStatus(res.status);
-        throw error;
+        throw downloadError(`direct range failed (${res.status})`, res.status);
       }
       const reader = res.body.getReader();
       const parts: Uint8Array[] = [];
@@ -639,7 +638,12 @@ async function fetchRangeBytes(input: {
       if (attempt > input.retries || !retryable) {
         throw error;
       }
-      const delay = Math.min(10_000, 500 * 2 ** (attempt - 1));
+      // 5xx はサーバー側の回復に時間がかかるので長めに待つ（ADR-026）
+      const status = (error as DownloadError).status;
+      const delay =
+        status != null && status >= 500
+          ? Math.min(30_000, 2_000 * 2 ** (attempt - 1))
+          : Math.min(10_000, 500 * 2 ** (attempt - 1));
       await sleep(delay, input.signal);
     } finally {
       if (stallTimer) {
@@ -758,6 +762,11 @@ export async function downloadVideoFile(input: {
   directUrl?: string | null;
   /** `/url` がサーバー側で読んだ総バイト。HEAD なしでも並列できる */
   directBytes?: number | null;
+  /** CDN URL の取り直し（期限切れ・一時障害からの回復用。ADR-026） */
+  refreshDirectUrl?: () => Promise<{
+    url: string;
+    bytes: number | null;
+  } | null>;
   signal?: AbortSignal;
   onProgress?: (received: number, total: number) => void;
 }): Promise<{ bytes: number; relPath: string }> {
@@ -805,128 +814,176 @@ export async function downloadVideoFile(input: {
     lastSaved = offset;
   };
 
-  // CDN 直接・並列取得を先に試す（ADR-021）。
-  // video.twimg.com はコネクション単位のスロットルのため、並列 Range の方が
-  // プロキシ逐次より桁違いに速い。失敗時は書き込み済み位置から
-  // CDN 逐次→プロキシ逐次へ落ちる。
+  /** IndexedDB の保存済み位置から offset を復元する */
+  const restoreOffset = async () => {
+    offset = await loadProgress(input.downloadId);
+    if (offset > 0) {
+      const existing = await file.getFile();
+      if (existing.size < offset) {
+        offset = existing.size;
+      }
+    }
+    lastSaved = offset;
+  };
+
   let directUrl = input.directUrl ?? null;
   const disableDirect = () => {
     directUrl = null;
   };
-  if (directUrl && !input.signal?.aborted) {
-    const knownTotal = await resolveDirectTotalBytes({
-      url: directUrl,
-      hintedBytes: input.directBytes,
-      signal: input.signal,
-    });
-    if (knownTotal && knownTotal <= offset) {
-      // すでに取り終わっている（完了登録だけ失敗したケース）
-      return { bytes: offset, relPath: input.relPath };
-    }
-    if (knownTotal && knownTotal > offset) {
-      total = knownTotal;
-      emit(true);
-      try {
-        const written = await downloadDirectToFile({
-          url: directUrl,
-          file,
-          offset,
-          total,
-          retries: plan.retries,
-          signal: input.signal,
-          onBytes: (n) => {
-            // 表示用の受信量。保存済み位置（レジューム基準）は onWritten 側だけが進める
-            offset += n;
-            emit();
-          },
-          onWritten: async (writtenOffset) => {
-            await saveProgress(input.downloadId, writtenOffset);
-            lastSaved = writtenOffset;
-          },
-        });
-        offset = written;
-        await persist();
-        return { bytes: offset, relPath: input.relPath };
-      } catch (error) {
-        if (
-          (error as { name?: string }).name === "AbortError" ||
-          input.signal?.aborted
-        ) {
-          // 表示用 offset は未書き込み分を含むことがあるので書き込み済み位置を保存する
-          await saveProgress(input.downloadId, lastSaved).catch(() => {});
-          throw abortError();
-        }
-        offset = await loadProgress(input.downloadId);
-        if (offset > 0) {
-          const existing = await file.getFile();
-          if (existing.size < offset) {
-            offset = existing.size;
-          }
-        }
-        lastSaved = offset;
-        total = 0;
-        emit(true);
-      }
-    }
-  }
 
-  try {
-    while (!input.signal?.aborted) {
-      if (total > 0 && offset >= total) {
-        break;
-      }
-      const chunkSize = clamp(
-        plan.chunkBytes,
-        VIDEO_CHUNK_MIN,
-        VIDEO_CHUNK_MAX,
-      );
-      const end =
-        total > 0
-          ? Math.min(offset + chunkSize - 1, total - 1)
-          : offset + chunkSize - 1;
-      const result = await downloadVideoChunk({
-        mediaId: input.mediaId,
-        file,
-        start: offset,
-        end,
-        plan,
+  // CDN 直接・並列取得を先に試す（ADR-021）。
+  // video.twimg.com はコネクション単位のスロットルのため、並列 Range の方が
+  // プロキシ逐次より桁違いに速い。失敗時は書き込み済み位置から
+  // CDN 逐次→プロキシ逐次へ落ちる。
+  const runOnce = async (): Promise<{ bytes: number; relPath: string }> => {
+    if (directUrl && !input.signal?.aborted) {
+      const knownTotal = await resolveDirectTotalBytes({
+        url: directUrl,
+        hintedBytes: input.directBytes,
         signal: input.signal,
-        onBytes,
-        directUrl,
-        onDirectFailed: disableDirect,
       });
-      if (result.status === 416) {
-        break;
+      if (knownTotal && knownTotal <= offset) {
+        // すでに取り終わっている（完了登録だけ失敗したケース）
+        return { bytes: offset, relPath: input.relPath };
       }
-      if (result.total > 0) {
-        total = result.total;
+      if (knownTotal && knownTotal > offset) {
+        total = knownTotal;
+        emit(true);
+        try {
+          const written = await downloadDirectToFile({
+            url: directUrl,
+            file,
+            offset,
+            total,
+            retries: plan.retries,
+            signal: input.signal,
+            onBytes: (n) => {
+              // 表示用の受信量。保存済み位置（レジューム基準）は onWritten 側だけが進める
+              offset += n;
+              emit();
+            },
+            onWritten: async (writtenOffset) => {
+              await saveProgress(input.downloadId, writtenOffset);
+              lastSaved = writtenOffset;
+            },
+          });
+          offset = written;
+          await persist();
+          return { bytes: offset, relPath: input.relPath };
+        } catch (error) {
+          if (
+            (error as { name?: string }).name === "AbortError" ||
+            input.signal?.aborted
+          ) {
+            // 表示用 offset は未書き込み分を含むことがあるので書き込み済み位置を保存する
+            await saveProgress(input.downloadId, lastSaved).catch(() => {});
+            throw abortError();
+          }
+          await restoreOffset();
+          total = 0;
+          emit(true);
+        }
       }
-      emit(true);
-      if (result.written === 0) {
-        break;
+    }
+
+    // プロキシ逐次。createWritable は 1 回だけ開いて使い回す（ADR-026）。
+    // keepExistingData: true の開き直しは既存内容の全コピーが走るため、
+    // チャンクごとに開くとファイルが大きいほど急激に遅くなる。
+    const writable = await file.createWritable({ keepExistingData: true });
+    try {
+      await writable.seek(offset);
+      while (!input.signal?.aborted) {
+        if (total > 0 && offset >= total) {
+          break;
+        }
+        const chunkSize = clamp(
+          plan.chunkBytes,
+          VIDEO_CHUNK_MIN,
+          VIDEO_CHUNK_MAX,
+        );
+        const end =
+          total > 0
+            ? Math.min(offset + chunkSize - 1, total - 1)
+            : offset + chunkSize - 1;
+        const result = await downloadVideoChunk({
+          mediaId: input.mediaId,
+          writable,
+          start: offset,
+          end,
+          plan,
+          signal: input.signal,
+          onBytes,
+          directUrl,
+          onDirectFailed: disableDirect,
+        });
+        if (result.status === 416) {
+          break;
+        }
+        if (result.total > 0) {
+          total = result.total;
+        }
+        emit(true);
+        if (result.written === 0) {
+          break;
+        }
+        await persist();
+        if (result.status === 200 || (total > 0 && offset >= total)) {
+          break;
+        }
+      }
+      if (input.signal?.aborted) {
+        throw abortError();
+      }
+      if (!isFinishedVideoDownload(offset, total)) {
+        throw new Error(
+          total > 0
+            ? `ダウンロードが完了しませんでした（${offset}/${total}）`
+            : "ダウンロードが完了しませんでした",
+        );
       }
       await persist();
-      if (result.status === 200 || (total > 0 && offset >= total)) {
-        break;
+      // 進捗の消去は呼び出し側が完了登録を確認してから行う
+      // （先に消すと、登録だけ失敗したときに最初から取り直しになる）
+      return { bytes: offset, relPath: input.relPath };
+    } finally {
+      try {
+        await writable.close();
+      } catch {
+        // ignore
       }
     }
-    if (input.signal?.aborted) {
-      throw abortError();
+  };
+
+  // URL 再取得で CDN 直接からやり直せるのは 1 回だけ（ADR-026）
+  let refreshedUrl = false;
+  for (;;) {
+    try {
+      return await runOnce();
+    } catch (error) {
+      if (
+        (error as { name?: string }).name === "AbortError" ||
+        input.signal?.aborted
+      ) {
+        await persist().catch(() => {});
+        throw error;
+      }
+      const retryable = (error as DownloadError).retryable !== false;
+      if (!refreshedUrl && retryable && input.refreshDirectUrl) {
+        const refreshed = await input.refreshDirectUrl().catch(() => null);
+        if (refreshed?.url) {
+          refreshedUrl = true;
+          directUrl = refreshed.url;
+          if (refreshed.bytes && refreshed.bytes > 0) {
+            total = refreshed.bytes;
+          }
+          await restoreOffset();
+          emit(true);
+          continue;
+        }
+      }
+      await persist().catch(() => {});
+      throw error;
     }
-    if (!isFinishedVideoDownload(offset, total)) {
-      throw new Error(
-        total > 0
-          ? `ダウンロードが完了しませんでした（${offset}/${total}）`
-          : "ダウンロードが完了しませんでした",
-      );
-    }
-    await persist();
-    // 進捗の消去は呼び出し側が完了登録を確認してから行う
-    // （先に消すと、登録だけ失敗したときに最初から取り直しになる）
-    return { bytes: offset, relPath: input.relPath };
-  } catch (error) {
-    await persist().catch(() => {});
-    throw error;
   }
 }
 
