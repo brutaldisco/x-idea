@@ -7,8 +7,21 @@ import { useEffect, useRef, useState } from "react";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceThumbFallback } from "@/components/SourceThumbFallback";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
+import type { LibraryView } from "@/lib/source-filters";
 import type { TaxonomyChipItem } from "@/lib/taxonomy-chip";
 import type { SourceListItem } from "@/server/sources/query";
+
+function askHref(q: string, view: LibraryView): string {
+  const params = new URLSearchParams();
+  if (q) {
+    params.set("q", q);
+  }
+  if (view === "list") {
+    params.set("view", "list");
+  }
+  const query = params.toString();
+  return query ? `/ask?${query}` : "/ask";
+}
 
 function mediaThumbUrl(
   mediaId: string | null,
@@ -85,11 +98,13 @@ function AskResultCard({
   accountId,
   categories,
   infoTypes,
+  variant,
 }: {
   item: SourceListItem;
   accountId: string | null;
   categories: TaxonomyChipItem[];
   infoTypes: TaxonomyChipItem[];
+  variant: "list" | "grid";
 }) {
   return (
     <SourceCard
@@ -114,7 +129,7 @@ function AskResultCard({
       lang={item.lang}
       summaryFromAi={item.summaryFromAi}
       postedAt={item.postedAt}
-      variant="grid"
+      variant={variant}
       avatarFallback
     />
   );
@@ -126,6 +141,7 @@ export function AskSearch({
   accountId,
   initialQuery,
   initialItems,
+  initialView = "grid",
   categories = [],
   infoTypes = [],
 }: {
@@ -134,30 +150,38 @@ export function AskSearch({
   accountId: string | null;
   initialQuery: string;
   initialItems: SourceListItem[];
+  initialView?: LibraryView;
   categories?: TaxonomyChipItem[];
   infoTypes?: TaxonomyChipItem[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [items, setItems] = useState(initialItems);
+  const [view, setViewState] = useState<LibraryView>(initialView);
   const [suggests, setSuggests] = useState<SourceListItem[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [searched, setSearched] = useState(initialQuery.length > 0);
+  const [submittedQuery, setSubmittedQuery] = useState(initialQuery.trim());
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
     setQuery(initialQuery);
     setItems(initialItems);
     setSearched(initialQuery.length > 0);
+    setSubmittedQuery(initialQuery.trim());
   }, [initialQuery, initialItems]);
+
+  useEffect(() => {
+    setViewState(initialView);
+  }, [initialView]);
 
   useEffect(() => {
     if (timer.current) {
       window.clearTimeout(timer.current);
     }
     const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < 2 || q === submittedQuery) {
       setSuggests([]);
       setOpen(false);
       return;
@@ -179,14 +203,15 @@ export function AskSearch({
         window.clearTimeout(timer.current);
       }
     };
-  }, [query]);
+  }, [query, submittedQuery]);
 
   async function runSearch(next: string) {
     const q = next.trim();
     setOpen(false);
     setBusy(true);
     setSearched(true);
-    router.replace(q ? `/ask?q=${encodeURIComponent(q)}` : "/ask");
+    setSubmittedQuery(q);
+    router.replace(askHref(q, view));
     try {
       if (!q) {
         setItems([]);
@@ -202,6 +227,11 @@ export function AskSearch({
     } finally {
       setBusy(false);
     }
+  }
+
+  function setView(next: LibraryView) {
+    setViewState(next);
+    router.replace(askHref(query.trim(), next), { scroll: false });
   }
 
   return (
@@ -225,10 +255,35 @@ export function AskSearch({
           enterKeyHint="search"
         />
       </form>
-      <p className="mt-2 text-ink-2 text-xs">
-        検索対象: {targetLabel}（{targetCount}件） · Enter で一覧。AI
-        に聞くは次の段階です。
-      </p>
+      <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <p className="text-ink-2 text-xs">
+          検索対象: {targetLabel}（{targetCount}件） · Enter で一覧。AI
+          に聞くは次の段階です。
+        </p>
+        <fieldset className="m-0 flex min-w-0 rounded-full border border-line p-0.5">
+          <legend className="sr-only">表示</legend>
+          <button
+            type="button"
+            aria-pressed={view === "list"}
+            onClick={() => setView("list")}
+            className={`min-h-8 rounded-full px-3 text-xs ${
+              view === "list" ? "bg-ink text-paper" : ""
+            }`}
+          >
+            リスト
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === "grid"}
+            onClick={() => setView("grid")}
+            className={`min-h-8 rounded-full px-3 text-xs ${
+              view === "grid" ? "bg-ink text-paper" : ""
+            }`}
+          >
+            グリッド
+          </button>
+        </fieldset>
+      </div>
       {open && suggests.length > 0 ? (
         <ul className="mt-2 overflow-hidden rounded-2xl border border-line bg-paper">
           {suggests.map((item) => (
@@ -245,7 +300,13 @@ export function AskSearch({
         </p>
       ) : null}
       {!busy && items.length > 0 ? (
-        <ul className="mt-6 grid min-w-0 grid-cols-2 gap-2 text-wrap min-[48rem]:grid-cols-3">
+        <ul
+          className={
+            view === "grid"
+              ? "mt-4 grid min-w-0 grid-cols-2 gap-2 text-wrap min-[48rem]:grid-cols-3"
+              : "mt-4 grid min-w-0 grid-cols-1 gap-3 text-wrap"
+          }
+        >
           {items.map((item) => (
             <AskResultCard
               key={item.id}
@@ -253,6 +314,7 @@ export function AskSearch({
               accountId={accountId}
               categories={categories}
               infoTypes={infoTypes}
+              variant={view}
             />
           ))}
         </ul>

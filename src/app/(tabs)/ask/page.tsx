@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { AskSearch } from "@/components/AskSearch";
+import { parseLibraryView } from "@/lib/source-filters";
 import { searchKeyword } from "@/server/search/keyword";
 import { countSources } from "@/server/sources/query";
 import { taxonomyForAccount } from "@/server/taxonomy";
@@ -15,7 +16,7 @@ export const instant = false;
 async function AskBody({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; view?: string }>;
 }) {
   await connection();
   const params = await searchParams;
@@ -35,6 +36,7 @@ async function AskBody({
       accountId={contextAccountId(ctx)}
       initialQuery={q}
       initialItems={items}
+      initialView={parseLibraryView(params.view)}
       categories={taxonomy.categories}
       infoTypes={taxonomy.infoTypes}
     />
@@ -44,7 +46,7 @@ async function AskBody({
 export default function AskPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; view?: string }>;
 }) {
   return (
     <main className="min-w-0 overflow-x-clip px-4 pt-8">
