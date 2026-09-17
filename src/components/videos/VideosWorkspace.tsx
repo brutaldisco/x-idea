@@ -97,17 +97,24 @@ async function postComplete(
   throw lastError;
 }
 
-/** 中断した項目を queued に戻す（オフライン等で失敗しても次回開始時に拾う） */
-async function requeueItem(id: string): Promise<void> {
-  try {
-    await fetch(`/api/videos/queue/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "requeue" }),
-    });
-  } catch {
-    // best effort
+/** 中断した項目を queued に戻す。すでに queued なら成功扱い（冪等） */
+async function requeueItem(id: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const res = await fetch(`/api/videos/queue/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "requeue" }),
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      // retry
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200 * 2 ** attempt));
   }
+  return false;
 }
 
 export function VideosWorkspace({
@@ -129,6 +136,7 @@ export function VideosWorkspace({
   const [data, setData] = useState(initial);
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [progress, setProgress] = useState<
@@ -142,6 +150,8 @@ export function VideosWorkspace({
   const [repeat, setRepeat] = useState<RepeatMode>("folder");
   const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef<Set<string>>(new Set());
+  /** このタブが停止した項目。409 のときだけ再 queued → start してよい */
+  const releasedIdsRef = useRef<Set<string>>(new Set());
   const sweptRef = useRef(false);
   const autoResumeRef = useRef(false);
   const [offlineHint, setOfflineHint] = useState(false);
@@ -386,6 +396,7 @@ export function VideosWorkspace({
       return;
     }
     setBusy(true);
+    setStopping(false);
     setMessage(null);
     setOfflineHint(false);
     const controller = new AbortController();
@@ -407,6 +418,9 @@ export function VideosWorkspace({
       // 進捗コールバック（バックグラウンドでも動く）とタイマーの両方から送る
       const beat = { lastAt: 0, received: 0, total: 0 };
       const sendHeartbeat = () => {
+        if (controller.signal.aborted) {
+          return;
+        }
         const now = Date.now();
         if (now - beat.lastAt < VIDEO_HEARTBEAT_MS) {
           return;
@@ -424,16 +438,36 @@ export function VideosWorkspace({
       };
       let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
       try {
-        const startRes = await fetch(`/api/videos/queue/${item.id}`, {
+        if (controller.signal.aborted) {
+          releasedIdsRef.current.add(item.id);
+          await requeueItem(item.id);
+          return;
+        }
+        let startRes = await fetch(`/api/videos/queue/${item.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "start" }),
+          signal: controller.signal,
         });
+        if (startRes.status === 409 && releasedIdsRef.current.has(item.id)) {
+          // このタブが停止した直後は、サーバーがまだ downloading のことがある
+          await requeueItem(item.id);
+          startRes = await fetch(`/api/videos/queue/${item.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "start" }),
+            signal: controller.signal,
+          });
+        }
         if (startRes.status === 409) {
           // 別のタブがリースを持っている（ADR-025）。失敗にはせず残す
           skipCount += 1;
           return;
         }
+        if (!startRes.ok) {
+          throw new Error("開始できませんでした");
+        }
+        releasedIdsRef.current.delete(item.id);
         setData((prev) => ({
           ...prev,
           queuedCount:
@@ -455,11 +489,15 @@ export function VideosWorkspace({
           try {
             const urlRes = await fetch(mediaVideoUrlApiPath(item.mediaId), {
               cache: "no-store",
+              signal: controller.signal,
             });
             if (urlRes.ok) {
               return parseVideoSourcePayload(await urlRes.json());
             }
-          } catch {
+          } catch (error) {
+            if ((error as { name?: string }).name === "AbortError") {
+              throw error;
+            }
             // プロキシ経路で進む
           }
           return null;
@@ -480,6 +518,9 @@ export function VideosWorkspace({
           refreshDirectUrl: resolveDirectUrl,
           signal: controller.signal,
           onProgress: (received, total) => {
+            if (controller.signal.aborted) {
+              return;
+            }
             beat.received = received;
             beat.total = total;
             sendHeartbeat();
@@ -506,6 +547,7 @@ export function VideosWorkspace({
       } catch (error) {
         if ((error as { name?: string }).name === "AbortError") {
           // 停止: 途中まで保存されているので queued に戻して再開可能にする
+          releasedIdsRef.current.add(item.id);
           await requeueItem(item.id);
           clearItemProgress(item.id);
           setData((prev) => ({
@@ -582,7 +624,7 @@ export function VideosWorkspace({
       if (skipCount > 0) {
         parts.push(`${skipCount} 件は別のタブで実行中`);
       }
-      if (doneBytes > 0 && elapsed > 0) {
+      if (doneBytes > 0 && elapsed > 0 && !controller.signal.aborted) {
         parts.push(
           `実測 ${(doneBytes / elapsed / 1024 / 1024).toFixed(1)} MB/s`,
         );
@@ -590,15 +632,33 @@ export function VideosWorkspace({
       if (parts.length > 0) {
         setMessage(parts.join("。"));
       }
-      await refresh();
+      // 停止後の一覧再取得はボタン復帰を待たせない
+      if (controller.signal.aborted) {
+        void refresh();
+      } else {
+        await refresh();
+      }
     } finally {
+      setStopping(false);
       setBusy(false);
       abortRef.current = null;
     }
   }
 
   function stopDownloads() {
-    abortRef.current?.abort();
+    const controller = abortRef.current;
+    if (!controller || controller.signal.aborted) {
+      return;
+    }
+    setStopping(true);
+    setMessage("停止しています…");
+    controller.abort();
+    const ids = [...activeRef.current];
+    for (const id of ids) {
+      releasedIdsRef.current.add(id);
+    }
+    // リースをすぐ外す。失敗してもあとで再試行する
+    void Promise.all(ids.map((id) => requeueItem(id)));
   }
 
   async function cancelItem(item: VideoItem) {
@@ -945,10 +1005,11 @@ export function VideosWorkspace({
                 {busy ? (
                   <button
                     type="button"
+                    disabled={stopping}
                     onClick={stopDownloads}
-                    className="rounded-full border border-danger px-3 py-1.5 text-danger text-sm hover:bg-paper"
+                    className="rounded-full border border-danger px-3 py-1.5 text-danger text-sm hover:bg-paper disabled:opacity-60"
                   >
-                    停止
+                    {stopping ? "停止中…" : "停止"}
                   </button>
                 ) : (
                   <button
@@ -1046,19 +1107,23 @@ export function VideosWorkspace({
                     item.status === "downloading" && !prog && !otherTabActive;
                   const downloading =
                     Boolean(prog) && item.status === "downloading";
-                  const speedLabel = downloading
-                    ? (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
-                    : null;
-                  const statusLabel = otherTabActive
-                    ? "別のタブで実行中です"
-                    : interrupted
-                      ? "中断しています（再開できます）"
-                      : item.status === "failed"
-                        ? "失敗（途中から再開できます）"
-                        : videoQueueStatusLabel(
-                            downloading ? "downloading" : item.status,
-                            pct,
-                          );
+                  const itemStopping = stopping && downloading;
+                  const speedLabel =
+                    downloading && !stopping
+                      ? (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
+                      : null;
+                  const statusLabel = itemStopping
+                    ? "停止中"
+                    : otherTabActive
+                      ? "別のタブで実行中です"
+                      : interrupted
+                        ? "中断しています（再開できます）"
+                        : item.status === "failed"
+                          ? "失敗（途中から再開できます）"
+                          : videoQueueStatusLabel(
+                              downloading ? "downloading" : item.status,
+                              pct,
+                            );
                   const statusWithSpeed = speedLabel
                     ? `${statusLabel} · ${speedLabel}`
                     : statusLabel;

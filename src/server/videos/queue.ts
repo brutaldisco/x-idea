@@ -460,6 +460,10 @@ export async function updateVideoQueue(
     return loadVideoItem(id);
   }
   if (action === "requeue") {
+    // queued はすでに解放済み。二重呼び出しでも失敗させない（停止→再開のレース）
+    if (item.status === "queued") {
+      return item;
+    }
     if (item.status !== "downloading") {
       throw new AppError("VALIDATION", "再開できる状態ではありません");
     }

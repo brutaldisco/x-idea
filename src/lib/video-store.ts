@@ -15,6 +15,7 @@ import {
 import {
   isFinishedVideoDownload,
   leftoverVideoRelPaths,
+  resumeVideoOffset,
 } from "@/lib/video-files";
 import {
   isSafeVideoRelPath,
@@ -273,9 +274,16 @@ async function writeResponseStream(
   res: Response,
   writable: FileSystemWritableFileStream,
   onBytes: (byteLength: number) => void | Promise<void>,
+  signal?: AbortSignal,
 ): Promise<number> {
+  if (signal?.aborted) {
+    throw abortError();
+  }
   if (!res.body) {
     const bytes = new Uint8Array(await res.arrayBuffer());
+    if (signal?.aborted) {
+      throw abortError();
+    }
     if (bytes.byteLength > 0) {
       await writable.write(bytes);
       await onBytes(bytes.byteLength);
@@ -283,9 +291,16 @@ async function writeResponseStream(
     return bytes.byteLength;
   }
   const reader = res.body.getReader();
+  const onAbort = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
   let written = 0;
   try {
     while (true) {
+      if (signal?.aborted) {
+        throw abortError();
+      }
       const { done, value } = await reader.read();
       if (done) {
         break;
@@ -293,18 +308,30 @@ async function writeResponseStream(
       if (!value?.byteLength) {
         continue;
       }
+      if (signal?.aborted) {
+        throw abortError();
+      }
       await writable.write(value);
       written += value.byteLength;
       await onBytes(value.byteLength);
     }
   } finally {
-    reader.releaseLock();
+    signal?.removeEventListener("abort", onAbort);
+    try {
+      reader.releaseLock();
+    } catch {
+      // cancel() 済みだと releaseLock が失敗することがある
+    }
   }
   return written;
 }
 
 function abortError(): DOMException {
   return new DOMException("Aborted", "AbortError");
+}
+
+function isAbortError(error: unknown): boolean {
+  return (error as { name?: string }).name === "AbortError";
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -426,9 +453,13 @@ async function writeChunkToWritable(
   res: Response,
   start: number,
   onBytes: (n: number) => void | Promise<void>,
+  signal?: AbortSignal,
 ): Promise<number> {
+  if (signal?.aborted) {
+    throw abortError();
+  }
   await writable.seek(start);
-  return writeResponseStream(res, writable, onBytes);
+  return writeResponseStream(res, writable, onBytes, signal);
 }
 
 async function downloadVideoChunk(input: {
@@ -487,11 +518,15 @@ async function downloadVideoChunk(input: {
       if (res.status === 416) {
         return { written: 0, status: 416, total: parseTotal(res, 0) };
       }
+      if (input.signal?.aborted) {
+        throw abortError();
+      }
       const written = await writeChunkToWritable(
         input.writable,
         res,
         input.start,
         onBytes,
+        input.signal,
       );
       const elapsed = (nowMs() - chunkStart) / 1000;
       if (written > 0 && elapsed > 0) {
@@ -673,6 +708,14 @@ async function downloadDirectToFile(input: {
   const writable = await input.file.createWritable({
     keepExistingData: true,
   });
+  if (input.signal?.aborted) {
+    try {
+      await writable.close();
+    } catch {
+      // ignore
+    }
+    throw abortError();
+  }
   const controller = new AbortController();
   const onParentAbort = () => controller.abort();
   input.signal?.addEventListener("abort", onParentAbort, { once: true });
@@ -682,7 +725,13 @@ async function downloadDirectToFile(input: {
   let writeChain: Promise<void> = Promise.resolve();
   const flush = () => {
     writeChain = writeChain.then(async () => {
+      if (controller.signal.aborted) {
+        return;
+      }
       for (;;) {
+        if (controller.signal.aborted) {
+          return;
+        }
         const data = pending.get(nextWrite);
         if (!data) {
           return;
@@ -731,8 +780,19 @@ async function downloadDirectToFile(input: {
         }
       }),
     );
-    await flush();
     const failure = results.find((error) => error != null);
+    // 停止時は未書き込みチャンクを捨てて close に進む。flush すると
+    // 最大 32MB を書いてから閉じることになり、停止が遅れる。
+    if (
+      controller.signal.aborted ||
+      input.signal?.aborted ||
+      isAbortError(failure)
+    ) {
+      // 進行中の 1 書き込みだけ待ってから閉じる（未着手の pending は捨てる）
+      await writeChain.catch(() => undefined);
+      throw abortError();
+    }
+    await flush();
     if (failure) {
       throw failure;
     }
@@ -776,13 +836,10 @@ export async function downloadVideoFile(input: {
     true,
   );
   const file = await dir.getFileHandle(fileName, { create: true });
-  let offset = await loadProgress(input.downloadId);
-  if (offset > 0) {
-    const existing = await file.getFile();
-    if (existing.size < offset) {
-      offset = existing.size;
-    }
-  }
+  let offset = resumeVideoOffset(
+    await loadProgress(input.downloadId),
+    (await file.getFile()).size,
+  );
 
   const plan = initialVideoDownloadPlan(input.estimatedBytes);
   let total = 0;
@@ -816,13 +873,10 @@ export async function downloadVideoFile(input: {
 
   /** IndexedDB の保存済み位置から offset を復元する */
   const restoreOffset = async () => {
-    offset = await loadProgress(input.downloadId);
-    if (offset > 0) {
-      const existing = await file.getFile();
-      if (existing.size < offset) {
-        offset = existing.size;
-      }
-    }
+    offset = resumeVideoOffset(
+      await loadProgress(input.downloadId),
+      (await file.getFile()).size,
+    );
     lastSaved = offset;
   };
 
@@ -871,10 +925,7 @@ export async function downloadVideoFile(input: {
           await persist();
           return { bytes: offset, relPath: input.relPath };
         } catch (error) {
-          if (
-            (error as { name?: string }).name === "AbortError" ||
-            input.signal?.aborted
-          ) {
+          if (isAbortError(error) || input.signal?.aborted) {
             // 表示用 offset は未書き込み分を含むことがあるので書き込み済み位置を保存する
             await saveProgress(input.downloadId, lastSaved).catch(() => {});
             throw abortError();
@@ -891,6 +942,9 @@ export async function downloadVideoFile(input: {
     // チャンクごとに開くとファイルが大きいほど急激に遅くなる。
     const writable = await file.createWritable({ keepExistingData: true });
     try {
+      if (input.signal?.aborted) {
+        throw abortError();
+      }
       await writable.seek(offset);
       while (!input.signal?.aborted) {
         if (total > 0 && offset >= total) {
@@ -960,12 +1014,10 @@ export async function downloadVideoFile(input: {
     try {
       return await runOnce();
     } catch (error) {
-      if (
-        (error as { name?: string }).name === "AbortError" ||
-        input.signal?.aborted
-      ) {
-        await persist().catch(() => {});
-        throw error;
+      if (isAbortError(error) || input.signal?.aborted) {
+        // 表示用 offset ではなく書き込み済み位置を残す
+        await saveProgress(input.downloadId, lastSaved).catch(() => {});
+        throw abortError();
       }
       const retryable = (error as DownloadError).retryable !== false;
       if (!refreshedUrl && retryable && input.refreshDirectUrl) {

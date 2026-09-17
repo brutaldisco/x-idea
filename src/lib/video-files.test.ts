@@ -5,6 +5,7 @@ import {
   isIncompleteVideoFile,
   leftoverVideoRelPaths,
   resolveSavedVideoRelPath,
+  resumeVideoOffset,
 } from "./video-files";
 
 describe("resolveSavedVideoRelPath", () => {
@@ -82,5 +83,21 @@ describe("leftoverVideoRelPaths", () => {
         ["acc/a.mp4", "acc/c.mp4"],
       ),
     ).toEqual(["acc/b.mp4"]);
+  });
+});
+
+describe("resumeVideoOffset", () => {
+  it("clamps saved progress to the file size", () => {
+    expect(resumeVideoOffset(100, 80)).toBe(80);
+    expect(resumeVideoOffset(50, 80)).toBe(50);
+  });
+
+  it("resumes from the file when IndexedDB progress is gone", () => {
+    expect(resumeVideoOffset(0, 2_000_000)).toBe(2_000_000);
+  });
+
+  it("starts from zero when the file is empty", () => {
+    expect(resumeVideoOffset(100, 0)).toBe(0);
+    expect(resumeVideoOffset(0, 0)).toBe(0);
   });
 });

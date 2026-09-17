@@ -48,6 +48,22 @@ export function collectSavedVideoRelPaths(
   return { accountId, videoRelPaths: [...paths] };
 }
 
+/**
+ * 再開位置。IndexedDB の進捗を優先しつつ、ファイルより先は進まない。
+ * 進捗が消えていてもファイルに途中まで書いてあればそのサイズから続ける。
+ */
+export function resumeVideoOffset(
+  savedProgress: number,
+  fileSize: number,
+): number {
+  const saved = savedProgress > 0 ? savedProgress : 0;
+  const size = fileSize > 0 ? fileSize : 0;
+  if (saved > 0) {
+    return size > 0 ? Math.min(saved, size) : 0;
+  }
+  return size;
+}
+
 /** 既知の総量に対して受信が足りない、または 0 バイトなら未完了 */
 export function isFinishedVideoDownload(
   received: number,
