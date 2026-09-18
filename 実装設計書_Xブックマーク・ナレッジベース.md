@@ -360,17 +360,18 @@ UI/UX の判断に迷ったら以下に従う。
 - **アカウントコンテキスト**（v3.3）：一覧・件数は選択中アカウントだけに絞る。`x_account_id IS NULL` は表示しない。
 - **ページネーション**：1ページ 60件。`?page=`（1始まり）。前へ／次へに加え、ページ番号で直接移動できる（多いときは省略）。ページャは一覧の下だけ。並び・フィルタを変えると 1 ページ目に戻る。API は `LIMIT 60 OFFSET (page-1)*60`（全件 SELECT 禁止）。Reader 往復は同じ `page` を URL に残す。ページ送りでは前ページの先頭を見せず、スケルトンのあと次ページを出す。
 - **スクロール位置**：詳細から戻ったとき、離れる前の位置に戻す。並び・フィルタ・表示・ページの URL（`/library?...`）とスクロール Y・開いた Source を `sessionStorage` に残す。戻る直後に Y=0 で上書きしない。復元は **1 回**。読み込み中にユーザーがスクロールしたら復元を打ち切る。遅延タイマーで `scrollTo` を連打しない。Reader の「← ライブラリ」と Library タブは直近のクエリ付き URL へ戻す。並び／検索条件はクライアントの `useSearchParams` で読む。読み込み・キャッシュ再編は `docs/design/2026-09-09-library-load-cache.md`。
+- **動画バレットの同期**：キュー投入・開始・完了・失敗・取消・削除のたびに Library persist を直接更新する（`refetchOnMount: false` のため invalidate だけでは黄の「キュー」が残る。ADR-016）。Ask / Inbox / Reader も同じイベントでバレットを合わせる。カバー画像と違う動画の完了ではカードを書き換えない。
 - **削除**：一覧はキャッシュから当該行を外し、消した ID は再表示しない。
 - **Atlas（P2）**：`<canvas>`（`d3-force` + `d3-zoom`、または `pixi.js`）。ノード＝Source（最大 3,000 表示、超過は代表点に集約）。座標はサーバーで週次計算（PCA→UMAP 相当の近似、`source_layout` テーブル）。クラスタ命名は Flash-Lite。タップ→クラスタ内リスト、ロングタップ→そのクラスタを Lens 化。タイムスライダーで `saved_at` によるフェード。PC 優先、モバイルは簡易（ピンチズームのみ）。
 
 ### 8.4 SC-04 Ask
 
-- **オムニボックス**：1つの入力。入力中は FTS 即時サジェスト（デバウンス 150ms、上位 8 件、サムネまたは投稿者アバター付きの行。Enter 後の確定クエリでは出さない）。Enter でハイブリッド検索結果一覧（P1 は FTS のみ）。一覧は Library と同じ **リスト／グリッド切替**（既定はグリッド。`?view=list`。サムネ、無いときは投稿者アバター。動画は再生時間）。「AI に聞く」ボタン（または `⌘Enter`）で RAG チャットへ。
-- **RAG チャット（P2）**：`useChat`。回答はストリーミング。`tool-searchKnowledge` パートを **Source カード**（サムネ、投稿者、一行要約、開くボタン）として回答内にインライン描画（生成UI）。文中の `[n]` はカードへスクロール。根拠不足時は明示バッジ「保存情報には見つかりませんでした」。
+- **オムニボックス**：1つの入力。入力中は FTS 即時サジェスト（デバウンス 150ms、上位 8 件、サムネまたは投稿者アバター付きの行。Enter 後の確定クエリでは出さない）。Enter でハイブリッド検索結果一覧（P1 は FTS のみ）。一覧は Library と同じ **リスト／グリッド切替**（既定はグリッド。`?view=list`。サムネ、無いときは投稿者アバター。動画は再生時間）。「AI に聞く」ボタン（または `⌘Enter`）で RAG チャットへ。無料枠（bulk レーン）の残り回数を出し、0・一時停止・キーなしではボタンを無効にする。有料へ自動切替しない。
+- **RAG チャット**：`ToolLoopAgent`（bulk）。回答はストリーミング。`searchKnowledge` の結果を **Source カード**として描画。文中の `[n]` はカードへスクロール。根拠不足時は「保存情報には見つかりませんでした」。`searchKnowledge` は当面 FTS（embed レーンを消費しない。ハイブリッドは T-302 後）。
 - **追質問チップ**：AI が提案する 3 つ（例「未実践のものだけ」「英語の情報源は？」）。
-- **音声入力**：Web Speech API（`SpeechRecognition`、ja-JP）。非対応環境はボタン非表示。
-- **「深く考える」トグル**：quality レーン（3.6 Flash）を使用。残り回数を表示（例「今日あと 7 回」）。
-- **保存**：回答を KC のドラフトとして保存（引用 Source を `kc_sources` に）。
+- **音声入力**（未実装）：Web Speech API（`SpeechRecognition`、ja-JP）。非対応環境はボタン非表示。
+- **「深く考える」トグル**（未実装）：quality レーン（3.6 Flash）。無料枠節約のため今は出さない。
+- **保存**（未実装）：回答を KC のドラフトとして保存（引用 Source を `kc_sources` に）。
 - **アカウントコンテキスト**（v3.3）：FTS / RAG の対象は選択中コンテキストに絞る。オムニボックス下に「検索対象: @a（N件）」を出す。
 - **フィルタ連動**：ライブラリのフィルタ状態を Ask に持ち込める（「筋トレカテゴリの中で聞く」）。
 
@@ -931,8 +932,9 @@ on 429:
 
 ### 16.7 Ask（RAG、P2）
 
-- `ToolLoopAgent`（bulk レーン既定、「深く考える」で quality）。
-- ツール：`searchKnowledge({query, filters, k})`（ハイブリッド検索）、`getSource({id})`、`listCategories()`。
+- `ToolLoopAgent`（bulk レーン既定。「深く考える」は未実装。quality は使わない）。
+- ツール：`searchKnowledge({query, filters, k})`（当面 FTS。ハイブリッドは T-302 後）、`getSource({id})`、`listCategories()`。
+- 各 LLM ステップは `budget.guard('bulk')`。キャップ／クールダウン／一時停止で開始不可。429 でも `ai_paid_enabled` を触らない。
 - 指示：保存情報のみを根拠に回答。根拠は `[n]` で引用。不足は明言。一般知識で補う場合は「（一般知識）」と明示して分離。日本語で簡潔。
 - 出力：`createAgentUIStreamResponse`。クライアントは `tool-searchKnowledge` パートを Source カードとして描画。
 - 会話は `qa_sessions/qa_messages` に保存（引用 `citations_json`）。
@@ -1698,7 +1700,8 @@ Next.js Route Handlers ＋ Server Actions。**UI からの操作は Server Actio
 | GET | `/api/search/suggest` | 入力中サジェスト（FTS、上位 8） | 同一オリジン | P1 |
 | GET | `/api/inbox/count` | 要確認件数（Badging 用） | 同一オリジン | P1 |
 | GET | `/api/export?format=md|json` | エクスポート（ストリーミング zip） | 同一オリジン | P2 |
-| POST | `/api/ask` | Ask（AI SDK UI stream） | 同一オリジン | P2 |
+| GET | `/api/ask` | Ask 無料枠の残量（bulk。0 なら利用不可） | 同一オリジン | P2 |
+| POST | `/api/ask` | Ask（AI SDK UI stream、bulk のみ） | 同一オリジン | P2 |
 | POST | `/api/capture` | Quick Capture `{url?, text?, category_id?}` | `Bearer <capture token>` | P2 |
 | GET/POST/DELETE | `/api/mcp` | MCP（Streamable HTTP） | `Bearer <mcp token>` | P2 |
 | POST | `/api/push/subscribe` / DELETE | Push 購読 | 同一オリジン | P2 |

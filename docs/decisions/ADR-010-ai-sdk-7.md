@@ -18,3 +18,4 @@ T-201 は AI SDK 6 を指定していた。着手時点の npm 最新は `ai@7` 
 ## 影響
 
 - 設計書 13.1 / T-201 の「AI SDK 6」表記を 7 に合わせる。Ask の `ToolLoopAgent` は後続タスクで同じパッケージを使う。
+- Ask（2026-09-18）：`POST /api/ask` は bulk レーンのみ。`searchKnowledge` は FTS。無料枠が尽きたら UI を無効化する。有料へ自動切替しない。

@@ -12,6 +12,10 @@ import {
 import { rememberDeletedSource } from "@/lib/library-deleted";
 import { readLibraryHref } from "@/lib/library-scroll";
 import {
+  applyVideoItemSaveStatus,
+  applyVideoSaveStatus,
+} from "@/lib/video-save-status";
+import {
   ensureWritePermission,
   loadVideoRoot,
   removeSavedVideoFiles,
@@ -110,13 +114,36 @@ export function SourceCardMenu({
       const body = (await res.json().catch(() => null)) as {
         message?: string;
         error?: { message?: string };
+        items?: Array<{
+          sourceId?: string | null;
+          mediaId?: string;
+          relPath?: string | null;
+        }>;
       } | null;
       if (!res.ok) {
         window.alert(body?.error?.message ?? "キューに追加できませんでした。");
         return;
       }
+      const queued = body?.items ?? [];
+      if (queued.length > 0) {
+        for (const item of queued) {
+          applyVideoItemSaveStatus(
+            queryClient,
+            {
+              sourceId: item.sourceId ?? sourceId,
+              mediaId: item.mediaId ?? "",
+              relPath: item.relPath ?? null,
+            },
+            "queued",
+          );
+        }
+      } else {
+        applyVideoSaveStatus(queryClient, {
+          sourceId,
+          videoSaveStatus: "queued",
+        });
+      }
       setOpen(false);
-      void queryClient.invalidateQueries({ queryKey: [LIBRARY_SOURCES_KEY] });
       router.refresh();
     } finally {
       setQueueBusy(false);

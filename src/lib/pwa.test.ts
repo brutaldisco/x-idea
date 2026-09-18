@@ -39,6 +39,7 @@ describe("shouldBypassServiceWorker", () => {
     expect(shouldBypassServiceWorker("/api/settings/taxonomy", "GET")).toBe(
       true,
     );
+    expect(shouldBypassServiceWorker("/api/ask", "GET")).toBe(true);
     expect(shouldBypassServiceWorker("/today", "GET")).toBe(false);
   });
 });

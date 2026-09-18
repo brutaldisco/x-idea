@@ -1,9 +1,12 @@
+"use client";
+
 import Image from "next/image";
 import { ExpandablePhoto } from "@/components/PhotoLightbox";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { SourceMetaFields } from "@/components/SourceMetaFields";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import type { TaxonomyAccentId } from "@/lib/taxonomy-accent";
+import { useLiveMediaVideoSave } from "@/lib/use-video-save-status";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 import type { MediaItem } from "@/server/sources/detail";
 
@@ -48,6 +51,12 @@ export function SourceHero({
     ? new Date(postedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
     : null;
   const hero = media[0] ?? null;
+  const live = useLiveMediaVideoSave(hero?.id ?? "", {
+    videoSaveStatus: hero?.videoSaveStatus,
+    videoRelPath: hero?.videoRelPath,
+  });
+  const heroSaveStatus = hero ? live.videoSaveStatus : null;
+  const heroRelPath = hero ? live.videoRelPath : null;
   const heroSrc =
     hero?.type === "photo" ? hero.src : (hero?.previewSrc ?? hero?.src ?? null);
 
@@ -100,10 +109,10 @@ export function SourceHero({
         />
       </div>
       {heroSrc ? (
-        hero && hero.type !== "photo" && hero.videoSaveStatus === "ready" ? (
+        hero && hero.type !== "photo" && heroSaveStatus === "ready" ? (
           <SavedVideoThumbButton
             mediaId={hero.id}
-            videoRelPath={hero.videoRelPath}
+            videoRelPath={heroRelPath}
             title={hero.altText ?? "動画"}
             className="relative mt-4 block w-full overflow-hidden rounded-[var(--radius-card)] bg-paper-2"
           >
@@ -117,7 +126,7 @@ export function SourceHero({
             />
             <VideoThumbMarks
               mediaType={hero.type}
-              saveStatus={hero.videoSaveStatus}
+              saveStatus={heroSaveStatus}
               durationMs={hero.durationMs}
               className="right-3 bottom-3"
             />
@@ -147,7 +156,7 @@ export function SourceHero({
             />
             <VideoThumbMarks
               mediaType={hero?.type}
-              saveStatus={hero?.videoSaveStatus}
+              saveStatus={heroSaveStatus}
               durationMs={hero?.durationMs}
               className="right-3 bottom-3"
             />

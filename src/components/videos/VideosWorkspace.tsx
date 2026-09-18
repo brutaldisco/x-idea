@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -41,6 +42,7 @@ import {
   isResumableVideoQueueStatus,
   isVideoLeaseStale,
 } from "@/lib/video-queue";
+import { applyVideoItemSaveStatus } from "@/lib/video-save-status";
 import {
   clearProgress,
   discardPartialVideoFiles,
@@ -129,6 +131,7 @@ export function VideosWorkspace({
   initialQueueOpen?: boolean;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { supported, linked, folderName } = useVideoSaveFolder(
     accountId,
     initialFolderName,
@@ -468,6 +471,7 @@ export function VideosWorkspace({
           throw new Error("開始できませんでした");
         }
         releasedIdsRef.current.delete(item.id);
+        applyVideoItemSaveStatus(queryClient, item, "downloading");
         setData((prev) => ({
           ...prev,
           queuedCount:
@@ -536,6 +540,12 @@ export function VideosWorkspace({
         await clearProgress(item.id);
         // 完了したものから即座にライブラリへ出す
         clearItemProgress(item.id);
+        applyVideoItemSaveStatus(
+          queryClient,
+          completed,
+          "ready",
+          completed.relPath,
+        );
         setData((prev) => ({
           ...prev,
           queue: prev.queue.filter((entry) => entry.id !== item.id),
@@ -550,6 +560,7 @@ export function VideosWorkspace({
           releasedIdsRef.current.add(item.id);
           await requeueItem(item.id);
           clearItemProgress(item.id);
+          applyVideoItemSaveStatus(queryClient, item, "queued");
           setData((prev) => ({
             ...prev,
             queuedCount: prev.queue.some(
@@ -576,6 +587,7 @@ export function VideosWorkspace({
         // 途中ファイルと進捗（IndexedDB）は残す。「再試行」で続きから取り直せる。
         // 明示的に消したいときはキューの「途中ファイルを削除」を使う
         clearItemProgress(item.id);
+        applyVideoItemSaveStatus(queryClient, item, "failed");
         setData((prev) => ({
           ...prev,
           queue: prev.queue.map((entry) =>
@@ -656,6 +668,10 @@ export function VideosWorkspace({
     const ids = [...activeRef.current];
     for (const id of ids) {
       releasedIdsRef.current.add(id);
+      const item = data.queue.find((entry) => entry.id === id);
+      if (item) {
+        applyVideoItemSaveStatus(queryClient, item, "queued");
+      }
     }
     // リースをすぐ外す。失敗してもあとで再試行する
     void Promise.all(ids.map((id) => requeueItem(id)));
@@ -669,6 +685,7 @@ export function VideosWorkspace({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "cancel" }),
     });
+    applyVideoItemSaveStatus(queryClient, item, "canceled");
     await refresh();
   }
 
@@ -784,6 +801,7 @@ export function VideosWorkspace({
       root: handle,
     });
     await fetch(`/api/videos/${item.id}`, { method: "DELETE" });
+    applyVideoItemSaveStatus(queryClient, item, null, null);
     if (leftover > 0) {
       setMessage(
         "記録は削除しました。動画ファイルを消せませんでした。Settings で保存フォルダを再リンクするか、Finder で消してください。",
@@ -816,6 +834,7 @@ export function VideosWorkspace({
             error: "ファイルが途中で止まっています",
           }),
         });
+        applyVideoItemSaveStatus(queryClient, item, "failed");
         setMessage(
           "途中で止まったファイルを削除しました。キューから再試行できます。",
         );
@@ -838,6 +857,7 @@ export function VideosWorkspace({
           error: "ファイルが見つかりません",
         }),
       }).catch(() => undefined);
+      applyVideoItemSaveStatus(queryClient, item, "failed");
       setMessage(
         "ファイルが見つかりません。途中ファイルは削除済みです。キューから再試行できます。",
       );

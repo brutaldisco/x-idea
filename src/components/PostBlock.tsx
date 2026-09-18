@@ -8,9 +8,11 @@ import type { PostCard } from "@/server/sources/detail";
 export function PostBlock({
   post,
   eyebrow,
+  sourceId,
 }: {
   post: PostCard;
   eyebrow?: string;
+  sourceId?: string | null;
 }) {
   const when = post.postedAt
     ? new Date(post.postedAt).toLocaleString("ja-JP", {
@@ -81,7 +83,7 @@ export function PostBlock({
         </blockquote>
       ) : null}
       {long ? null : translate}
-      <MediaGallery items={post.media} postUrl={post.url} />
+      <MediaGallery items={post.media} postUrl={post.url} sourceId={sourceId} />
     </article>
   );
 }

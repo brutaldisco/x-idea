@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -8,15 +9,19 @@ import { QueueBadge } from "@/components/QueueBadge";
 import { SavedBadge } from "@/components/SavedBadge";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
+import { useLiveMediaVideoSave } from "@/lib/use-video-save-status";
+import { applyVideoSaveStatus } from "@/lib/video-save-status";
 import { formatVideoQueueMeta } from "@/server/media/select";
 import type { MediaItem } from "@/server/sources/detail";
 
 export function MediaGallery({
   items,
   postUrl,
+  sourceId,
 }: {
   items: MediaItem[];
   postUrl?: string | null;
+  sourceId?: string | null;
 }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   if (items.length === 0) {
@@ -31,6 +36,7 @@ export function MediaGallery({
             key={item.id}
             item={item}
             postUrl={postUrl ?? null}
+            sourceId={sourceId ?? null}
             onOpen={() => {
               if (item.type === "photo") {
                 setLightbox(item.src);
@@ -49,19 +55,25 @@ export function MediaGallery({
 function MediaTile({
   item,
   postUrl,
+  sourceId,
   onOpen,
 }: {
   item: MediaItem;
   postUrl: string | null;
+  sourceId: string | null;
   onOpen: () => void;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const live = useLiveMediaVideoSave(item.id, {
+    videoSaveStatus: item.videoSaveStatus,
+    videoRelPath: item.videoRelPath,
+  });
   const pending =
     item.downloadStatus === "pending" || item.downloadStatus === "downloading";
   const failed = item.downloadStatus === "failed";
   const showImage = !imageFailed;
   const isVideo = item.type !== "photo";
-  const playable = isVideo && item.videoSaveStatus === "ready";
+  const playable = isVideo && live.videoSaveStatus === "ready";
   const fileMeta = isVideo
     ? formatVideoQueueMeta({
         bytes: item.bytes,
@@ -91,7 +103,7 @@ function MediaTile({
       ) : null}
       <VideoThumbMarks
         mediaType={item.type}
-        saveStatus={item.videoSaveStatus}
+        saveStatus={live.videoSaveStatus}
         durationMs={item.durationMs}
         className="right-1.5 bottom-1.5"
       />
@@ -104,7 +116,7 @@ function MediaTile({
         playable ? (
           <SavedVideoThumbButton
             mediaId={item.id}
-            videoRelPath={item.videoRelPath}
+            videoRelPath={live.videoRelPath}
             title={item.altText ?? "動画"}
             className="relative block w-full"
           >
@@ -156,7 +168,11 @@ function MediaTile({
               <span className="text-ink-2 text-xs">{fileMeta}</span>
             ) : null}
           </div>
-          <VideoSaveControl item={item} />
+          <VideoSaveControl
+            item={item}
+            sourceId={sourceId}
+            status={live.videoSaveStatus}
+          />
         </div>
       ) : null}
       {pending && !isVideo ? (
@@ -174,8 +190,16 @@ function MediaTile({
   );
 }
 
-function VideoSaveControl({ item }: { item: MediaItem }) {
-  const [status, setStatus] = useState(item.videoSaveStatus);
+function VideoSaveControl({
+  item,
+  sourceId,
+  status,
+}: {
+  item: MediaItem;
+  sourceId: string | null;
+  status: string | null;
+}) {
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -220,7 +244,11 @@ function VideoSaveControl({ item }: { item: MediaItem }) {
               if (!res.ok) {
                 throw new Error(body?.error?.message ?? "追加できませんでした");
               }
-              setStatus("queued");
+              applyVideoSaveStatus(queryClient, {
+                sourceId,
+                mediaId: item.id,
+                videoSaveStatus: "queued",
+              });
               setMessage("キューに追加しました（Videos タブで実行）");
             })
             .catch((error: unknown) => {

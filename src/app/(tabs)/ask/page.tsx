@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { AskSearch } from "@/components/AskSearch";
 import { parseLibraryView } from "@/lib/source-filters";
+import { getAskAvailability } from "@/server/ask/availability";
 import { searchKeyword } from "@/server/search/keyword";
 import { countSources } from "@/server/sources/query";
 import { taxonomyForAccount } from "@/server/taxonomy";
@@ -22,10 +23,11 @@ async function AskBody({
   const params = await searchParams;
   const q = params.q ?? "";
   const ctx = await getAccountContext();
-  const [count, items, taxonomy] = await Promise.all([
+  const [count, items, taxonomy, ask] = await Promise.all([
     countSources({ ctx }),
     searchKeyword({ q, ctx }),
     taxonomyForAccount(contextAccountId(ctx)),
+    getAskAvailability(),
   ]);
   const label = contextLabel(ctx);
 
@@ -39,6 +41,7 @@ async function AskBody({
       initialView={parseLibraryView(params.view)}
       categories={taxonomy.categories}
       infoTypes={taxonomy.infoTypes}
+      initialAsk={ask}
     />
   );
 }

@@ -181,7 +181,11 @@ export default async function SourcePage({
         ) : null}
 
         <div className="mt-5">
-          <PostBlock post={source.post} eyebrow="ブックマーク" />
+          <PostBlock
+            post={source.post}
+            eyebrow="ブックマーク"
+            sourceId={source.id}
+          />
         </div>
 
         {source.thread.length > 0 ? (

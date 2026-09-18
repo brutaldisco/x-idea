@@ -4,11 +4,25 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { AskChat } from "@/components/AskChat";
 import { SourceCard } from "@/components/SourceCard";
 import { SourceThumbFallback } from "@/components/SourceThumbFallback";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
+import {
+  type AskAvailability,
+  applyAskUiChunk,
+  parseAskFollowUps,
+  pruneAskUiMessages,
+  toAskUiMessage,
+} from "@/lib/ask";
+import { formatAskReset, readAskSse } from "@/lib/ask-stream";
 import type { LibraryView } from "@/lib/source-filters";
 import type { TaxonomyChipItem } from "@/lib/taxonomy-chip";
+import { useLiveSourceVideoSave } from "@/lib/use-video-save-status";
+import {
+  applySourceListVideoSave,
+  subscribeVideoSaveStatus,
+} from "@/lib/video-save-status";
 import type { SourceListItem } from "@/server/sources/query";
 
 function askHref(q: string, view: LibraryView): string {
@@ -43,6 +57,11 @@ function AskSuggestRow({
   onPick: () => void;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const live = useLiveSourceVideoSave(item.id, item.mediaId, {
+    videoSaveStatus: item.videoSaveStatus,
+    videoRelPath: item.videoRelPath,
+    hasQueueableVideos: item.hasQueueableVideos,
+  });
   const thumbUrl = mediaThumbUrl(item.mediaId, item.mediaType);
   const showImage = Boolean(thumbUrl) && !imageFailed;
 
@@ -77,7 +96,7 @@ function AskSuggestRow({
         )}
         <VideoThumbMarks
           mediaType={item.mediaType}
-          saveStatus={item.videoSaveStatus}
+          saveStatus={live.videoSaveStatus}
           durationMs={item.durationMs}
         />
       </span>
@@ -144,6 +163,7 @@ export function AskSearch({
   initialView = "grid",
   categories = [],
   infoTypes = [],
+  initialAsk,
 }: {
   targetLabel: string;
   targetCount: number;
@@ -153,6 +173,7 @@ export function AskSearch({
   initialView?: LibraryView;
   categories?: TaxonomyChipItem[];
   infoTypes?: TaxonomyChipItem[];
+  initialAsk: AskAvailability;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
@@ -163,6 +184,24 @@ export function AskSearch({
   const [busy, setBusy] = useState(false);
   const [searched, setSearched] = useState(initialQuery.length > 0);
   const [submittedQuery, setSubmittedQuery] = useState(initialQuery.trim());
+  const [ask, setAsk] = useState(initialAsk);
+  const [asking, setAsking] = useState(false);
+  const [askQuestion, setAskQuestion] = useState("");
+  const [askAnswer, setAskAnswer] = useState("");
+  const [askSources, setAskSources] = useState<SourceListItem[]>([]);
+  const [askError, setAskError] = useState<string | null>(null);
+  const historyRef = useRef<
+    Array<{
+      id: string;
+      role: "user" | "assistant";
+      parts: [{ type: "text"; text: string }];
+    }>
+  >([]);
+  const sessionRef = useRef<string>(
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `ask-${Date.now()}`,
+  );
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -175,6 +214,21 @@ export function AskSearch({
   useEffect(() => {
     setViewState(initialView);
   }, [initialView]);
+
+  useEffect(() => {
+    setAsk(initialAsk);
+  }, [initialAsk]);
+
+  useEffect(() => {
+    return subscribeVideoSaveStatus((event) => {
+      setItems((prev) =>
+        prev.map((item) => applySourceListVideoSave(item, event)),
+      );
+      setSuggests((prev) =>
+        prev.map((item) => applySourceListVideoSave(item, event)),
+      );
+    });
+  }, []);
 
   useEffect(() => {
     if (timer.current) {
@@ -234,6 +288,103 @@ export function AskSearch({
     router.replace(askHref(query.trim(), next), { scroll: false });
   }
 
+  async function refreshAskBudget() {
+    try {
+      const res = await fetch("/api/ask", { cache: "no-store" });
+      if (!res.ok) {
+        return;
+      }
+      const body = (await res.json()) as { ask?: AskAvailability };
+      if (body.ask) {
+        setAsk(body.ask);
+      }
+    } catch {
+      return;
+    }
+  }
+
+  async function runAsk(next = query) {
+    const q = next.trim();
+    if (!q || asking) {
+      return;
+    }
+    if (!ask.available) {
+      setAskError(ask.reason ?? "本日の無料枠がなくなりました");
+      return;
+    }
+    setOpen(false);
+    setSuggests([]);
+    setAsking(true);
+    setAskError(null);
+    setAskQuestion(q);
+    setAskAnswer("");
+    setAskSources([]);
+    setQuery(q);
+    setSubmittedQuery(q);
+    router.replace(askHref(q, view), { scroll: false });
+    const userMessage = toAskUiMessage(`u-${Date.now()}`, "user", q);
+    historyRef.current = pruneAskUiMessages([
+      ...historyRef.current,
+      userMessage,
+    ]);
+    const toolNames = new Map<string, string>();
+    try {
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: sessionRef.current,
+          messages: historyRef.current,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string; code?: string };
+        } | null;
+        throw new Error(body?.error?.message ?? "回答できませんでした");
+      }
+      if (!res.body) {
+        throw new Error("回答を受信できませんでした");
+      }
+      let state = {
+        text: "",
+        sources: [] as SourceListItem[],
+        error: null as string | null,
+      };
+      await readAskSse(res.body, (chunk) => {
+        state = applyAskUiChunk(state, chunk, toolNames);
+        setAskAnswer(state.text);
+        if (state.sources.length > 0) {
+          setAskSources(state.sources);
+        }
+        if (state.error) {
+          setAskError(state.error);
+        }
+      });
+      if (state.text) {
+        historyRef.current = pruneAskUiMessages([
+          ...historyRef.current,
+          toAskUiMessage(`a-${Date.now()}`, "assistant", state.text),
+        ]);
+      }
+      if (state.error && !state.text) {
+        historyRef.current = historyRef.current.filter(
+          (item) => item.id !== userMessage.id,
+        );
+      }
+    } catch (error) {
+      setAskError(
+        error instanceof Error ? error.message : "回答できませんでした",
+      );
+      historyRef.current = historyRef.current.filter(
+        (item) => item.id !== userMessage.id,
+      );
+    } finally {
+      setAsking(false);
+      await refreshAskBudget();
+    }
+  }
+
   return (
     <div className="mt-6">
       <form
@@ -244,7 +395,7 @@ export function AskSearch({
       >
         <input
           className="w-full rounded-full border border-line bg-paper-2 px-4 py-3"
-          placeholder="キーワードで探す"
+          placeholder="キーワードで探す / AI に聞く"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onFocus={() => {
@@ -252,37 +403,61 @@ export function AskSearch({
               setOpen(true);
             }
           }}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              void runAsk(query);
+            }
+          }}
           enterKeyHint="search"
         />
       </form>
       <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
         <p className="text-ink-2 text-xs">
-          検索対象: {targetLabel}（{targetCount}件） · Enter で一覧。AI
-          に聞くは次の段階です。
+          検索対象: {targetLabel}（{targetCount}件） · Enter で一覧 · ⌘Enter で
+          AI に聞く
+          {ask.available
+            ? ` · 今日あと ${ask.remaining} 回（無料枠）`
+            : ask.reason
+              ? ` · ${ask.reason}`
+              : ""}
+          {!ask.available && formatAskReset(ask.resetAt)
+            ? `（リセット ${formatAskReset(ask.resetAt)}）`
+            : ""}
         </p>
-        <fieldset className="m-0 flex min-w-0 rounded-full border border-line p-0.5">
-          <legend className="sr-only">表示</legend>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <button
             type="button"
-            aria-pressed={view === "list"}
-            onClick={() => setView("list")}
-            className={`min-h-8 rounded-full px-3 text-xs ${
-              view === "list" ? "bg-ink text-paper" : ""
-            }`}
+            disabled={!query.trim() || asking || !ask.available}
+            onClick={() => void runAsk(query)}
+            className="min-h-8 shrink-0 rounded-full bg-ink px-3 text-paper text-xs disabled:opacity-50"
           >
-            リスト
+            {asking ? "聞いています…" : "AIに聞く"}
           </button>
-          <button
-            type="button"
-            aria-pressed={view === "grid"}
-            onClick={() => setView("grid")}
-            className={`min-h-8 rounded-full px-3 text-xs ${
-              view === "grid" ? "bg-ink text-paper" : ""
-            }`}
-          >
-            グリッド
-          </button>
-        </fieldset>
+          <fieldset className="m-0 flex min-w-0 rounded-full border border-line p-0.5">
+            <legend className="sr-only">表示</legend>
+            <button
+              type="button"
+              aria-pressed={view === "list"}
+              onClick={() => setView("list")}
+              className={`min-h-8 rounded-full px-3 text-xs ${
+                view === "list" ? "bg-ink text-paper" : ""
+              }`}
+            >
+              リスト
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "grid"}
+              onClick={() => setView("grid")}
+              className={`min-h-8 rounded-full px-3 text-xs ${
+                view === "grid" ? "bg-ink text-paper" : ""
+              }`}
+            >
+              グリッド
+            </button>
+          </fieldset>
+        </div>
       </div>
       {open && suggests.length > 0 ? (
         <ul className="mt-2 overflow-hidden rounded-2xl border border-line bg-paper">
@@ -292,6 +467,24 @@ export function AskSearch({
             </li>
           ))}
         </ul>
+      ) : null}
+      {askQuestion || asking || askError ? (
+        <AskChat
+          question={askQuestion}
+          answer={askAnswer}
+          sources={askSources}
+          streaming={asking}
+          error={askError}
+          accountId={accountId}
+          categories={categories}
+          infoTypes={infoTypes}
+          followUps={parseAskFollowUps(askAnswer)}
+          canAsk={ask.available && !asking}
+          onFollowUp={(text) => {
+            setQuery(text);
+            void runAsk(text);
+          }}
+        />
       ) : null}
       {busy ? <p className="mt-6 text-ink-2 text-sm">検索中…</p> : null}
       {!busy && searched && items.length === 0 ? (

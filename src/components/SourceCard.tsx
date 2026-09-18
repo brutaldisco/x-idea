@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { LinkedText } from "@/components/LinkedText";
 import { SourceCardMenu } from "@/components/SourceCardMenu";
@@ -8,6 +10,7 @@ import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
 import type { TaxonomyChipItem } from "@/lib/taxonomy-chip";
+import { useLiveSourceVideoSave } from "@/lib/use-video-save-status";
 import { canShowSaveVideosMenu } from "@/lib/video-queue";
 
 function ThumbPlaceholder({ className }: { className: string }) {
@@ -72,6 +75,14 @@ export function SourceCard({
   const textAttrs = translatableProps(lang, summaryFromAi);
   const dateLabel = formatCardDate(postedAt);
   const stacked = variant === "rail" || variant === "grid";
+  const live = useLiveSourceVideoSave(id, mediaId, {
+    videoSaveStatus,
+    videoRelPath,
+    hasQueueableVideos,
+  });
+  const saveStatus = live.videoSaveStatus;
+  const relPath = live.videoRelPath;
+  const queueable = live.hasQueueableVideos;
 
   return (
     <li
@@ -105,12 +116,12 @@ export function SourceCard({
             avatarSize="md"
             mediaId={mediaId}
             mediaType={mediaType}
-            videoSaveStatus={videoSaveStatus}
-            videoRelPath={videoRelPath}
+            videoSaveStatus={saveStatus}
+            videoRelPath={relPath}
           >
             <VideoThumbMarks
               mediaType={mediaType}
-              saveStatus={videoSaveStatus}
+              saveStatus={saveStatus}
               durationMs={durationMs}
             />
           </SourceCardThumb>
@@ -162,12 +173,12 @@ export function SourceCard({
               avatarSize="sm"
               mediaId={mediaId}
               mediaType={mediaType}
-              videoSaveStatus={videoSaveStatus}
-              videoRelPath={videoRelPath}
+              videoSaveStatus={saveStatus}
+              videoRelPath={relPath}
             >
               <VideoThumbMarks
                 mediaType={mediaType}
-                saveStatus={videoSaveStatus}
+                saveStatus={saveStatus}
                 durationMs={durationMs}
               />
             </SourceCardThumb>
@@ -217,7 +228,7 @@ export function SourceCard({
                 compact={variant === "grid"}
                 canQueueVideos={canShowSaveVideosMenu({
                   kind,
-                  hasQueueableVideos,
+                  hasQueueableVideos: queueable,
                 })}
               />
             </div>

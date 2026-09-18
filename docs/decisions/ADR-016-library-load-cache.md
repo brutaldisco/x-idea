@@ -11,9 +11,10 @@ Library と Reader が別レイアウトだったため、記事を開くたび�
 ## 決定
 
 1. **Reader は `(tabs)` の並列ルート `@reader/(.)source/[id]` で割り込む。** Library 起点の往復では一覧をアンマウントしない。ディープリンク / リロードは従来の `/source/[id]`。
-2. **一覧 JSON の persist は IndexedDB**（`x-idea.library.v6`、buster `2026-09-13-avatar-thumb`）。旧 `marginalia.library.v5` / `v6` は起動時に捨てる。queryKey は `["sources", sort, filters, page]`。1 ページ 60 件。アカウントはキーに入れない（切替時は `resetLibraryQueries`）。SSR ハイドレーションで `anon → 実ID` とキーが変わって毎回取り直すのを避ける。
+2. **一覧 JSON の persist は IndexedDB**（`x-idea.library.v6`、buster `2026-09-18-video-save-sync`）。旧 `marginalia.library.v5` / `v6` は起動時に捨てる。queryKey は `["sources", sort, filters, page]`。1 ページ 60 件。アカウントはキーに入れない（切替時は `resetLibraryQueries`）。SSR ハイドレーションで `anon → 実ID` とキーが変わって毎回取り直すのを避ける。
 3. **SW の `/api/sources` は 10 分 TTL。** サムネは cache-first。アカウント切替と手動同期で sources キャッシュを捨てる。
 4. sessionStorage のスクロール復元は、フルリロードと「隠した一覧を再表示したとき」のフォールバックに残す。
+5. **動画バレットは Query キャッシュを直接パッチする。** `refetchOnMount: false` のため `invalidateQueries` だけでは `queued` が残る。Videos / カードメニュー / Reader のステータス変化は `applyVideoSaveStatus` で persist と Ask / Inbox / Reader を同時に更新する。
 
 ## 影響
 

@@ -4,7 +4,7 @@ import type {
 } from "@tanstack/react-query-persist-client";
 
 export const LIBRARY_PERSIST_KEY = "x-idea.library.v6";
-export const LIBRARY_PERSIST_BUSTER = "2026-09-13-avatar-thumb";
+export const LIBRARY_PERSIST_BUSTER = "2026-09-18-video-save-sync";
 export const LIBRARY_PERSIST_MAX_PAGES = 1;
 const LEGACY_KEYS = ["marginalia.library.v5", "marginalia.library.v6"];
 

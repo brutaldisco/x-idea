@@ -23,7 +23,7 @@ function googleProvider() {
   });
 }
 
-function assertLiveAi(): void {
+export function assertLiveAi(): void {
   if (process.env.MOCK_EXTERNAL === "1") {
     throw new AppError(
       "INTERNAL",
@@ -33,6 +33,11 @@ function assertLiveAi(): void {
   if (!process.env.GEMINI_API_KEY) {
     throw new AppError("FORBIDDEN", "GEMINI_API_KEY がありません");
   }
+}
+
+export function googleLanguageModel(model: string) {
+  assertLiveAi();
+  return googleProvider()(model);
 }
 
 export async function withLaneCall<T>(

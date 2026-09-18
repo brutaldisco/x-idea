@@ -18,6 +18,10 @@ import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import { translatableProps } from "@/lib/chrome-translate";
 import { formatCardDate } from "@/lib/datetime";
 import type { SourceSort } from "@/lib/source-sort";
+import {
+  applySourceListVideoSave,
+  subscribeVideoSaveStatus,
+} from "@/lib/video-save-status";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 import {
   archiveSource,
@@ -88,6 +92,14 @@ export function InboxWorkspace({
   useEffect(() => {
     setQueue(items);
   }, [items]);
+
+  useEffect(() => {
+    return subscribeVideoSaveStatus((event) => {
+      setQueue((prev) =>
+        prev.map((item) => applySourceListVideoSave(item, event)),
+      );
+    });
+  }, []);
 
   useEffect(() => {
     if (!undo) {

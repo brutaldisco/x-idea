@@ -161,7 +161,15 @@ export function laneRetryAt(error: unknown, now = new Date()): Date {
   return new Date(now.getTime() + 60_000);
 }
 
-export async function guard(lane: Lane, now = new Date()): Promise<void> {
+export async function peekLane(
+  lane: Lane,
+  now = new Date(),
+): Promise<{
+  decision: GuardDecision;
+  used: number;
+  cap: number;
+  model: string;
+}> {
   await ensureSchema();
   const settings = await getAiLaneSettings();
   const usage = await getClient().execute({
@@ -172,17 +180,27 @@ export async function guard(lane: Lane, now = new Date()): Promise<void> {
           LIMIT 1`,
     args: [pacificDay(now), lane],
   });
-  const decision = decideCall({
-    now,
-    used: Number(usage.rows[0]?.requests ?? 0),
+  const used = Number(usage.rows[0]?.requests ?? 0);
+  return {
+    decision: decideCall({
+      now,
+      used,
+      cap: settings.caps[lane],
+      cooldownUntil: usage.rows[0]?.cooldown_until
+        ? String(usage.rows[0].cooldown_until)
+        : null,
+      paused: settings.paused,
+    }),
+    used,
     cap: settings.caps[lane],
-    cooldownUntil: usage.rows[0]?.cooldown_until
-      ? String(usage.rows[0].cooldown_until)
-      : null,
-    paused: settings.paused,
-  });
-  if (!decision.ok) {
-    throw toLaneError(decision);
+    model: settings.models[lane],
+  };
+}
+
+export async function guard(lane: Lane, now = new Date()): Promise<void> {
+  const peek = await peekLane(lane, now);
+  if (!peek.decision.ok) {
+    throw toLaneError(peek.decision);
   }
 }
 
@@ -244,6 +262,7 @@ export async function noteError(
 }
 
 export const budget = {
+  peekLane,
   guard,
   record,
   noteError,
