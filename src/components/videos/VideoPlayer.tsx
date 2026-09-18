@@ -234,13 +234,37 @@ export function VideoPlayer({
   return (
     <div
       ref={shellRef}
-      className={`video-player-shell fixed inset-0 z-50 bg-black text-white [color-scheme:dark] ${
+      className={`video-player-shell fixed inset-0 z-50 flex flex-col bg-black text-white [color-scheme:dark] ${
         chromeVisible ? "" : "video-player-shell--chrome-hidden"
       }`}
       onPointerMove={onPointerActivity}
       onPointerDown={onPointerActivity}
     >
-      <div className="absolute inset-0">
+      <div
+        className={`flex shrink-0 items-start justify-between gap-3 p-3 ${CHROME_FADE_CLASS} ${chromeHiddenClass}`}
+        inert={!chromeVisible}
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm text-neutral-600">{title}</p>
+          <p className="text-neutral-600 text-xs">
+            {folderLabel}
+            {total > 0 ? ` · ${index + 1} / ${total}` : ""}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <IconButton
+            label={shellFullscreen ? "全画面を終了" : "全画面"}
+            pressed={shellFullscreen}
+            onClick={() => void toggleFullscreen()}
+          >
+            {shellFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+          </IconButton>
+          <IconButton label="閉じる" onClick={onClose}>
+            <CloseIcon />
+          </IconButton>
+        </div>
+      </div>
+      <div className="relative min-h-0 w-full flex-1">
         <video
           ref={videoRef}
           controls
@@ -284,32 +308,7 @@ export function VideoPlayer({
         />
       </div>
       <div
-        className={`absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 bg-gradient-to-b from-black/90 from-30% to-transparent p-3 ${CHROME_FADE_CLASS} ${chromeHiddenClass}`}
-        inert={!chromeVisible}
-      >
-        <div className="min-w-0">
-          <p className="truncate text-sm text-neutral-600">{title}</p>
-          <p className="text-neutral-600 text-xs">
-            {folderLabel}
-            {total > 0 ? ` · ${index + 1} / ${total}` : ""}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <IconButton
-            label={shellFullscreen ? "全画面を終了" : "全画面"}
-            pressed={shellFullscreen}
-            onClick={() => void toggleFullscreen()}
-          >
-            {shellFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
-          </IconButton>
-          <IconButton label="閉じる" onClick={onClose}>
-            <CloseIcon />
-          </IconButton>
-        </div>
-      </div>
-      <div
-        className={`absolute inset-x-0 z-20 flex flex-wrap items-center justify-between gap-2 bg-gradient-to-t from-black/90 from-30% to-transparent p-3 ${CHROME_FADE_CLASS} ${chromeHiddenClass}`}
-        style={{ bottom: CONTROL_BAR_PX }}
+        className={`mt-auto flex shrink-0 flex-wrap items-center justify-between gap-2 p-3 ${CHROME_FADE_CLASS} ${chromeHiddenClass}`}
         inert={!chromeVisible}
       >
         <div className="flex flex-wrap gap-2">
