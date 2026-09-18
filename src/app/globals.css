@@ -93,11 +93,36 @@ select:active {
   outline: none;
 }
 
+.video-player-shell video::-webkit-media-controls,
 .video-player-shell video::-webkit-media-controls-enclosure,
 .video-player-shell video::-webkit-media-controls-panel,
 .video-player-shell video::-webkit-media-controls-play-button,
 .video-player-shell video::-webkit-media-controls-timeline {
   outline: none;
+  transition: opacity 0.7s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-player-shell video::-webkit-media-controls,
+  .video-player-shell video::-webkit-media-controls-enclosure,
+  .video-player-shell video::-webkit-media-controls-panel,
+  .video-player-shell video::-webkit-media-controls-play-button,
+  .video-player-shell video::-webkit-media-controls-timeline {
+    transition: none;
+  }
+}
+
+.video-player-shell--chrome-hidden {
+  cursor: none;
+}
+
+.video-player-shell--chrome-hidden video::-webkit-media-controls,
+.video-player-shell--chrome-hidden video::-webkit-media-controls-enclosure,
+.video-player-shell--chrome-hidden video::-webkit-media-controls-panel,
+.video-player-shell--chrome-hidden video::-webkit-media-controls-play-button,
+.video-player-shell--chrome-hidden video::-webkit-media-controls-timeline {
+  opacity: 0;
+  pointer-events: none;
 }
 
 body {

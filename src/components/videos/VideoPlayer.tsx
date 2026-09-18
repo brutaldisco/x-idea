@@ -23,6 +23,22 @@ import {
 } from "@/lib/video-playlist";
 
 const STORAGE_KEY = "x-idea-video-repeat";
+const SURFACE_CLICK_MS = 220;
+const CONTROL_BAR_PX = 72;
+const IDLE_HIDE_MS = 1000;
+const CHROME_FADE_CLASS =
+  "transition-opacity duration-700 ease-in-out motion-reduce:transition-none";
+
+function toggleVideoPlayback(video: HTMLVideoElement | null): void {
+  if (!video) {
+    return;
+  }
+  if (video.paused) {
+    void video.play().catch(() => undefined);
+    return;
+  }
+  video.pause();
+}
 
 export function loadRepeatMode(): RepeatMode {
   if (typeof window === "undefined") {
@@ -62,7 +78,11 @@ export function VideoPlayer({
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const surfaceClickRef = useRef<number | null>(null);
+  const idleTimerRef = useRef<number | null>(null);
   const [shellFullscreen, setShellFullscreen] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [chromeVisible, setChromeVisible] = useState(true);
   const [playbackUrl, setPlaybackUrl] = useState(url);
 
   useEffect(() => {
@@ -124,11 +144,53 @@ export function VideoPlayer({
         event.preventDefault();
         event.stopPropagation();
         onPrev();
+        return;
+      }
+      if (event.key === " " || event.code === "Space") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleVideoPlayback(videoRef.current);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose, onNext, onPrev]);
+
+  function clearIdleTimer() {
+    if (idleTimerRef.current != null) {
+      window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  }
+
+  function scheduleChromeHide() {
+    clearIdleTimer();
+    idleTimerRef.current = window.setTimeout(() => {
+      idleTimerRef.current = null;
+      setChromeVisible(false);
+    }, IDLE_HIDE_MS);
+  }
+
+  function onPointerActivity() {
+    setChromeVisible(true);
+    scheduleChromeHide();
+  }
+
+  useEffect(() => {
+    idleTimerRef.current = window.setTimeout(() => {
+      idleTimerRef.current = null;
+      setChromeVisible(false);
+    }, IDLE_HIDE_MS);
+    return () => {
+      if (idleTimerRef.current != null) {
+        window.clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+      if (surfaceClickRef.current != null) {
+        window.clearTimeout(surfaceClickRef.current);
+      }
+    };
+  }, []);
 
   async function toggleFullscreen() {
     const shell = shellRef.current;
@@ -142,12 +204,89 @@ export function VideoPlayer({
     await requestFullscreen(shell).catch(() => undefined);
   }
 
+  function clearSurfaceClick() {
+    if (surfaceClickRef.current != null) {
+      window.clearTimeout(surfaceClickRef.current);
+      surfaceClickRef.current = null;
+    }
+  }
+
+  function onSurfaceClick() {
+    if (surfaceClickRef.current != null) {
+      clearSurfaceClick();
+      return;
+    }
+    surfaceClickRef.current = window.setTimeout(() => {
+      surfaceClickRef.current = null;
+      toggleVideoPlayback(videoRef.current);
+    }, SURFACE_CLICK_MS);
+  }
+
+  function onSurfaceDoubleClick() {
+    clearSurfaceClick();
+    void toggleFullscreen();
+  }
+
+  const chromeHiddenClass = chromeVisible
+    ? "opacity-100"
+    : "pointer-events-none opacity-0";
+
   return (
     <div
       ref={shellRef}
-      className="video-player-shell fixed inset-0 z-50 flex flex-col bg-black text-white [color-scheme:dark]"
+      className={`video-player-shell fixed inset-0 z-50 bg-black text-white [color-scheme:dark] ${
+        chromeVisible ? "" : "video-player-shell--chrome-hidden"
+      }`}
+      onPointerMove={onPointerActivity}
+      onPointerDown={onPointerActivity}
     >
-      <div className="flex shrink-0 items-start justify-between gap-3 p-3">
+      <div className="absolute inset-0">
+        <video
+          ref={videoRef}
+          controls
+          autoPlay
+          playsInline
+          controlsList="nofullscreen"
+          loop={repeat === "one"}
+          className="absolute inset-0 h-full w-full bg-black object-contain outline-none"
+          onError={() => {
+            const fallback = mediaVideoProxyFallbackPath(playbackUrl);
+            if (fallback) {
+              setPlaybackUrl(fallback);
+            }
+          }}
+          onPlay={() => setPaused(false)}
+          onPause={() => setPaused(true)}
+          onLoadedData={(event) => {
+            void event.currentTarget.play().catch(() => undefined);
+          }}
+          onEnded={() => {
+            if (repeat === "one") {
+              return;
+            }
+            onEnded();
+          }}
+        >
+          <track kind="captions" />
+        </video>
+        <button
+          type="button"
+          aria-label={paused ? "再生" : "一時停止"}
+          className={`absolute inset-x-0 top-0 z-10 bg-transparent ${
+            chromeVisible ? "cursor-pointer" : "cursor-none"
+          }`}
+          style={{ bottom: chromeVisible ? CONTROL_BAR_PX : 0 }}
+          onMouseDown={(event) => {
+            event.preventDefault();
+          }}
+          onClick={onSurfaceClick}
+          onDoubleClick={onSurfaceDoubleClick}
+        />
+      </div>
+      <div
+        className={`absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 bg-gradient-to-b from-black/90 from-30% to-transparent p-3 ${CHROME_FADE_CLASS} ${chromeHiddenClass}`}
+        inert={!chromeVisible}
+      >
         <div className="min-w-0">
           <p className="truncate text-sm text-neutral-600">{title}</p>
           <p className="text-neutral-600 text-xs">
@@ -168,34 +307,11 @@ export function VideoPlayer({
           </IconButton>
         </div>
       </div>
-      <video
-        ref={videoRef}
-        controls
-        autoPlay
-        playsInline
-        controlsList="nofullscreen"
-        loop={repeat === "one"}
-        className="min-h-0 w-full flex-1 bg-black object-contain outline-none"
-        onError={() => {
-          const fallback = mediaVideoProxyFallbackPath(playbackUrl);
-          if (fallback) {
-            setPlaybackUrl(fallback);
-          }
-        }}
-        onDoubleClick={() => void toggleFullscreen()}
-        onLoadedData={(event) => {
-          void event.currentTarget.play().catch(() => undefined);
-        }}
-        onEnded={() => {
-          if (repeat === "one") {
-            return;
-          }
-          onEnded();
-        }}
+      <div
+        className={`absolute inset-x-0 z-20 flex flex-wrap items-center justify-between gap-2 bg-gradient-to-t from-black/90 from-30% to-transparent p-3 ${CHROME_FADE_CLASS} ${chromeHiddenClass}`}
+        style={{ bottom: CONTROL_BAR_PX }}
+        inert={!chromeVisible}
       >
-        <track kind="captions" />
-      </video>
-      <div className="mt-auto flex shrink-0 flex-wrap items-center justify-between gap-2 p-3">
         <div className="flex flex-wrap gap-2">
           <IconButton label="前へ" disabled={total < 2} onClick={onPrev}>
             <SkipBackIcon />
