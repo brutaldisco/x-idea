@@ -20,6 +20,9 @@ import {
 import {
   VIDEO_FILE_PARALLEL,
   VIDEO_HEARTBEAT_MS,
+  VIDEO_STALL_MAX_RESTARTS,
+  VIDEO_STALL_NOTICE_MS,
+  VIDEO_STALL_WATCHDOG_MS,
 } from "@/lib/video-download-plan";
 import { isIncompleteVideoFile } from "@/lib/video-files";
 import { useVideoSaveFolder } from "@/lib/video-folder";
@@ -41,6 +44,7 @@ import {
 import {
   isResumableVideoQueueStatus,
   isVideoLeaseStale,
+  shouldSendVideoHeartbeat,
 } from "@/lib/video-queue";
 import { applyVideoItemSaveStatus } from "@/lib/video-save-status";
 import {
@@ -153,6 +157,11 @@ export function VideosWorkspace({
   const [repeat, setRepeat] = useState<RepeatMode>("folder");
   const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef<Set<string>>(new Set());
+  /** 実行中の各本を個別に止めるためのコントローラ（スタール時の取り直し用） */
+  const itemControllersRef = useRef<Map<string, AbortController>>(new Map());
+  /** 各本が最後にバイトを受信した時刻。応答なし検出に使う */
+  const lastByteAtRef = useRef<Map<string, number>>(new Map());
+  const [stalledIds, setStalledIds] = useState<string[]>([]);
   /** このタブが停止した項目。409 のときだけ再 queued → start してよい */
   const releasedIdsRef = useRef<Set<string>>(new Set());
   const sweptRef = useRef(false);
@@ -302,6 +311,40 @@ export function VideosWorkspace({
     return () => clearInterval(timer);
   }, [busy]);
 
+  // 応答なし検出: バイトが 30 秒増えなければ表示に出し、75 秒（リース切れ
+  // より前）でその本だけ切断する。切断した本は runItem 側で保存済み位置から
+  // 自動で取り直す。バイト到着前（接続・ファイル準備中）は fetch の
+  // スタール検知と書き込みタイムアウトが守るのでここでは触らない。
+  useEffect(() => {
+    if (!busy) {
+      setStalledIds([]);
+      return;
+    }
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const stalled: string[] = [];
+      for (const id of activeRef.current) {
+        const last = lastByteAtRef.current.get(id);
+        if (last == null) {
+          continue;
+        }
+        const silentMs = now - last;
+        if (silentMs >= VIDEO_STALL_WATCHDOG_MS) {
+          itemControllersRef.current.get(id)?.abort();
+        } else if (silentMs >= VIDEO_STALL_NOTICE_MS) {
+          stalled.push(id);
+        }
+      }
+      setStalledIds((prev) =>
+        prev.length === stalled.length &&
+        prev.every((id, index) => id === stalled[index])
+          ? prev
+          : stalled,
+      );
+    }, 1_000);
+    return () => clearInterval(timer);
+  }, [busy]);
+
   async function resolveRoot() {
     if (!accountId) {
       return null;
@@ -417,18 +460,26 @@ export function VideosWorkspace({
     const runItem = async (item: (typeof chosen)[number]) => {
       activeRef.current.add(item.id);
       const relPath = suggestedRelPath(item);
-      // ハートビート（ADR-025）: 生存確認と停止位置をサーバーへ残す。
-      // 進捗コールバック（バックグラウンドでも動く）とタイマーの両方から送る
-      const beat = { lastAt: 0, received: 0, total: 0 };
-      const sendHeartbeat = () => {
+      // ハートビート（ADR-025 改定）: 生存確認と停止位置をサーバーへ残す。
+      // 受信バイトが増えたときだけ送る。固まったダウンロードがリースを
+      // 持ち続けて「別のタブで実行中です」のまま再開不能になるのを防ぐ
+      const beat = { lastAt: 0, received: 0, total: 0, lastSentReceived: -1 };
+      const sendHeartbeat = (force = false) => {
         if (controller.signal.aborted) {
           return;
         }
         const now = Date.now();
-        if (now - beat.lastAt < VIDEO_HEARTBEAT_MS) {
+        if (!force && now - beat.lastAt < VIDEO_HEARTBEAT_MS) {
+          return;
+        }
+        if (
+          !force &&
+          !shouldSendVideoHeartbeat(beat.lastSentReceived, beat.received)
+        ) {
           return;
         }
         beat.lastAt = now;
+        beat.lastSentReceived = beat.received;
         void fetch(`/api/videos/queue/${item.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -509,28 +560,73 @@ export function VideosWorkspace({
         const initial = await resolveDirectUrl();
         const directUrl = initial?.url ?? null;
         const directBytes = initial?.bytes ?? null;
-        const result = await downloadVideoFile({
-          downloadId: item.id,
-          mediaId: item.mediaId,
-          relPath,
-          root: handle,
-          estimatedBytes: item.estimatedBytes,
-          directUrl,
-          directBytes,
-          // 502 等で両経路が失敗したとき、URL を取り直して CDN 直接から
-          // もう一度だけ試す（ADR-026）
-          refreshDirectUrl: resolveDirectUrl,
-          signal: controller.signal,
-          onProgress: (received, total) => {
-            if (controller.signal.aborted) {
-              return;
+        // 応答なしの取り直し: ウォッチドッグがその本だけ切断したら、
+        // 保存済み位置から静かにやり直す。尽きたら「応答なし」で failed にする
+        let result: { bytes: number; relPath: string } | null = null;
+        let stallRestarts = 0;
+        for (;;) {
+          const itemController = new AbortController();
+          const onBatchAbort = () => itemController.abort();
+          if (controller.signal.aborted) {
+            itemController.abort();
+          } else {
+            controller.signal.addEventListener("abort", onBatchAbort, {
+              once: true,
+            });
+          }
+          itemControllersRef.current.set(item.id, itemController);
+          // 取り直した試行はバイト到着までウォッチドッグを動かさない
+          // （ファイル準備の全コピーが長引くことがあるため）
+          lastByteAtRef.current.delete(item.id);
+          try {
+            result = await downloadVideoFile({
+              downloadId: item.id,
+              mediaId: item.mediaId,
+              relPath,
+              root: handle,
+              estimatedBytes: item.estimatedBytes,
+              directUrl,
+              directBytes,
+              // 502 等で両経路が失敗したとき、URL を取り直して CDN 直接から
+              // もう一度だけ試す（ADR-026）
+              refreshDirectUrl: resolveDirectUrl,
+              signal: itemController.signal,
+              onProgress: (received, total) => {
+                if (controller.signal.aborted) {
+                  return;
+                }
+                if (received > beat.received) {
+                  lastByteAtRef.current.set(item.id, Date.now());
+                }
+                beat.received = received;
+                beat.total = total;
+                sendHeartbeat();
+                applyItemProgress(item.id, received, total);
+              },
+            });
+            break;
+          } catch (error) {
+            if (!controller.signal.aborted && itemController.signal.aborted) {
+              // ウォッチドッグが切った（ユーザーの停止ではない）
+              if (stallRestarts < VIDEO_STALL_MAX_RESTARTS) {
+                stallRestarts += 1;
+                // 取り直すあいだもリースを保つため、回復の意思表示として
+                // 1 回だけ強制的に送る（固まったままの本は送らない）
+                sendHeartbeat(true);
+                continue;
+              }
+              throw new Error("ダウンロードが止まりました（応答なし）");
             }
-            beat.received = received;
-            beat.total = total;
-            sendHeartbeat();
-            applyItemProgress(item.id, received, total);
-          },
-        });
+            throw error;
+          } finally {
+            controller.signal.removeEventListener("abort", onBatchAbort);
+            itemControllersRef.current.delete(item.id);
+            lastByteAtRef.current.delete(item.id);
+          }
+        }
+        if (!result) {
+          throw new Error("ダウンロードに失敗しました");
+        }
         doneBytes += result.bytes;
         doneCount += 1;
         const completed = await postComplete(item.id, {
@@ -1128,9 +1224,13 @@ export function VideosWorkspace({
                   const downloading =
                     Boolean(prog) && item.status === "downloading";
                   const itemStopping = stopping && downloading;
+                  const stalled =
+                    downloading && !stopping && stalledIds.includes(item.id);
                   const speedLabel =
                     downloading && !stopping
-                      ? (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
+                      ? stalled
+                        ? "応答なし。再接続しています…"
+                        : (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
                       : null;
                   const statusLabel = itemStopping
                     ? "停止中"

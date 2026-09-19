@@ -25,6 +25,37 @@ export const VIDEO_FILE_PARALLEL = 2;
 export const VIDEO_HEARTBEAT_MS = 8_000;
 
 /**
+ * File System Access の write/seek/close/getFile のタイムアウト。
+ * 固まった呼び出しを失敗として落とし、failed → 再開の流れに乗せる。
+ * リース（90 秒）より短くして、リースが切れる前に自分で片付ける。
+ */
+export const VIDEO_WRITE_TIMEOUT_MS = 60_000;
+
+/**
+ * createWritable のタイムアウト。レジューム時の keepExistingData は
+ * 既存内容の全コピーが走ることがある（ADR-026）ため長めに取る。
+ */
+export const VIDEO_OPEN_TIMEOUT_MS = 180_000;
+
+/**
+ * CDN 並列ダウンロードで書き込み位置から先読みしてよい上限（背圧）。
+ * 1 レーンの停滞で未書き込みチャンクがメモリに溜まり続けるのを防ぐ。
+ */
+export const VIDEO_DIRECT_LOOKAHEAD_BYTES = 32 * MB;
+
+/** この時間バイトが増えなければ UI に「応答なし。再接続しています」を出す */
+export const VIDEO_STALL_NOTICE_MS = 30_000;
+
+/**
+ * この時間バイトが増えなければその本だけ切断して保存済み位置から取り直す。
+ * リース（90 秒）が切れる前に自分で回復する。
+ */
+export const VIDEO_STALL_WATCHDOG_MS = 75_000;
+
+/** ウォッチドッグによる自動取り直しの上限。超えたら failed にする */
+export const VIDEO_STALL_MAX_RESTARTS = 3;
+
+/**
  * downloading のリース有効時間（ADR-025）。この間ハートビートが途絶えたら
  * 中断（前のセッションの取り残し）とみなし、別タブ・別セッションからの
  * 再開を許可する。バックグラウンドタブのタイマー絞り込み（約 1 分に

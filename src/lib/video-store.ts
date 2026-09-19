@@ -9,7 +9,10 @@ import {
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
   VIDEO_CHUNK_MIN,
+  VIDEO_DIRECT_LOOKAHEAD_BYTES,
+  VIDEO_OPEN_TIMEOUT_MS,
   VIDEO_STALL_MS,
+  VIDEO_WRITE_TIMEOUT_MS,
   type VideoDownloadPlan,
 } from "@/lib/video-download-plan";
 import {
@@ -285,7 +288,11 @@ async function writeResponseStream(
       throw abortError();
     }
     if (bytes.byteLength > 0) {
-      await writable.write(bytes);
+      await withTimeout(
+        writable.write(bytes),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "ファイルへの書き込み",
+      );
       await onBytes(bytes.byteLength);
     }
     return bytes.byteLength;
@@ -311,9 +318,18 @@ async function writeResponseStream(
       if (signal?.aborted) {
         throw abortError();
       }
-      await writable.write(value);
+      await withTimeout(
+        writable.write(value),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "ファイルへの書き込み",
+      );
       written += value.byteLength;
       await onBytes(value.byteLength);
+    }
+    // abort による reader.cancel() は read を done で解決するため、
+    // 中断（スタール切断を含む）を正常終了と区別する
+    if (signal?.aborted) {
+      throw abortError();
     }
   } finally {
     signal?.removeEventListener("abort", onAbort);
@@ -332,6 +348,37 @@ function abortError(): DOMException {
 
 function isAbortError(error: unknown): boolean {
   return (error as { name?: string }).name === "AbortError";
+}
+
+/** スタール尽きなど、転送が応答しなくなったときの専用エラー文 */
+const STALL_EXHAUSTED_MESSAGE = "ダウンロードが止まりました（応答なし）";
+
+/**
+ * File System Access の呼び出しが応答しなくなったときに備えるタイムアウト。
+ * タイムアウトしても元の Promise は残るが、進捗は保存済み位置までなので
+ * 次回のレジュームで上書きされる。ハートビートは進捗があるときだけ送る
+ * （ADR-025 改定）ため、固まったままリースを持ち続けることもない。
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(`${label}が応答しません（${Math.round(ms / 1000)}秒）`),
+        ),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  });
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -458,7 +505,11 @@ async function writeChunkToWritable(
   if (signal?.aborted) {
     throw abortError();
   }
-  await writable.seek(start);
+  await withTimeout(
+    writable.seek(start),
+    VIDEO_WRITE_TIMEOUT_MS,
+    "ファイルのシーク",
+  );
   return writeResponseStream(res, writable, onBytes, signal);
 }
 
@@ -521,12 +572,14 @@ async function downloadVideoChunk(input: {
       if (input.signal?.aborted) {
         throw abortError();
       }
+      // 本文の読み込みにもスタール検知を効かせる。input.signal を渡すと
+      // ヘッダ到達後に転送が止まったとき検知できず、無期限に固まる
       const written = await writeChunkToWritable(
         input.writable,
         res,
         input.start,
         onBytes,
-        input.signal,
+        stallController.signal,
       );
       const elapsed = (nowMs() - chunkStart) / 1000;
       if (written > 0 && elapsed > 0) {
@@ -550,9 +603,7 @@ async function downloadVideoChunk(input: {
       }
       attempt += 1;
       if (attempt > input.plan.retries) {
-        throw stalled
-          ? new Error("ダウンロードが止まりました（応答なし）")
-          : error;
+        throw stalled ? new Error(STALL_EXHAUSTED_MESSAGE) : error;
       }
       chunk = Math.max(VIDEO_CHUNK_MIN, Math.floor(chunk / 2));
       // 5xx はサーバー側の回復に時間がかかるので長めに待つ（ADR-026）
@@ -606,12 +657,16 @@ async function fetchRangeBytes(input: {
       throw abortError();
     }
     const stallController = new AbortController();
+    let stalled = false;
     let stallTimer: ReturnType<typeof setTimeout> | undefined;
     const armStallTimer = () => {
       if (stallTimer) {
         clearTimeout(stallTimer);
       }
-      stallTimer = setTimeout(() => stallController.abort(), VIDEO_STALL_MS);
+      stallTimer = setTimeout(() => {
+        stalled = true;
+        stallController.abort();
+      }, VIDEO_STALL_MS);
     };
     const onParentAbort = () => stallController.abort();
     input.signal?.addEventListener("abort", onParentAbort, { once: true });
@@ -671,6 +726,12 @@ async function fetchRangeBytes(input: {
       attempt += 1;
       const retryable = (error as { retryable?: boolean }).retryable !== false;
       if (attempt > input.retries || !retryable) {
+        // スタール尽きは専用エラーに変換する。AbortError のまま上がると
+        // 呼び出し側で「ユーザーの停止」と誤判定され、failed に落ちず
+        // 順次/proxy 経路へのフォールバックも効かない
+        if (stalled) {
+          throw new Error(STALL_EXHAUSTED_MESSAGE);
+        }
         throw error;
       }
       // 5xx はサーバー側の回復に時間がかかるので長めに待つ（ADR-026）
@@ -705,12 +766,20 @@ async function downloadDirectToFile(input: {
   onWritten: (offset: number) => Promise<void>;
 }): Promise<number> {
   const chunk = directChunkBytes(input.total);
-  const writable = await input.file.createWritable({
-    keepExistingData: true,
-  });
+  const writable = await withTimeout(
+    input.file.createWritable({
+      keepExistingData: true,
+    }),
+    VIDEO_OPEN_TIMEOUT_MS,
+    "保存ファイルの準備",
+  );
   if (input.signal?.aborted) {
     try {
-      await writable.close();
+      await withTimeout(
+        writable.close(),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "ファイルのクローズ",
+      );
     } catch {
       // ignore
     }
@@ -723,6 +792,33 @@ async function downloadDirectToFile(input: {
   let nextWrite = input.offset;
   const pending = new Map<number, Uint8Array<ArrayBuffer>>();
   let writeChain: Promise<void> = Promise.resolve();
+  // 背圧: 書き込み位置からの先読みを VIDEO_DIRECT_LOOKAHEAD_BYTES に制限する。
+  // 1 レーンだけ停滞すると未書き込みチャンクがメモリに溜まり続け、
+  // タブ全体が不安定になるのを防ぐ。レンジは若い順に割り当てるため、
+  // nextWrite を含むチャンクは必ず割り当て済み（= 待たずに進む）ので
+  // デッドロックしない。
+  const waiters = new Set<() => void>();
+  const wakeWaiters = () => {
+    for (const wake of [...waiters]) {
+      wake();
+    }
+  };
+  const waitForWindow = async () => {
+    while (nextFetch - nextWrite >= VIDEO_DIRECT_LOOKAHEAD_BYTES) {
+      if (controller.signal.aborted) {
+        throw abortError();
+      }
+      await new Promise<void>((resolve) => {
+        const wake = () => {
+          waiters.delete(wake);
+          controller.signal.removeEventListener("abort", wake);
+          resolve();
+        };
+        waiters.add(wake);
+        controller.signal.addEventListener("abort", wake, { once: true });
+      });
+    }
+  };
   const flush = () => {
     writeChain = writeChain.then(async () => {
       if (controller.signal.aborted) {
@@ -737,9 +833,18 @@ async function downloadDirectToFile(input: {
           return;
         }
         pending.delete(nextWrite);
-        await writable.seek(nextWrite);
-        await writable.write(data);
+        await withTimeout(
+          writable.seek(nextWrite),
+          VIDEO_WRITE_TIMEOUT_MS,
+          "ファイルのシーク",
+        );
+        await withTimeout(
+          writable.write(data),
+          VIDEO_WRITE_TIMEOUT_MS,
+          "ファイルへの書き込み",
+        );
         nextWrite += data.byteLength;
+        wakeWaiters();
         await input.onWritten(nextWrite);
       }
     });
@@ -750,6 +855,7 @@ async function downloadDirectToFile(input: {
       if (controller.signal.aborted) {
         throw abortError();
       }
+      await waitForWindow();
       const start = nextFetch;
       if (start >= input.total) {
         return;
@@ -780,14 +886,15 @@ async function downloadDirectToFile(input: {
         }
       }),
     );
-    const failure = results.find((error) => error != null);
-    // 停止時は未書き込みチャンクを捨てて close に進む。flush すると
-    // 最大 32MB を書いてから閉じることになり、停止が遅れる。
-    if (
-      controller.signal.aborted ||
-      input.signal?.aborted ||
-      isAbortError(failure)
-    ) {
+    // 中断かどうかは「ユーザーの停止シグナル」だけで判定する。
+    // ワーカー失敗の連鎖 abort（controller.signal）やスタール尽きを
+    // ユーザー停止と誤判定すると、failed に落ちず再開の手がかりが消える
+    const failure =
+      results.find((error) => error != null && !isAbortError(error)) ??
+      results.find((error) => error != null);
+    if (input.signal?.aborted) {
+      // 停止時は未書き込みチャンクを捨てて close に進む。flush すると
+      // 最大 32MB を書いてから閉じることになり、停止が遅れる。
       // 進行中の 1 書き込みだけ待ってから閉じる（未着手の pending は捨てる）
       await writeChain.catch(() => undefined);
       throw abortError();
@@ -805,7 +912,11 @@ async function downloadDirectToFile(input: {
   } finally {
     input.signal?.removeEventListener("abort", onParentAbort);
     try {
-      await writable.close();
+      await withTimeout(
+        writable.close(),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "ファイルのクローズ",
+      );
     } catch {
       // ignore
     }
@@ -838,7 +949,13 @@ export async function downloadVideoFile(input: {
   const file = await dir.getFileHandle(fileName, { create: true });
   let offset = resumeVideoOffset(
     await loadProgress(input.downloadId),
-    (await file.getFile()).size,
+    (
+      await withTimeout(
+        file.getFile(),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "保存ファイルの確認",
+      )
+    ).size,
   );
 
   const plan = initialVideoDownloadPlan(input.estimatedBytes);
@@ -875,7 +992,13 @@ export async function downloadVideoFile(input: {
   const restoreOffset = async () => {
     offset = resumeVideoOffset(
       await loadProgress(input.downloadId),
-      (await file.getFile()).size,
+      (
+        await withTimeout(
+          file.getFile(),
+          VIDEO_WRITE_TIMEOUT_MS,
+          "保存ファイルの確認",
+        )
+      ).size,
     );
     lastSaved = offset;
   };
@@ -940,12 +1063,20 @@ export async function downloadVideoFile(input: {
     // プロキシ逐次。createWritable は 1 回だけ開いて使い回す（ADR-026）。
     // keepExistingData: true の開き直しは既存内容の全コピーが走るため、
     // チャンクごとに開くとファイルが大きいほど急激に遅くなる。
-    const writable = await file.createWritable({ keepExistingData: true });
+    const writable = await withTimeout(
+      file.createWritable({ keepExistingData: true }),
+      VIDEO_OPEN_TIMEOUT_MS,
+      "保存ファイルの準備",
+    );
     try {
       if (input.signal?.aborted) {
         throw abortError();
       }
-      await writable.seek(offset);
+      await withTimeout(
+        writable.seek(offset),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "ファイルのシーク",
+      );
       while (!input.signal?.aborted) {
         if (total > 0 && offset >= total) {
           break;
@@ -1001,7 +1132,11 @@ export async function downloadVideoFile(input: {
       return { bytes: offset, relPath: input.relPath };
     } finally {
       try {
-        await writable.close();
+        await withTimeout(
+          writable.close(),
+          VIDEO_WRITE_TIMEOUT_MS,
+          "ファイルのクローズ",
+        );
       } catch {
         // ignore
       }

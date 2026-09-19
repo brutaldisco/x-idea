@@ -65,6 +65,19 @@ export function isVideoLeaseStale(
   return now - at > VIDEO_LEASE_STALE_MS;
 }
 
+/**
+ * ハートビートを送るか（ADR-025 改定）。受信バイトが前回送信時から
+ * 増えたときだけ送る。固まったダウンロードがリースを持ち続けて
+ * 「別のタブで実行中です」のまま再開不能になるのを防ぐ。
+ * 初回（lastSentReceived < 0）はリース確立のため必ず送る。
+ */
+export function shouldSendVideoHeartbeat(
+  lastSentReceived: number,
+  received: number,
+): boolean {
+  return received !== lastSentReceived;
+}
+
 export function canShowSaveVideosMenu(input: {
   kind?: string | null;
   hasQueueableVideos?: boolean | null;

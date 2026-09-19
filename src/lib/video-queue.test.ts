@@ -6,6 +6,7 @@ import {
   isVideoLeaseStale,
   mediaHasQueueableVideos,
   parseDbUtcMs,
+  shouldSendVideoHeartbeat,
   sourceVideosQueueMessage,
   tallySourceVideoQueue,
 } from "./video-queue";
@@ -87,6 +88,19 @@ describe("isVideoLeaseStale", () => {
 
   it("treats unparsable timestamps as stale so they can be resumed", () => {
     expect(isVideoLeaseStale("???", now)).toBe(true);
+  });
+});
+
+describe("shouldSendVideoHeartbeat", () => {
+  it("sends the first beat to establish the lease", () => {
+    expect(shouldSendVideoHeartbeat(-1, 0)).toBe(true);
+  });
+
+  it("sends only when received bytes changed since the last sent beat", () => {
+    expect(shouldSendVideoHeartbeat(0, 1024)).toBe(true);
+    expect(shouldSendVideoHeartbeat(1024, 1024)).toBe(false);
+    // レジューム位置の巻き戻し（取り直し）も変化なので送る
+    expect(shouldSendVideoHeartbeat(1024, 512)).toBe(true);
   });
 });
 
