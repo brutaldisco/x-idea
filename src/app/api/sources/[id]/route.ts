@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { AppError, toErrorBody } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 import { isSameOrigin } from "@/lib/origin";
 import { deleteSource } from "@/server/sources/remove";
 import { getAccountContext } from "@/server/x/context";
@@ -17,12 +18,22 @@ export async function DELETE(
       { status: 403 },
     );
   }
+  let sourceId = "";
   try {
     const { id } = await context.params;
+    sourceId = id;
     const ctx = await getAccountContext();
     const result = await deleteSource(id, ctx);
     return Response.json({ ok: true, ...result });
   } catch (error) {
+    if (error instanceof AppError) {
+      logger.warn(
+        { err: error, sourceId, code: error.code },
+        "source delete rejected",
+      );
+    } else {
+      logger.error({ err: error, sourceId }, "source delete failed");
+    }
     const body = toErrorBody(error);
     const status = error instanceof AppError ? error.status : 500;
     return Response.json(body, { status });

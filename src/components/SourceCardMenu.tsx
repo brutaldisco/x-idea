@@ -167,14 +167,16 @@ export function SourceCardMenu({
         await ensureWritePermission(root);
       }
       const res = await fetch(`/api/sources/${sourceId}`, { method: "DELETE" });
-      if (!res.ok) {
-        window.alert("削除できませんでした。");
-        return;
-      }
       const body = (await res.json().catch(() => null)) as {
+        ok?: boolean;
         accountId?: string | null;
         videoRelPaths?: string[];
+        error?: { message?: string };
       } | null;
+      if (!res.ok || body?.ok !== true) {
+        window.alert(body?.error?.message ?? "削除できませんでした。");
+        return;
+      }
       const files = body?.videoRelPaths ?? [];
       if (files.length > 0) {
         const { leftover } = await removeSavedVideoFiles({
@@ -199,6 +201,12 @@ export function SourceCardMenu({
       if (!pathname.startsWith("/library")) {
         router.refresh();
       }
+    } catch (error) {
+      window.alert(
+        error instanceof Error && error.message
+          ? error.message
+          : "削除できませんでした。",
+      );
     } finally {
       setBusy(false);
     }

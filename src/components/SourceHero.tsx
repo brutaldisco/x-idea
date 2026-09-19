@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import type { ReactNode } from "react";
 import { ExpandablePhoto } from "@/components/PhotoLightbox";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { SourceMetaFields } from "@/components/SourceMetaFields";
@@ -24,6 +25,7 @@ export function SourceHero({
   kind,
   categories,
   infoTypes,
+  menu,
 }: {
   sourceId: string;
   authorName: string | null;
@@ -46,6 +48,7 @@ export function SourceHero({
     name: string;
     color?: TaxonomyAccentId | null;
   }[];
+  menu?: ReactNode;
 }) {
   const when = postedAt
     ? new Date(postedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
@@ -97,16 +100,19 @@ export function SourceHero({
             ) : null}
           </div>
         </div>
-        <SourceMetaFields
-          id={sourceId}
-          categoryId={categoryId}
-          categoryName={categoryName}
-          infoType={infoType}
-          readStatus={readStatus}
-          kind={kind}
-          categories={categories}
-          infoTypes={infoTypes}
-        />
+        <div className="flex min-w-0 items-center justify-end gap-1.5">
+          <SourceMetaFields
+            id={sourceId}
+            categoryId={categoryId}
+            categoryName={categoryName}
+            infoType={infoType}
+            readStatus={readStatus}
+            kind={kind}
+            categories={categories}
+            infoTypes={infoTypes}
+          />
+          {menu ? <div className="shrink-0">{menu}</div> : null}
+        </div>
       </div>
       {heroSrc ? (
         hero && hero.type !== "photo" && heroSaveStatus === "ready" ? (

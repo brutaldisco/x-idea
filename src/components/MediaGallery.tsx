@@ -122,6 +122,16 @@ function MediaTile({
           >
             {preview}
           </SavedVideoThumbButton>
+        ) : isVideo && postUrl ? (
+          <a
+            href={postUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="relative block w-full"
+            aria-label="X で見る"
+          >
+            {preview}
+          </a>
         ) : (
           <button
             type="button"
@@ -150,22 +160,11 @@ function MediaTile({
       {isVideo ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-line border-t px-3 py-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {postUrl ? (
-              <a
-                href={postUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="notranslate shrink-0 rounded-full bg-ink px-3 py-1 text-paper text-xs"
-                lang="ja"
-                translate="no"
-              >
-                X で見る
-              </a>
-            ) : (
-              <span className="text-ink-2 text-xs">動画は X で見ます。</span>
-            )}
             {fileMeta ? (
               <span className="text-ink-2 text-xs">{fileMeta}</span>
+            ) : null}
+            {!postUrl ? (
+              <span className="text-ink-2 text-xs">動画は X で見ます。</span>
             ) : null}
           </div>
           <VideoSaveControl

@@ -144,10 +144,6 @@ export default async function SourcePage({
         kind={source.kind}
         categories={taxonomy.categories}
         infoTypes={taxonomy.infoTypes}
-      />
-
-      <ReaderSegments
-        hasArticle={hasArticle}
         menu={
           <SourceCardMenu
             sourceId={source.id}
@@ -157,6 +153,8 @@ export default async function SourcePage({
           />
         }
       />
+
+      <ReaderSegments hasArticle={hasArticle} />
 
       <section id="original" className="scroll-mt-16">
         <h1 className="mt-6 font-semibold text-2xl" lang="ja" translate="no">
