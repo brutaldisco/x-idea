@@ -804,9 +804,11 @@ async function downloadDirectToFile(input: {
   onWritten: (offset: number) => Promise<void>;
   /** ファイル先頭に対応する CDN バイト位置。サイドカー用 */
   sourceOffset?: number;
+  /** サイドカーの残りなど、全体の一部だけを並列で取るときのチャンク基準 */
+  planTotal?: number;
   onPhase?: (phase: VideoDownloadPhase) => void;
 }): Promise<number> {
-  const chunk = directChunkBytes(input.total);
+  const chunk = directChunkBytes(input.planTotal ?? input.total);
   const existingBytes = input.offset;
   const sourceOffset = input.sourceOffset ?? 0;
   if (existingBytes >= VIDEO_LARGE_RESUME_BYTES && sourceOffset === 0) {
@@ -1175,19 +1177,21 @@ async function downloadViaTailSidecar(input: {
   let total = input.total;
   const remaining = () =>
     total > input.mainOffset ? total - input.mainOffset : 0;
-  let tailOffset = resumeVideoTailOffset(
-    (
-      await withTimeout(
-        sidecar.getFile(),
-        VIDEO_WRITE_TIMEOUT_MS,
-        "保存ファイルの確認",
-      )
-    ).size,
-    remaining() || Number.MAX_SAFE_INTEGER,
-  );
-  if (remaining() > 0) {
-    tailOffset = resumeVideoTailOffset(tailOffset, remaining());
-  }
+  // 前の試行が結合まで進んで消せなかった空の .part を拾わない。
+  // 残りが 0 のときはサイドカーは無視して完了扱いにする
+  let tailOffset =
+    remaining() > 0
+      ? resumeVideoTailOffset(
+          (
+            await withTimeout(
+              sidecar.getFile(),
+              VIDEO_WRITE_TIMEOUT_MS,
+              "保存ファイルの確認",
+            )
+          ).size,
+          remaining(),
+        )
+      : 0;
 
   let lastEmit = 0;
   const emit = (force = false) => {
@@ -1202,9 +1206,13 @@ async function downloadViaTailSidecar(input: {
     input.onProgress(input.mainOffset + tailOffset, total);
   };
   emit(true);
+  // サイドカーの開きは小さい。残り取得中は「開いています」にしない
   input.onPhase?.("downloading");
 
   const persistTailFromFile = async () => {
+    if (!(remaining() > 0)) {
+      return;
+    }
     const size = (
       await withTimeout(
         sidecar.getFile(),
@@ -1212,8 +1220,7 @@ async function downloadViaTailSidecar(input: {
         "保存ファイルの確認",
       )
     ).size;
-    tailOffset =
-      remaining() > 0 ? resumeVideoTailOffset(size, remaining()) : size;
+    tailOffset = resumeVideoTailOffset(size, remaining());
     emit(true);
   };
 
@@ -1221,7 +1228,6 @@ async function downloadViaTailSidecar(input: {
 
   if (needMore()) {
     let directUrl = input.directUrl;
-    let refreshed = false;
     let preferSequential = false;
     for (;;) {
       if (input.signal?.aborted) {
@@ -1240,6 +1246,7 @@ async function downloadViaTailSidecar(input: {
             offset: tailOffset,
             total: remaining(),
             sourceOffset: input.mainOffset,
+            planTotal: total,
             retries: input.plan.retries,
             signal: input.signal,
             onBytes: (n) => {
@@ -1290,11 +1297,13 @@ async function downloadViaTailSidecar(input: {
           throw abortError();
         }
         await persistTailFromFile();
-        if (!refreshed && input.refreshDirectUrl) {
+        // サイドカーは小さいので、失敗しても全コピーの代償はない。
+        // URL を取り直して残りの続きから何度でも取り直す（ADR-026）
+        if (input.refreshDirectUrl) {
           const refreshedUrl = await input.refreshDirectUrl().catch(() => null);
           if (refreshedUrl?.url) {
-            refreshed = true;
             directUrl = refreshedUrl.url;
+            preferSequential = false;
             if (refreshedUrl.bytes && refreshedUrl.bytes > 0) {
               total = refreshedUrl.bytes;
             }
@@ -1350,6 +1359,12 @@ async function downloadViaTailSidecar(input: {
         ? `ダウンロードが完了しませんでした（${finalBytes}/${total}）`
         : "ダウンロードが完了しませんでした",
     );
+  }
+  // 残りが揃ったら空のサイドカーは消す。次回の再開で拾わない
+  try {
+    await input.dir.removeEntry(partName);
+  } catch {
+    // 無ければ無視
   }
   return finalBytes;
 }
