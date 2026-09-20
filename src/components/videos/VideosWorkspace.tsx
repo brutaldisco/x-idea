@@ -25,6 +25,7 @@ import {
 import {
   VIDEO_FILE_PARALLEL,
   VIDEO_HEARTBEAT_MS,
+  VIDEO_LARGE_RESUME_BYTES,
   VIDEO_STALL_MAX_RESTARTS,
   VIDEO_STALL_NOTICE_MS,
   VIDEO_STALL_WATCHDOG_MS,
@@ -169,6 +170,7 @@ export function VideosWorkspace({
   const itemControllersRef = useRef<Map<string, AbortController>>(new Map());
   /** 各本が最後にバイトを受信した時刻。応答なし検出に使う */
   const lastByteAtRef = useRef<Map<string, number>>(new Map());
+  const beatReceivedRef = useRef<Map<string, number>>(new Map());
   const [stalledIds, setStalledIds] = useState<string[]>([]);
   const [openingIds, setOpeningIds] = useState<string[]>([]);
   /** このタブが停止した項目。409 のときだけ再 queued → start してよい */
@@ -347,7 +349,12 @@ export function VideosWorkspace({
         }
         const silentMs = now - last;
         if (silentMs >= VIDEO_STALL_WATCHDOG_MS) {
-          itemControllersRef.current.get(id)?.abort();
+          // 大きな途中ファイルは切断して開き直すと全コピーが再走するため、
+          // チャンク側のスタール検知と URL 取り直しに任せる
+          const received = beatReceivedRef.current.get(id) ?? 0;
+          if (received < VIDEO_LARGE_RESUME_BYTES) {
+            itemControllersRef.current.get(id)?.abort();
+          }
         } else if (silentMs >= VIDEO_STALL_NOTICE_MS) {
           stalled.push(id);
         }
@@ -637,6 +644,7 @@ export function VideosWorkspace({
                   );
                 }
                 beat.received = received;
+                beatReceivedRef.current.set(item.id, received);
                 beat.total = total;
                 sendHeartbeat();
                 applyItemProgress(item.id, received, total);
@@ -660,6 +668,7 @@ export function VideosWorkspace({
             controller.signal.removeEventListener("abort", onBatchAbort);
             itemControllersRef.current.delete(item.id);
             lastByteAtRef.current.delete(item.id);
+            beatReceivedRef.current.delete(item.id);
             setOpeningIds((ids) => ids.filter((id) => id !== item.id));
           }
         }

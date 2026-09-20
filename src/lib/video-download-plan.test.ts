@@ -4,9 +4,11 @@ import {
   DIRECT_PARALLEL,
   directChunkBytes,
   initialVideoDownloadPlan,
+  shouldAvoidProxyFallback,
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
   VIDEO_CHUNK_MIN,
+  VIDEO_LARGE_RESUME_BYTES,
   VIDEO_OPEN_TIMEOUT_MAX_MS,
   VIDEO_OPEN_TIMEOUT_MS,
   videoOpenTimeoutMs,
@@ -93,5 +95,14 @@ describe("videoOpenTimeoutMs", () => {
     expect(videoOpenTimeoutMs(fourGig)).toBeLessThanOrEqual(
       VIDEO_OPEN_TIMEOUT_MAX_MS,
     );
+  });
+});
+
+describe("shouldAvoidProxyFallback", () => {
+  it("skips proxy fallback for large in-progress files", () => {
+    expect(shouldAvoidProxyFallback(0)).toBe(false);
+    expect(shouldAvoidProxyFallback(64 * 1024 * 1024)).toBe(false);
+    expect(shouldAvoidProxyFallback(VIDEO_LARGE_RESUME_BYTES)).toBe(true);
+    expect(shouldAvoidProxyFallback(4 * 1024 * 1024 * 1024)).toBe(true);
   });
 });

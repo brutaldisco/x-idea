@@ -6,6 +6,7 @@ import {
   DIRECT_PARALLEL,
   directChunkBytes,
   initialVideoDownloadPlan,
+  shouldAvoidProxyFallback,
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
   VIDEO_CHUNK_MIN,
@@ -1069,6 +1070,12 @@ export async function downloadVideoFile(input: {
             throw abortError();
           }
           await restoreOffset();
+          // 大きな途中ファイルはプロキシへ落とさない。
+          // もう一度 createWritable が走り、同じ全コピーのあと
+          // Vercel 経由で残りを取ろうとしてまた応答なしになる
+          if (shouldAvoidProxyFallback(offset)) {
+            throw error;
+          }
           total = 0;
           emit(true);
         }

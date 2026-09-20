@@ -64,6 +64,18 @@ export function videoOpenTimeoutMs(existingBytes = 0): number {
  */
 export const VIDEO_DIRECT_LOOKAHEAD_BYTES = 32 * MB;
 
+/**
+ * このサイズ以上の途中ファイルは、CDN 直接が止まったあとに
+ * プロキシへ落とさない。プロキシは createWritable をもう一度やり、
+ * 同じ全コピーが走った末に Vercel 経由で残り数百 MB を取ることになり、
+ * ほぼ確実にまた「応答なし」で落ちる。
+ */
+export const VIDEO_LARGE_RESUME_BYTES = 256 * MB;
+
+export function shouldAvoidProxyFallback(existingBytes: number): boolean {
+  return existingBytes >= VIDEO_LARGE_RESUME_BYTES;
+}
+
 /** この時間バイトが増えなければ UI に「応答なし。再接続しています」を出す */
 export const VIDEO_STALL_NOTICE_MS = 30_000;
 
