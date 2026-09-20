@@ -78,6 +78,17 @@ export function shouldSendVideoHeartbeat(
   return received !== lastSentReceived;
 }
 
+/**
+ * ダウンロード失敗の理由が「元のページが X 上に無い（404）」か。
+ * 404 はリトライしても成功しないので、途中から再開ではなく
+ * 投稿の削除を促す判定に使う。
+ */
+export function isVideoSourceGoneError(
+  error: string | null | undefined,
+): boolean {
+  return typeof error === "string" && error.includes("(404)");
+}
+
 export function canShowSaveVideosMenu(input: {
   kind?: string | null;
   hasQueueableVideos?: boolean | null;

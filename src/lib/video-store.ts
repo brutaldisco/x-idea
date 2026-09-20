@@ -12,6 +12,7 @@ import {
   VIDEO_DIRECT_LOOKAHEAD_BYTES,
   VIDEO_OPEN_TIMEOUT_MS,
   VIDEO_STALL_MS,
+  VIDEO_URL_RESOLVE_MS,
   VIDEO_WRITE_TIMEOUT_MS,
   type VideoDownloadPlan,
 } from "@/lib/video-download-plan";
@@ -634,7 +635,20 @@ async function resolveDirectTotalBytes(input: {
   if (input.hintedBytes && input.hintedBytes > 0) {
     return input.hintedBytes;
   }
-  return probeDirectTotalBytes(input.url, input.signal);
+  // プローブが固まっても先に進めるようタイムアウトを付ける。
+  // タイムアウト時は「サイズ不明」として逐次経路へ進む。
+  // ユーザーの停止シグナルだけは中断として上に投げる
+  const combined = input.signal
+    ? AbortSignal.any([input.signal, AbortSignal.timeout(VIDEO_URL_RESOLVE_MS)])
+    : AbortSignal.timeout(VIDEO_URL_RESOLVE_MS);
+  try {
+    return await probeDirectTotalBytes(input.url, combined);
+  } catch (error) {
+    if (input.signal?.aborted) {
+      throw error;
+    }
+    return null;
+  }
 }
 
 /**

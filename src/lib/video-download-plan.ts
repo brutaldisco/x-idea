@@ -47,6 +47,13 @@ export const VIDEO_DIRECT_LOOKAHEAD_BYTES = 32 * MB;
 export const VIDEO_STALL_NOTICE_MS = 30_000;
 
 /**
+ * CDN URL 解決（/api/media/[id]/url）とブラウザ側サイズ探知のタイムアウト。
+ * 最初の 1 バイトが来るまでウォッチドッグはまだ動かないため、
+ * ここで固まると何も起きなくなるのを防ぐ。
+ */
+export const VIDEO_URL_RESOLVE_MS = 30_000;
+
+/**
  * この時間バイトが増えなければその本だけ切断して保存済み位置から取り直す。
  * リース（90 秒）が切れる前に自分で回復する。
  */

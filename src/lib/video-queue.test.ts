@@ -4,6 +4,7 @@ import {
   canShowSaveVideosMenu,
   isResumableVideoQueueStatus,
   isVideoLeaseStale,
+  isVideoSourceGoneError,
   mediaHasQueueableVideos,
   parseDbUtcMs,
   shouldSendVideoHeartbeat,
@@ -101,6 +102,17 @@ describe("shouldSendVideoHeartbeat", () => {
     expect(shouldSendVideoHeartbeat(1024, 1024)).toBe(false);
     // レジューム位置の巻き戻し（取り直し）も変化なので送る
     expect(shouldSendVideoHeartbeat(1024, 512)).toBe(true);
+  });
+});
+
+describe("isVideoSourceGoneError", () => {
+  it("detects 404 failures only", () => {
+    expect(isVideoSourceGoneError("download failed (404)")).toBe(true);
+    expect(isVideoSourceGoneError("direct range failed (404)")).toBe(true);
+    expect(isVideoSourceGoneError("download failed (500)")).toBe(false);
+    expect(isVideoSourceGoneError("network error")).toBe(false);
+    expect(isVideoSourceGoneError(null)).toBe(false);
+    expect(isVideoSourceGoneError(undefined)).toBe(false);
   });
 });
 

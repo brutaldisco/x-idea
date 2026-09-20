@@ -13,6 +13,11 @@ import {
 } from "@/components/videos/VideoPlayer";
 import { formatBytes } from "@/lib/bytes";
 import {
+  LIBRARY_SOURCES_KEY,
+  removeSourceFromLibraryQueries,
+} from "@/lib/library-cache";
+import { rememberDeletedSource } from "@/lib/library-deleted";
+import {
   mediaVideoRedirectPath,
   mediaVideoUrlApiPath,
   parseVideoSourcePayload,
@@ -23,6 +28,7 @@ import {
   VIDEO_STALL_MAX_RESTARTS,
   VIDEO_STALL_NOTICE_MS,
   VIDEO_STALL_WATCHDOG_MS,
+  VIDEO_URL_RESOLVE_MS,
 } from "@/lib/video-download-plan";
 import { isIncompleteVideoFile } from "@/lib/video-files";
 import { useVideoSaveFolder } from "@/lib/video-folder";
@@ -44,6 +50,7 @@ import {
 import {
   isResumableVideoQueueStatus,
   isVideoLeaseStale,
+  isVideoSourceGoneError,
   shouldSendVideoHeartbeat,
 } from "@/lib/video-queue";
 import { applyVideoItemSaveStatus } from "@/lib/video-save-status";
@@ -544,7 +551,12 @@ export function VideosWorkspace({
           try {
             const urlRes = await fetch(mediaVideoUrlApiPath(item.mediaId), {
               cache: "no-store",
-              signal: controller.signal,
+              // 応答のない URL 解決で固まらないようタイムアウトを付ける。
+              // 最初の 1 バイトが来るまでウォッチドッグはまだ動かない
+              signal: AbortSignal.any([
+                controller.signal,
+                AbortSignal.timeout(VIDEO_URL_RESOLVE_MS),
+              ]),
             });
             if (urlRes.ok) {
               return parseVideoSourcePayload(await urlRes.json());
@@ -782,6 +794,49 @@ export function VideosWorkspace({
       body: JSON.stringify({ action: "cancel" }),
     });
     applyVideoItemSaveStatus(queryClient, item, "canceled");
+    await refresh();
+  }
+
+  // 元のページが X 上で消えた（404）投稿を、投稿自体ごと削除する。
+  // 途中ファイル・IndexedDB の進捗も消し、権限があれば X のブックマークも外す
+  async function deleteGoneSourceItem(item: VideoItem) {
+    if (!item.sourceId) {
+      return;
+    }
+    if (
+      !window.confirm(
+        "この投稿を削除しますか？途中ファイルも消えます。権限があれば X のブックマークからも外します。",
+      )
+    ) {
+      return;
+    }
+    const handle = await resolveRoot();
+    await discardItemFiles([item], handle);
+    const res = await fetch(`/api/sources/${item.sourceId}`, {
+      method: "DELETE",
+    });
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      accountId?: string | null;
+      videoRelPaths?: string[];
+      error?: { message?: string };
+    } | null;
+    if (!res.ok || body?.ok !== true) {
+      setMessage(body?.error?.message ?? "削除できませんでした。");
+      return;
+    }
+    const files = body?.videoRelPaths ?? [];
+    if (files.length > 0) {
+      await removeSavedVideoFiles({
+        accountId: body?.accountId ?? item.accountId,
+        relPaths: files,
+        root: handle,
+      });
+    }
+    rememberDeletedSource(item.sourceId);
+    removeSourceFromLibraryQueries(queryClient, item.sourceId);
+    void queryClient.invalidateQueries({ queryKey: [LIBRARY_SOURCES_KEY] });
+    setMessage("投稿を削除しました");
     await refresh();
   }
 
@@ -1232,18 +1287,25 @@ export function VideosWorkspace({
                         ? "応答なし。再接続しています…"
                         : (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
                       : null;
+                  // 元のページが X 上で消えた（404）失敗は再開しても
+                  // 成功しないので、投稿の削除を促す
+                  const sourceGone =
+                    item.status === "failed" &&
+                    isVideoSourceGoneError(item.error);
                   const statusLabel = itemStopping
                     ? "停止中"
                     : otherTabActive
                       ? "別のタブで実行中です"
                       : interrupted
                         ? "中断しています（再開できます）"
-                        : item.status === "failed"
-                          ? "失敗（途中から再開できます）"
-                          : videoQueueStatusLabel(
-                              downloading ? "downloading" : item.status,
-                              pct,
-                            );
+                        : sourceGone
+                          ? "元のページが見つかりません。削除しますか？"
+                          : item.status === "failed"
+                            ? "失敗（途中から再開できます）"
+                            : videoQueueStatusLabel(
+                                downloading ? "downloading" : item.status,
+                                pct,
+                              );
                   const statusWithSpeed = speedLabel
                     ? `${statusLabel} · ${speedLabel}`
                     : statusLabel;
@@ -1339,7 +1401,7 @@ export function VideosWorkspace({
                             </span>
                           </div>
                         ) : null}
-                        {item.error ? (
+                        {item.error && !sourceGone ? (
                           <p className="mt-1 text-danger text-xs">
                             {item.error}
                           </p>
@@ -1351,23 +1413,44 @@ export function VideosWorkspace({
                             </span>
                           ) : null}
                           {item.status === "failed" ? (
-                            <>
-                              <button
-                                type="button"
-                                disabled={busy || !supported || !linked}
-                                className="text-accent text-xs hover:underline disabled:opacity-40"
-                                onClick={() => void startDownloads([item.id])}
-                              >
-                                途中から再開
-                              </button>
-                              <button
-                                type="button"
-                                className="text-ink-2 text-xs hover:underline"
-                                onClick={() => void cancelItem(item)}
-                              >
-                                取消
-                              </button>
-                            </>
+                            sourceGone ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="text-danger text-xs hover:underline"
+                                  onClick={() =>
+                                    void deleteGoneSourceItem(item)
+                                  }
+                                >
+                                  投稿を削除する
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-ink-2 text-xs hover:underline"
+                                  onClick={() => void cancelItem(item)}
+                                >
+                                  取消
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busy || !supported || !linked}
+                                  className="text-accent text-xs hover:underline disabled:opacity-40"
+                                  onClick={() => void startDownloads([item.id])}
+                                >
+                                  途中から再開
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-ink-2 text-xs hover:underline"
+                                  onClick={() => void cancelItem(item)}
+                                >
+                                  取消
+                                </button>
+                              </>
+                            )
                           ) : (
                             <>
                               {item.status === "queued" ? (

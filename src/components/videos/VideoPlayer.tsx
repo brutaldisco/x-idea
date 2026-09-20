@@ -16,6 +16,10 @@ import {
   subscribeFullscreen,
 } from "@/lib/video-fullscreen";
 import {
+  isVideoPlayerTypingTarget,
+  videoPlayerKeyAction,
+} from "@/lib/video-player-keys";
+import {
   parseRepeatMode,
   REPEAT_TOGGLE_MODES,
   type RepeatMode,
@@ -115,45 +119,72 @@ export function VideoPlayer({
     return subscribeFullscreen(sync);
   }, []);
 
+  function focusShell() {
+    shellRef.current?.focus({ preventScroll: true });
+  }
+
+  useLayoutEffect(() => {
+    if (!playbackUrl) {
+      return;
+    }
+    // ネイティブのシークバーにフォーカスが残ると左右が再生位置操作になる
+    shellRef.current?.focus({ preventScroll: true });
+  }, [playbackUrl]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.altKey || event.ctrlKey || event.metaKey) {
+      const action = videoPlayerKeyAction(event);
+      if (!action) {
         return;
       }
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.closest("input, textarea, select") || target.isContentEditable)
-      ) {
+      if (isVideoPlayerTypingTarget(event.target)) {
         return;
       }
-      if (event.key === "Escape") {
+      if (action === "close") {
         if (isFullscreen()) {
           return;
         }
+        event.preventDefault();
+        event.stopPropagation();
         onClose();
         return;
       }
-      if (event.key === "ArrowRight") {
-        event.preventDefault();
-        event.stopPropagation();
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (action === "next") {
         onNext();
         return;
       }
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        event.stopPropagation();
+      if (action === "prev") {
         onPrev();
         return;
       }
-      if (event.key === " " || event.code === "Space") {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleVideoPlayback(videoRef.current);
+      toggleVideoPlayback(videoRef.current);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      const action = videoPlayerKeyAction(event);
+      if (action !== "next" && action !== "prev") {
+        return;
       }
+      if (isVideoPlayerTypingTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
     };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    const video = videoRef.current;
+    video?.addEventListener("keydown", onKey, true);
+    video?.addEventListener("keyup", onKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      video?.removeEventListener("keydown", onKey, true);
+      video?.removeEventListener("keyup", onKeyUp, true);
+    };
   }, [onClose, onNext, onPrev]);
 
   function clearIdleTimer() {
@@ -234,7 +265,8 @@ export function VideoPlayer({
   return (
     <div
       ref={shellRef}
-      className={`video-player-shell fixed inset-0 z-50 flex flex-col bg-black text-white [color-scheme:dark] ${
+      tabIndex={-1}
+      className={`video-player-shell fixed inset-0 z-50 flex flex-col bg-black text-white outline-none [color-scheme:dark] ${
         chromeVisible ? "" : "video-player-shell--chrome-hidden"
       }`}
       onPointerMove={onPointerActivity}
@@ -272,7 +304,10 @@ export function VideoPlayer({
           playsInline
           controlsList="nofullscreen"
           loop={repeat === "one"}
+          tabIndex={-1}
           className="absolute inset-0 h-full w-full bg-black object-contain outline-none"
+          onFocus={focusShell}
+          onPointerUp={focusShell}
           onError={() => {
             const fallback = mediaVideoProxyFallbackPath(playbackUrl);
             if (fallback) {
