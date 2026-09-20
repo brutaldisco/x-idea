@@ -7,6 +7,7 @@ import {
   isVideoSourceGoneError,
   mediaHasQueueableVideos,
   parseDbUtcMs,
+  shouldArmVideoStallWatchdog,
   shouldSendVideoHeartbeat,
   sourceVideosQueueMessage,
   tallySourceVideoQueue,
@@ -93,8 +94,9 @@ describe("isVideoLeaseStale", () => {
 });
 
 describe("shouldSendVideoHeartbeat", () => {
-  it("sends the first beat to establish the lease", () => {
-    expect(shouldSendVideoHeartbeat(-1, 0)).toBe(true);
+  it("does not send a 0-byte first beat (start already established the lease)", () => {
+    expect(shouldSendVideoHeartbeat(-1, 0)).toBe(false);
+    expect(shouldSendVideoHeartbeat(0, 0)).toBe(false);
   });
 
   it("sends only when received bytes changed since the last sent beat", () => {
@@ -102,6 +104,22 @@ describe("shouldSendVideoHeartbeat", () => {
     expect(shouldSendVideoHeartbeat(1024, 1024)).toBe(false);
     // レジューム位置の巻き戻し（取り直し）も変化なので送る
     expect(shouldSendVideoHeartbeat(1024, 512)).toBe(true);
+  });
+});
+
+describe("shouldArmVideoStallWatchdog", () => {
+  it("does not arm on the resume cursor snapshot", () => {
+    expect(shouldArmVideoStallWatchdog(0, 4_328_521_728)).toBe(false);
+    expect(shouldArmVideoStallWatchdog(0, 16_384)).toBe(false);
+  });
+
+  it("arms only when new bytes arrive after the cursor is known", () => {
+    expect(shouldArmVideoStallWatchdog(4_328_521_728, 4_328_538_112)).toBe(
+      true,
+    );
+    expect(shouldArmVideoStallWatchdog(4_328_521_728, 4_328_521_728)).toBe(
+      false,
+    );
   });
 });
 

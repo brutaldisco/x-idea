@@ -7,6 +7,9 @@ import {
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
   VIDEO_CHUNK_MIN,
+  VIDEO_OPEN_TIMEOUT_MAX_MS,
+  VIDEO_OPEN_TIMEOUT_MS,
+  videoOpenTimeoutMs,
 } from "./video-download-plan";
 
 describe("video download plan", () => {
@@ -75,5 +78,20 @@ describe("directChunkBytes", () => {
 
   it("falls back to the max when total is unknown", () => {
     expect(directChunkBytes(0)).toBe(DIRECT_CHUNK_MAX);
+  });
+});
+
+describe("videoOpenTimeoutMs", () => {
+  it("keeps the base timeout for a new file", () => {
+    expect(videoOpenTimeoutMs(0)).toBe(VIDEO_OPEN_TIMEOUT_MS);
+    expect(videoOpenTimeoutMs()).toBe(VIDEO_OPEN_TIMEOUT_MS);
+  });
+
+  it("extends the timeout for multi-gigabyte resume files", () => {
+    const fourGig = 4 * 1024 * 1024 * 1024;
+    expect(videoOpenTimeoutMs(fourGig)).toBeGreaterThan(VIDEO_OPEN_TIMEOUT_MS);
+    expect(videoOpenTimeoutMs(fourGig)).toBeLessThanOrEqual(
+      VIDEO_OPEN_TIMEOUT_MAX_MS,
+    );
   });
 });

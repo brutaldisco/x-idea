@@ -51,6 +51,7 @@ import {
   isResumableVideoQueueStatus,
   isVideoLeaseStale,
   isVideoSourceGoneError,
+  shouldArmVideoStallWatchdog,
   shouldSendVideoHeartbeat,
 } from "@/lib/video-queue";
 import { applyVideoItemSaveStatus } from "@/lib/video-save-status";
@@ -169,11 +170,13 @@ export function VideosWorkspace({
   /** 各本が最後にバイトを受信した時刻。応答なし検出に使う */
   const lastByteAtRef = useRef<Map<string, number>>(new Map());
   const [stalledIds, setStalledIds] = useState<string[]>([]);
+  const [openingIds, setOpeningIds] = useState<string[]>([]);
   /** このタブが停止した項目。409 のときだけ再 queued → start してよい */
   const releasedIdsRef = useRef<Set<string>>(new Set());
   const sweptRef = useRef(false);
   const autoResumeRef = useRef(false);
   const [offlineHint, setOfflineHint] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [queueOpen, setQueueOpen] = useState(initialQueueOpen);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -184,6 +187,13 @@ export function VideosWorkspace({
 
   useEffect(() => {
     setRepeat(loadRepeatMode());
+  }, []);
+
+  // リース切れを画面に反映する。「別のタブで実行中」のまま
+  // 「すべて開始」が押せなくなるのを防ぐ
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 2_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -244,7 +254,7 @@ export function VideosWorkspace({
       (item) =>
         item.status === "downloading" &&
         !activeRef.current.has(item.id) &&
-        isVideoLeaseStale(item.lastProgressAt),
+        isVideoLeaseStale(item.lastProgressAt, nowMs),
     );
     if (interrupted.length === 0) {
       return;
@@ -260,7 +270,7 @@ export function VideosWorkspace({
       );
       await startDownloadsRef.current?.(interrupted.map((item) => item.id));
     })();
-  }, [accountId, root, linked, busy, data.queue]);
+  }, [accountId, root, linked, busy, data.queue, nowMs]);
 
   useEffect(() => {
     const onOffline = () => {
@@ -437,7 +447,7 @@ export function VideosWorkspace({
           activeRef.current.has(item.id),
         ) &&
         (item.status !== "downloading" ||
-          isVideoLeaseStale(item.lastProgressAt)),
+          isVideoLeaseStale(item.lastProgressAt, nowMs)),
     );
     const chosen = ids?.length
       ? resumable.filter((item) => ids.includes(item.id))
@@ -545,7 +555,13 @@ export function VideosWorkspace({
           ...prev,
           [item.id]: { received: 0, total: 0, bps: null },
         }));
-        heartbeatTimer = setInterval(sendHeartbeat, VIDEO_HEARTBEAT_MS);
+        heartbeatTimer = setInterval(() => {
+          // 大きな途中ファイルの開き直し中はバイトが増えない。
+          // リースだけは延ばし、別タブが割り込まないようにする
+          const opening =
+            beat.received > 0 && !lastByteAtRef.current.has(item.id);
+          sendHeartbeat(opening);
+        }, VIDEO_HEARTBEAT_MS);
         // CDN 直接ダウンロード用の URL を解決（失敗時はプロキシ経路で進む）
         const resolveDirectUrl = async () => {
           try {
@@ -590,6 +606,9 @@ export function VideosWorkspace({
           // 取り直した試行はバイト到着までウォッチドッグを動かさない
           // （ファイル準備の全コピーが長引くことがあるため）
           lastByteAtRef.current.delete(item.id);
+          setOpeningIds((ids) =>
+            ids.includes(item.id) ? ids : [...ids, item.id],
+          );
           try {
             result = await downloadVideoFile({
               downloadId: item.id,
@@ -607,8 +626,15 @@ export function VideosWorkspace({
                 if (controller.signal.aborted) {
                   return;
                 }
-                if (received > beat.received) {
+                // 再開位置の最初の表示では武装しない。
+                // 武装すると 4GB 超のファイル準備中に 75 秒で切断される
+                if (shouldArmVideoStallWatchdog(beat.received, received)) {
                   lastByteAtRef.current.set(item.id, Date.now());
+                  setOpeningIds((ids) =>
+                    ids.includes(item.id)
+                      ? ids.filter((id) => id !== item.id)
+                      : ids,
+                  );
                 }
                 beat.received = received;
                 beat.total = total;
@@ -634,6 +660,7 @@ export function VideosWorkspace({
             controller.signal.removeEventListener("abort", onBatchAbort);
             itemControllersRef.current.delete(item.id);
             lastByteAtRef.current.delete(item.id);
+            setOpeningIds((ids) => ids.filter((id) => id !== item.id));
           }
         }
         if (!result) {
@@ -1073,9 +1100,9 @@ export function VideosWorkspace({
             activeRef.current.has(item.id),
           ) &&
           (item.status !== "downloading" ||
-            isVideoLeaseStale(item.lastProgressAt)),
+            isVideoLeaseStale(item.lastProgressAt, nowMs)),
       ),
-    [data.queue],
+    [data.queue, nowMs],
   );
 
   useEffect(() => {
@@ -1273,7 +1300,7 @@ export function VideosWorkspace({
                   const otherTabActive =
                     item.status === "downloading" &&
                     !prog &&
-                    !isVideoLeaseStale(item.lastProgressAt);
+                    !isVideoLeaseStale(item.lastProgressAt, nowMs);
                   const interrupted =
                     item.status === "downloading" && !prog && !otherTabActive;
                   const downloading =
@@ -1281,11 +1308,18 @@ export function VideosWorkspace({
                   const itemStopping = stopping && downloading;
                   const stalled =
                     downloading && !stopping && stalledIds.includes(item.id);
+                  const opening =
+                    downloading &&
+                    !stopping &&
+                    !stalled &&
+                    openingIds.includes(item.id);
                   const speedLabel =
                     downloading && !stopping
                       ? stalled
                         ? "応答なし。再接続しています…"
-                        : (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
+                        : opening
+                          ? "保存ファイルを開いています…"
+                          : (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
                       : null;
                   // 元のページが X 上で消えた（404）失敗は再開しても
                   // 成功しないので、投稿の削除を促す

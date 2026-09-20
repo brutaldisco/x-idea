@@ -10,11 +10,11 @@ import {
   VIDEO_CHUNK_MAX,
   VIDEO_CHUNK_MIN,
   VIDEO_DIRECT_LOOKAHEAD_BYTES,
-  VIDEO_OPEN_TIMEOUT_MS,
   VIDEO_STALL_MS,
   VIDEO_URL_RESOLVE_MS,
   VIDEO_WRITE_TIMEOUT_MS,
   type VideoDownloadPlan,
+  videoOpenTimeoutMs,
 } from "@/lib/video-download-plan";
 import {
   isFinishedVideoDownload,
@@ -780,11 +780,12 @@ async function downloadDirectToFile(input: {
   onWritten: (offset: number) => Promise<void>;
 }): Promise<number> {
   const chunk = directChunkBytes(input.total);
+  const existingBytes = input.offset;
   const writable = await withTimeout(
     input.file.createWritable({
       keepExistingData: true,
     }),
-    VIDEO_OPEN_TIMEOUT_MS,
+    videoOpenTimeoutMs(existingBytes),
     "保存ファイルの準備",
   );
   if (input.signal?.aborted) {
@@ -1079,7 +1080,7 @@ export async function downloadVideoFile(input: {
     // チャンクごとに開くとファイルが大きいほど急激に遅くなる。
     const writable = await withTimeout(
       file.createWritable({ keepExistingData: true }),
-      VIDEO_OPEN_TIMEOUT_MS,
+      videoOpenTimeoutMs(offset),
       "保存ファイルの準備",
     );
     try {

@@ -69,13 +69,31 @@ export function isVideoLeaseStale(
  * ハートビートを送るか（ADR-025 改定）。受信バイトが前回送信時から
  * 増えたときだけ送る。固まったダウンロードがリースを持ち続けて
  * 「別のタブで実行中です」のまま再開不能になるのを防ぐ。
- * 初回（lastSentReceived < 0）はリース確立のため必ず送る。
+ * start がリースを確立するので、0 バイトの初回ビートは送らない。
  */
 export function shouldSendVideoHeartbeat(
   lastSentReceived: number,
   received: number,
 ): boolean {
+  // start がリースを確立する。0 バイトの初回ビートは送らない
+  // （progress_bytes を 0 で上書きし、固着中にリースだけ延びるのを防ぐ）
+  if (received <= 0 && lastSentReceived <= 0) {
+    return false;
+  }
   return received !== lastSentReceived;
+}
+
+/**
+ * スタール監視を武装してよいか。
+ * 再開位置の最初の進捗（0 → 保存済みバイト）では武装しない。
+ * ここで武装すると、keepExistingData の全コピー中に 75 秒で切断され、
+ * 同じ開き直しを繰り返して 0 B/s のまま固まる。
+ */
+export function shouldArmVideoStallWatchdog(
+  previousReceived: number,
+  received: number,
+): boolean {
+  return previousReceived > 0 && received > previousReceived;
 }
 
 /**

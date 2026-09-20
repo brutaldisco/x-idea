@@ -34,8 +34,29 @@ export const VIDEO_WRITE_TIMEOUT_MS = 60_000;
 /**
  * createWritable のタイムアウト。レジューム時の keepExistingData は
  * 既存内容の全コピーが走ることがある（ADR-026）ため長めに取る。
+ * 大きな途中ファイルは `videoOpenTimeoutMs` でさらに延ばす。
  */
 export const VIDEO_OPEN_TIMEOUT_MS = 180_000;
+export const VIDEO_OPEN_TIMEOUT_MAX_MS = 15 * 60_000;
+const VIDEO_OPEN_TIMEOUT_PER_GB_MS = 90_000;
+
+/**
+ * keepExistingData の開き直しは既存バイトの全コピーが走る。
+ * 4GB 超だと 180 秒では足りず、タイムアウト→再オープンのループになる。
+ */
+export function videoOpenTimeoutMs(existingBytes = 0): number {
+  if (!(existingBytes > 0)) {
+    return VIDEO_OPEN_TIMEOUT_MS;
+  }
+  const gigs = Math.ceil(existingBytes / (1024 * 1024 * 1024));
+  return Math.min(
+    VIDEO_OPEN_TIMEOUT_MAX_MS,
+    Math.max(
+      VIDEO_OPEN_TIMEOUT_MS,
+      VIDEO_OPEN_TIMEOUT_MS + gigs * VIDEO_OPEN_TIMEOUT_PER_GB_MS,
+    ),
+  );
+}
 
 /**
  * CDN 並列ダウンロードで書き込み位置から先読みしてよい上限（背圧）。

@@ -556,8 +556,8 @@ export async function markVideoProgress(
     throw new AppError("VALIDATION", "アカウントを選んでください");
   }
   await ownedItem(id, accountId);
-  const received = asNonNegativeInt(input.received);
-  const total = asNonNegativeInt(input.total);
+  const received = asPositiveInt(input.received);
+  const total = asPositiveInt(input.total);
   await getClient().execute({
     sql: `UPDATE video_downloads SET
             last_progress_at = datetime('now'),
@@ -573,6 +573,12 @@ function asNonNegativeInt(value: unknown): number | null {
     return null;
   }
   return Math.round(value);
+}
+
+/** 0 は「未計測」として無視する。COALESCE(0, 既存) で保存位置が消えないようにする */
+function asPositiveInt(value: unknown): number | null {
+  const parsed = asNonNegativeInt(value);
+  return parsed != null && parsed > 0 ? parsed : null;
 }
 
 /** SQLite datetime('now') と同じ書式（UTC "YYYY-MM-DD HH:MM:SS"）を作る */
