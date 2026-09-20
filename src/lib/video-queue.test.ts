@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { VIDEO_LEASE_STALE_MS } from "./video-download-plan";
 import {
   canShowSaveVideosMenu,
+  canTakeOverVideoDownload,
+  isOtherTabVideoDownload,
   isResumableVideoQueueStatus,
   isVideoLeaseStale,
   isVideoSourceGoneError,
@@ -11,6 +13,7 @@ import {
   shouldSendVideoHeartbeat,
   sourceVideosQueueMessage,
   tallySourceVideoQueue,
+  videoDownloadLockName,
 } from "./video-queue";
 
 describe("canShowSaveVideosMenu", () => {
@@ -56,6 +59,61 @@ describe("isResumableVideoQueueStatus", () => {
   it("lets failed items resume from their saved progress", () => {
     expect(isResumableVideoQueueStatus("failed", false)).toBe(true);
     expect(isResumableVideoQueueStatus("failed", true)).toBe(true);
+  });
+});
+
+describe("canTakeOverVideoDownload / isOtherTabVideoDownload", () => {
+  it("lets the tab that holds the browser lock take over a live lease", () => {
+    expect(
+      canTakeOverVideoDownload({
+        status: "downloading",
+        active: false,
+        leaseStale: false,
+        ownsBrowserLock: true,
+      }),
+    ).toBe(true);
+    expect(
+      isOtherTabVideoDownload({
+        status: "downloading",
+        hasLocalProgress: false,
+        leaseStale: false,
+        ownsBrowserLock: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps a live lease as another tab when this tab has no lock", () => {
+    expect(
+      canTakeOverVideoDownload({
+        status: "downloading",
+        active: false,
+        leaseStale: false,
+        ownsBrowserLock: false,
+      }),
+    ).toBe(false);
+    expect(
+      isOtherTabVideoDownload({
+        status: "downloading",
+        hasLocalProgress: false,
+        leaseStale: false,
+        ownsBrowserLock: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("still treats a stale lease as take-overable without the lock", () => {
+    expect(
+      canTakeOverVideoDownload({
+        status: "downloading",
+        active: false,
+        leaseStale: true,
+        ownsBrowserLock: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("namespaces the browser lock by account", () => {
+    expect(videoDownloadLockName("acc_1")).toBe("x-idea-video-dl:acc_1");
   });
 });
 

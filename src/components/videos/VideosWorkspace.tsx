@@ -49,6 +49,9 @@ import {
   videoQueueStatusLabel,
 } from "@/lib/video-progress";
 import {
+  canTakeOverVideoDownload,
+  holdVideoDownloadLock,
+  isOtherTabVideoDownload,
   isResumableVideoQueueStatus,
   isVideoLeaseStale,
   isVideoSourceGoneError,
@@ -181,6 +184,7 @@ export function VideosWorkspace({
   const autoResumeRef = useRef(false);
   const [offlineHint, setOfflineHint] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [ownsDownloadLock, setOwnsDownloadLock] = useState(false);
   const [queueOpen, setQueueOpen] = useState(initialQueueOpen);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -199,6 +203,25 @@ export function VideosWorkspace({
     const timer = window.setInterval(() => setNowMs(Date.now()), 2_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // 同一ブラウザの Videos タブ排他。再読み込み後は前のタブが死んでいるので
+  // ロックが取れ、90 秒待たずに引き継げる（ADR-025）
+  useEffect(() => {
+    if (!accountId) {
+      setOwnsDownloadLock(false);
+      return;
+    }
+    const controller = new AbortController();
+    void holdVideoDownloadLock(accountId, controller.signal).then((owned) => {
+      if (!controller.signal.aborted) {
+        setOwnsDownloadLock(owned);
+      }
+    });
+    return () => {
+      controller.abort();
+      setOwnsDownloadLock(false);
+    };
+  }, [accountId]);
 
   useEffect(() => {
     sweptRef.current = false;
@@ -254,11 +277,13 @@ export function VideosWorkspace({
     ) {
       return;
     }
-    const interrupted = data.queue.filter(
-      (item) =>
-        item.status === "downloading" &&
-        !activeRef.current.has(item.id) &&
-        isVideoLeaseStale(item.lastProgressAt, nowMs),
+    const interrupted = data.queue.filter((item) =>
+      canTakeOverVideoDownload({
+        status: item.status,
+        active: activeRef.current.has(item.id),
+        leaseStale: isVideoLeaseStale(item.lastProgressAt, nowMs),
+        ownsBrowserLock: ownsDownloadLock,
+      }),
     );
     if (interrupted.length === 0) {
       return;
@@ -272,9 +297,12 @@ export function VideosWorkspace({
       setMessage(
         `中断した ${interrupted.length} 件のダウンロードを自動で再開します`,
       );
-      await startDownloadsRef.current?.(interrupted.map((item) => item.id));
+      const ids = interrupted.map((item) => item.id);
+      // 生きているリースでも、このタブがロックを持っていれば先に外す
+      await Promise.all(ids.map((id) => requeueItem(id)));
+      await startDownloadsRef.current?.(ids);
     })();
-  }, [accountId, root, linked, busy, data.queue, nowMs]);
+  }, [accountId, root, linked, busy, data.queue, nowMs, ownsDownloadLock]);
 
   useEffect(() => {
     const onOffline = () => {
@@ -456,7 +484,12 @@ export function VideosWorkspace({
           activeRef.current.has(item.id),
         ) &&
         (item.status !== "downloading" ||
-          isVideoLeaseStale(item.lastProgressAt, nowMs)),
+          canTakeOverVideoDownload({
+            status: item.status,
+            active: activeRef.current.has(item.id),
+            leaseStale: isVideoLeaseStale(item.lastProgressAt, nowMs),
+            ownsBrowserLock: ownsDownloadLock,
+          })),
     );
     const chosen = ids?.length
       ? resumable.filter((item) => ids.includes(item.id))
@@ -467,6 +500,11 @@ export function VideosWorkspace({
       );
       return;
     }
+    await Promise.all(
+      chosen
+        .filter((item) => item.status === "downloading")
+        .map((item) => requeueItem(item.id)),
+    );
     setBusy(true);
     setStopping(false);
     setMessage(null);
@@ -1324,10 +1362,12 @@ export function VideosWorkspace({
                   );
                   // このタブで進捗のない downloading は、リースが生きていれば
                   // 別タブの実行中、切れていれば中断（別セッションの取り残し）
-                  const otherTabActive =
-                    item.status === "downloading" &&
-                    !prog &&
-                    !isVideoLeaseStale(item.lastProgressAt, nowMs);
+                  const otherTabActive = isOtherTabVideoDownload({
+                    status: item.status,
+                    hasLocalProgress: Boolean(prog),
+                    leaseStale: isVideoLeaseStale(item.lastProgressAt, nowMs),
+                    ownsBrowserLock: ownsDownloadLock,
+                  });
                   const interrupted =
                     item.status === "downloading" && !prog && !otherTabActive;
                   const downloading =
@@ -1535,14 +1575,19 @@ export function VideosWorkspace({
                                   この動画だけ
                                 </button>
                               ) : null}
-                              {interrupted ? (
+                              {interrupted || otherTabActive ? (
                                 <button
                                   type="button"
                                   disabled={busy || !supported || !linked}
                                   className="text-accent text-xs hover:underline disabled:opacity-40"
-                                  onClick={() => void startDownloads([item.id])}
+                                  onClick={() =>
+                                    void (async () => {
+                                      await requeueItem(item.id);
+                                      await startDownloads([item.id]);
+                                    })()
+                                  }
                                 >
-                                  再開
+                                  このタブで再開
                                 </button>
                               ) : null}
                               <button

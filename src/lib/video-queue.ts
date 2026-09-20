@@ -51,6 +51,101 @@ export function parseDbUtcMs(text: string): number | null {
  * lastProgressAt が null（ハートビート導入前の行）なら中断扱い。
  * リースが生きている downloading は別タブで実行中なので触らない。
  */
+/**
+ * このブラウザでダウンロードの排他ロックを持っているか。
+ * 再読み込み後は前のタブが死んでいるのでロックは取れる。
+ * 本当に別タブが動いているときだけ取れない（ADR-025）。
+ */
+export function canTakeOverVideoDownload(input: {
+  status: string;
+  active: boolean;
+  leaseStale: boolean;
+  ownsBrowserLock: boolean;
+}): boolean {
+  if (input.status !== "downloading" || input.active) {
+    return false;
+  }
+  return input.ownsBrowserLock || input.leaseStale;
+}
+
+/** 本当に別タブが動いているときだけ「別のタブで実行中」にする */
+export function isOtherTabVideoDownload(input: {
+  status: string;
+  hasLocalProgress: boolean;
+  leaseStale: boolean;
+  ownsBrowserLock: boolean;
+}): boolean {
+  return (
+    input.status === "downloading" &&
+    !input.hasLocalProgress &&
+    !input.leaseStale &&
+    !input.ownsBrowserLock
+  );
+}
+
+export function videoDownloadLockName(accountId: string): string {
+  return `x-idea-video-dl:${accountId}`;
+}
+
+/**
+ * 同一ブラウザ内の Videos タブ排他。取れたら true を返し、
+ * signal が abort されるまでロックを持ち続ける。
+ * API が無い／失敗したら再開を止めないよう true。
+ */
+export async function holdVideoDownloadLock(
+  accountId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const locks =
+    typeof navigator === "undefined"
+      ? undefined
+      : (
+          navigator as Navigator & {
+            locks?: {
+              request(
+                name: string,
+                options: { ifAvailable?: boolean },
+                callback: (lock: { name: string } | null) => Promise<void>,
+              ): Promise<void>;
+            };
+          }
+        ).locks;
+  if (!locks) {
+    return true;
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (owned: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(owned);
+    };
+    const keep = new Promise<void>((release) => {
+      if (signal.aborted) {
+        release();
+        return;
+      }
+      signal.addEventListener("abort", () => release(), { once: true });
+    });
+    void locks
+      .request(
+        videoDownloadLockName(accountId),
+        { ifAvailable: true },
+        async (lock) => {
+          if (!lock) {
+            finish(false);
+            return;
+          }
+          finish(true);
+          await keep;
+        },
+      )
+      .catch(() => finish(true));
+  });
+}
+
 export function isVideoLeaseStale(
   lastProgressAt: string | null,
   now = Date.now(),
