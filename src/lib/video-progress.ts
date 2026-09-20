@@ -18,6 +18,8 @@ function pruneSpeedSamples(
 ): VideoSpeedSample[] {
   const cutoff = now - VIDEO_SPEED_WINDOW_MS;
   const kept = samples.filter((sample) => sample.at >= cutoff);
+  // ウィンドウを外れても直近の 1 件は残す。消すと速度が 0 に落ちず
+  // 次の転送まで「計測中」のままになる
   return kept.length > 0 ? kept : samples.slice(-1);
 }
 
@@ -37,8 +39,11 @@ export function appendVideoSpeedSample(
   if (last && received - last.received > VIDEO_SPEED_JUMP_BYTES) {
     return [{ at: now, received }];
   }
-  if (last && received === last.received && now - last.at < 200) {
-    return pruneSpeedSamples(samples, now);
+  if (last && received === last.received) {
+    // 同じ受信量の繰り返し（レジューム位置の表示など）は速度サンプルにしない。
+    // ここで時刻を進めると、実際の転送が始まるまでの時間が分母に入り、
+    // 残り取得が走っていても 0 B/s 表示になる
+    return samples;
   }
   return pruneSpeedSamples([...samples, { at: now, received }], now);
 }
@@ -53,6 +58,11 @@ export function videoDownloadBytesPerSec(
   }
   const first = samples[0];
   const last = samples[samples.length - 1];
+  // 最後にバイトが増えてからウィンドウを超えたら止まったとみなす。
+  // 古い時刻を分母に残すと 0 に落ちない
+  if (now - last.at >= VIDEO_SPEED_WINDOW_MS) {
+    return 0;
+  }
   const elapsedMs = Math.max(last.at, now) - first.at;
   if (elapsedMs < VIDEO_SPEED_MIN_MS) {
     return null;
@@ -60,6 +70,10 @@ export function videoDownloadBytesPerSec(
   const gained = last.received - first.received;
   if (gained < 0) {
     return null;
+  }
+  if (gained === 0) {
+    // 転送が止まった（サンプルが同じ値のまま）ときは 0 B/s に落とす
+    return 0;
   }
   return gained / (elapsedMs / 1000);
 }

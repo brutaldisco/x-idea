@@ -84,6 +84,25 @@ describe("video progress", () => {
       { at: 1_000, received: 10 * 1024 * 1024 },
     ];
     expect(videoDownloadBytesPerSec(samples, 1_000)).toBe(10 * 1024 * 1024);
-    expect(videoDownloadBytesPerSec(samples, 5_000)).toBe(2 * 1024 * 1024);
+    expect(videoDownloadBytesPerSec(samples, 4_999)).toBeCloseTo(
+      2 * 1024 * 1024,
+      -3,
+    );
+    expect(videoDownloadBytesPerSec(samples, 5_000)).toBe(0);
+  });
+
+  it("does not count repeated resume-cursor emits toward speed", () => {
+    const cursor = 4_328_521_728;
+    let samples = appendVideoSpeedSample([], cursor, 1_000);
+    // レジューム位置の表示が何度来ても時刻は進めない
+    samples = appendVideoSpeedSample(samples, cursor, 5_000);
+    samples = appendVideoSpeedSample(samples, cursor, 9_000);
+    samples = appendVideoSpeedSample(samples, cursor + 8 * 1024 * 1024, 10_000);
+    samples = appendVideoSpeedSample(
+      samples,
+      cursor + 16 * 1024 * 1024,
+      11_000,
+    );
+    expect(videoDownloadBytesPerSec(samples, 11_000)).toBe(8 * 1024 * 1024);
   });
 });
