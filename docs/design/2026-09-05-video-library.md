@@ -159,7 +159,7 @@ CREATE INDEX idx_video_downloads_status ON video_downloads (status, queued_at);
 2. 対象（未選択なら queued 全件＋このタブで動いていない `downloading` の中断分）を、ブラウザの回線ヒント（`navigator.connection`）と概算サイズから **同時 1〜4 件** で処理する。低速・巨大ファイルは 1 件ずつ、速い回線だけ並列にする。
 3. 1 件の処理：
    - ルート → `{x_account_id}` →（あれば）フォルダ、の順にディレクトリハンドルを `getDirectoryHandle(..., { create: true })` で解決。
-   - ファイル `{tweet_id}_{media_key}.mp4` を `getFileHandle({ create: true })` → 各チャンクを `createWritable({ keepExistingData: true })` で `seek(start)` → `write()`。
+   - ファイル `{tweet_id}_{media_key}.mp4` を `getFileHandle({ create: true })` → 各チャンクを `createWritable({ keepExistingData: true })` で `seek(start)` → `write()`。**256MB 以上の途中ファイルは残りを `{name}.mp4.part` へ先に取り、揃ってから本体へ 1 回だけ結合する**（ADR-026。再開のたびに 4GB 全コピーして URL 失効するループを避ける）。
    - 先に `GET /api/media/[id]/url` で CDN URL と `bytes` を取り、**ブラウザから CDN へ直接** Range 取得する（ADR-021。4 並列、`referrerPolicy: no-referrer`）。総サイズ不明や並列失敗時は同じ URL の逐次 Range。それも失敗したときだけ `GET /api/media/[id]/file` のプロキシ逐次。本文はストリームで `write()` しながら受信量を進捗バーへ出す。総サイズが無い間はパーセントを出さず、概算サイズがあれば `4.6 MB / 約 38.7 MB` とバーだけ出す（100% 扱いにしない）。
    - 各チャンクの実測速度で次のチャンクサイズを上下する（速いほど大きく、遅いほど小さく）。
    - 失敗（タイムアウト・ネットワーク断・429/5xx）は **指数バックオフ**（0.5 秒〜最大 10 秒）で同じオフセットから再試行し、チャンクサイズを半減（最小 1MB）。規定回数（低速ほど多め、2〜5 回）を超えたら `failed`。**30 秒間 1 バイトも受信できないチャンクは無応答とみなして切断し、同じリトライに乗せる**（無音ストールでキュー全体が止まるのを防ぐ）。

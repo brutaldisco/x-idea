@@ -68,6 +68,7 @@ import {
   removeSavedVideoFiles,
   suggestedRelPath,
   sweepLeftoverVideoFiles,
+  type VideoDownloadPhase,
 } from "@/lib/video-store";
 import { formatDuration, formatVideoQueueMeta } from "@/server/media/select";
 import type {
@@ -173,6 +174,7 @@ export function VideosWorkspace({
   const beatReceivedRef = useRef<Map<string, number>>(new Map());
   const [stalledIds, setStalledIds] = useState<string[]>([]);
   const [openingIds, setOpeningIds] = useState<string[]>([]);
+  const [mergingIds, setMergingIds] = useState<string[]>([]);
   /** このタブが停止した項目。409 のときだけ再 queued → start してよい */
   const releasedIdsRef = useRef<Set<string>>(new Set());
   const sweptRef = useRef(false);
@@ -554,7 +556,9 @@ export function VideosWorkspace({
               ? Math.max(0, prev.queuedCount - 1)
               : prev.queuedCount,
           queue: prev.queue.map((entry) =>
-            entry.id === item.id ? { ...entry, status: "downloading" } : entry,
+            entry.id === item.id
+              ? { ...entry, status: "downloading", error: null }
+              : entry,
           ),
         }));
         speedSamplesRef.current.set(item.id, []);
@@ -613,9 +617,21 @@ export function VideosWorkspace({
           // 取り直した試行はバイト到着までウォッチドッグを動かさない
           // （ファイル準備の全コピーが長引くことがあるため）
           lastByteAtRef.current.delete(item.id);
-          setOpeningIds((ids) =>
-            ids.includes(item.id) ? ids : [...ids, item.id],
-          );
+          const setPhaseFlag = (setter: typeof setOpeningIds, on: boolean) => {
+            setter((ids) => {
+              const has = ids.includes(item.id);
+              if (on === has) {
+                return ids;
+              }
+              return on
+                ? [...ids, item.id]
+                : ids.filter((id) => id !== item.id);
+            });
+          };
+          const applyPhase = (phase: VideoDownloadPhase) => {
+            setPhaseFlag(setOpeningIds, phase === "opening");
+            setPhaseFlag(setMergingIds, phase === "merging");
+          };
           try {
             result = await downloadVideoFile({
               downloadId: item.id,
@@ -629,6 +645,7 @@ export function VideosWorkspace({
               // もう一度だけ試す（ADR-026）
               refreshDirectUrl: resolveDirectUrl,
               signal: itemController.signal,
+              onPhase: applyPhase,
               onProgress: (received, total) => {
                 if (controller.signal.aborted) {
                   return;
@@ -670,6 +687,7 @@ export function VideosWorkspace({
             lastByteAtRef.current.delete(item.id);
             beatReceivedRef.current.delete(item.id);
             setOpeningIds((ids) => ids.filter((id) => id !== item.id));
+            setMergingIds((ids) => ids.filter((id) => id !== item.id));
           }
         }
         if (!result) {
@@ -1315,20 +1333,29 @@ export function VideosWorkspace({
                   const downloading =
                     Boolean(prog) && item.status === "downloading";
                   const itemStopping = stopping && downloading;
+                  const merging =
+                    downloading && !stopping && mergingIds.includes(item.id);
                   const stalled =
-                    downloading && !stopping && stalledIds.includes(item.id);
+                    downloading &&
+                    !stopping &&
+                    !merging &&
+                    stalledIds.includes(item.id);
                   const opening =
                     downloading &&
                     !stopping &&
                     !stalled &&
+                    !merging &&
                     openingIds.includes(item.id);
                   const speedLabel =
                     downloading && !stopping
-                      ? stalled
-                        ? "応答なし。再接続しています…"
-                        : opening
-                          ? "保存ファイルを開いています…"
-                          : (formatDownloadSpeed(prog?.bps ?? null) ?? "計測中")
+                      ? merging
+                        ? "保存ファイルに結合しています…"
+                        : stalled
+                          ? "応答なし。再接続しています…"
+                          : opening
+                            ? "保存ファイルを開いています…"
+                            : (formatDownloadSpeed(prog?.bps ?? null) ??
+                              "計測中")
                       : null;
                   // 元のページが X 上で消えた（404）失敗は再開しても
                   // 成功しないので、投稿の削除を促す
@@ -1444,7 +1471,9 @@ export function VideosWorkspace({
                             </span>
                           </div>
                         ) : null}
-                        {item.error && !sourceGone ? (
+                        {item.error &&
+                        !sourceGone &&
+                        item.status === "failed" ? (
                           <p className="mt-1 text-danger text-xs">
                             {item.error}
                           </p>

@@ -7,26 +7,33 @@ import {
   directChunkBytes,
   initialVideoDownloadPlan,
   shouldAvoidProxyFallback,
+  shouldUseVideoTailSidecar,
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
   VIDEO_CHUNK_MIN,
   VIDEO_DIRECT_LOOKAHEAD_BYTES,
+  VIDEO_LARGE_RESUME_BYTES,
   VIDEO_STALL_MS,
   VIDEO_URL_RESOLVE_MS,
   VIDEO_WRITE_TIMEOUT_MS,
   type VideoDownloadPlan,
+  videoFileSourceRange,
   videoOpenTimeoutMs,
 } from "@/lib/video-download-plan";
 import {
   isFinishedVideoDownload,
   leftoverVideoRelPaths,
   resumeVideoOffset,
+  resumeVideoTailOffset,
 } from "@/lib/video-files";
 import {
   isSafeVideoRelPath,
   parseVideoRelPath,
   videoRelPath,
+  videoTailPartFileName,
 } from "@/lib/video-path";
+
+export type VideoDownloadPhase = "opening" | "downloading" | "merging";
 
 const DB_NAME = "x-idea-videos";
 const DB_VERSION = 1;
@@ -348,6 +355,20 @@ function abortError(): DOMException {
   return new DOMException("Aborted", "AbortError");
 }
 
+async function closeWritable(
+  writable: FileSystemWritableFileStream,
+): Promise<void> {
+  try {
+    await withTimeout(
+      writable.close(),
+      VIDEO_WRITE_TIMEOUT_MS,
+      "ファイルのクローズ",
+    );
+  } catch {
+    // ignore
+  }
+}
+
 function isAbortError(error: unknown): boolean {
   return (error as { name?: string }).name === "AbortError";
 }
@@ -520,6 +541,8 @@ async function downloadVideoChunk(input: {
   writable: FileSystemWritableFileStream;
   start: number;
   end: number;
+  /** ファイル上の書き込み位置。省略時は CDN の start と同じ */
+  fileOffset?: number;
   plan: VideoDownloadPlan;
   signal?: AbortSignal;
   onBytes: (n: number) => void | Promise<void>;
@@ -579,7 +602,7 @@ async function downloadVideoChunk(input: {
       const written = await writeChunkToWritable(
         input.writable,
         res,
-        input.start,
+        input.fileOffset ?? input.start,
         onBytes,
         stallController.signal,
       );
@@ -779,26 +802,26 @@ async function downloadDirectToFile(input: {
   signal?: AbortSignal;
   onBytes: (n: number) => void;
   onWritten: (offset: number) => Promise<void>;
+  /** ファイル先頭に対応する CDN バイト位置。サイドカー用 */
+  sourceOffset?: number;
+  onPhase?: (phase: VideoDownloadPhase) => void;
 }): Promise<number> {
   const chunk = directChunkBytes(input.total);
   const existingBytes = input.offset;
+  const sourceOffset = input.sourceOffset ?? 0;
+  if (existingBytes >= VIDEO_LARGE_RESUME_BYTES && sourceOffset === 0) {
+    input.onPhase?.("opening");
+  }
   const writable = await withTimeout(
     input.file.createWritable({
-      keepExistingData: true,
+      keepExistingData: existingBytes > 0,
     }),
     videoOpenTimeoutMs(existingBytes),
     "保存ファイルの準備",
   );
+  input.onPhase?.("downloading");
   if (input.signal?.aborted) {
-    try {
-      await withTimeout(
-        writable.close(),
-        VIDEO_WRITE_TIMEOUT_MS,
-        "ファイルのクローズ",
-      );
-    } catch {
-      // ignore
-    }
+    await closeWritable(writable);
     throw abortError();
   }
   const controller = new AbortController();
@@ -878,10 +901,11 @@ async function downloadDirectToFile(input: {
       }
       const end = Math.min(start + chunk, input.total) - 1;
       nextFetch = end + 1;
+      const range = videoFileSourceRange(start, end, sourceOffset);
       const data = await fetchRangeBytes({
         url: input.url,
-        start,
-        end,
+        start: range.start,
+        end: range.end,
         retries: input.retries,
         signal: controller.signal,
         onBytes: input.onBytes,
@@ -927,16 +951,407 @@ async function downloadDirectToFile(input: {
     return nextWrite;
   } finally {
     input.signal?.removeEventListener("abort", onParentAbort);
-    try {
+    await closeWritable(writable);
+  }
+}
+
+async function writeBlobToWritable(
+  writable: FileSystemWritableFileStream,
+  blob: Blob,
+  signal?: AbortSignal,
+  onBytes?: (n: number) => void | Promise<void>,
+): Promise<void> {
+  if (signal?.aborted) {
+    throw abortError();
+  }
+  if (typeof blob.stream !== "function") {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (signal?.aborted) {
+      throw abortError();
+    }
+    if (bytes.byteLength > 0) {
       await withTimeout(
-        writable.close(),
+        writable.write(bytes),
         VIDEO_WRITE_TIMEOUT_MS,
-        "ファイルのクローズ",
+        "ファイルへの書き込み",
       );
+      await onBytes?.(bytes.byteLength);
+    }
+    return;
+  }
+  const reader = blob.stream().getReader();
+  const onAbort = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        throw abortError();
+      }
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (!value?.byteLength) {
+        continue;
+      }
+      if (signal?.aborted) {
+        throw abortError();
+      }
+      await withTimeout(
+        writable.write(value),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "ファイルへの書き込み",
+      );
+      await onBytes?.(value.byteLength);
+    }
+    if (signal?.aborted) {
+      throw abortError();
+    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    try {
+      reader.releaseLock();
     } catch {
-      // ignore
+      // cancel() 済みだと releaseLock が失敗することがある
     }
   }
+}
+
+/**
+ * サイドカーへ残りを逐次で書く。本体の keepExistingData 全コピーはしない。
+ */
+async function downloadSequentialToFile(input: {
+  mediaId: string;
+  file: FileSystemFileHandle;
+  fileOffset: number;
+  sourceStart: number;
+  sourceEnd: number;
+  plan: VideoDownloadPlan;
+  signal?: AbortSignal;
+  onBytes: (n: number) => void | Promise<void>;
+  onFileOffset: (fileOffset: number) => Promise<void>;
+  onTotal?: (total: number) => void;
+  directUrl?: string | null;
+  onDirectFailed?: () => void;
+}): Promise<number> {
+  const existing = input.fileOffset;
+  const writable = await withTimeout(
+    input.file.createWritable({ keepExistingData: existing > 0 }),
+    videoOpenTimeoutMs(existing),
+    "保存ファイルの準備",
+  );
+  try {
+    if (input.signal?.aborted) {
+      throw abortError();
+    }
+    await withTimeout(
+      writable.seek(input.fileOffset),
+      VIDEO_WRITE_TIMEOUT_MS,
+      "ファイルのシーク",
+    );
+    let fileOffset = input.fileOffset;
+    let sourcePos = input.sourceStart;
+    let sourceEnd = input.sourceEnd;
+    while (!input.signal?.aborted) {
+      if (sourceEnd > 0 && sourcePos >= sourceEnd) {
+        break;
+      }
+      const chunkSize = clamp(
+        input.plan.chunkBytes,
+        VIDEO_CHUNK_MIN,
+        VIDEO_CHUNK_MAX,
+      );
+      const end =
+        sourceEnd > 0
+          ? Math.min(sourcePos + chunkSize - 1, sourceEnd - 1)
+          : sourcePos + chunkSize - 1;
+      const result = await downloadVideoChunk({
+        mediaId: input.mediaId,
+        writable,
+        start: sourcePos,
+        end,
+        fileOffset,
+        plan: input.plan,
+        signal: input.signal,
+        onBytes: input.onBytes,
+        directUrl: input.directUrl,
+        onDirectFailed: input.onDirectFailed,
+      });
+      if (result.status === 416) {
+        break;
+      }
+      if (result.total > 0) {
+        sourceEnd = result.total;
+        input.onTotal?.(result.total);
+      }
+      if (result.written === 0) {
+        break;
+      }
+      fileOffset += result.written;
+      sourcePos += result.written;
+      await input.onFileOffset(fileOffset);
+      if (result.status === 200 || (sourceEnd > 0 && sourcePos >= sourceEnd)) {
+        break;
+      }
+    }
+    if (input.signal?.aborted) {
+      throw abortError();
+    }
+    return fileOffset;
+  } finally {
+    await closeWritable(writable);
+  }
+}
+
+async function appendSidecarToMainFile(input: {
+  file: FileSystemFileHandle;
+  sidecar: FileSystemFileHandle;
+  mainOffset: number;
+  maxBytes?: number;
+  signal?: AbortSignal;
+  onBytes?: (n: number) => void | Promise<void>;
+  onPhase?: (phase: VideoDownloadPhase) => void;
+}): Promise<void> {
+  input.onPhase?.("merging");
+  const raw = await withTimeout(
+    input.sidecar.getFile(),
+    VIDEO_WRITE_TIMEOUT_MS,
+    "保存ファイルの確認",
+  );
+  const blob =
+    input.maxBytes != null && raw.size > input.maxBytes
+      ? raw.slice(0, input.maxBytes)
+      : raw;
+  if (!(blob.size > 0)) {
+    throw new Error("結合する途中ファイルが空です");
+  }
+  const writable = await withTimeout(
+    input.file.createWritable({ keepExistingData: true }),
+    videoOpenTimeoutMs(input.mainOffset),
+    "保存ファイルの準備",
+  );
+  try {
+    if (input.signal?.aborted) {
+      throw abortError();
+    }
+    await withTimeout(
+      writable.seek(input.mainOffset),
+      VIDEO_WRITE_TIMEOUT_MS,
+      "ファイルのシーク",
+    );
+    await writeBlobToWritable(writable, blob, input.signal, input.onBytes);
+  } finally {
+    await closeWritable(writable);
+  }
+}
+
+/**
+ * 大きな途中ファイルは残りを .part へ先に取る。
+ * 本体の keepExistingData 全コピーは、残りが揃ってからの結合だけ。
+ * これにより「URL 取得 → 4GB コピー中に URL 失効 → 応答なし → またコピー」
+ * のループを避ける（ADR-026）。
+ */
+async function downloadViaTailSidecar(input: {
+  dir: FileSystemDirectoryHandle;
+  file: FileSystemFileHandle;
+  fileName: string;
+  mainOffset: number;
+  total: number;
+  mediaId: string;
+  plan: VideoDownloadPlan;
+  directUrl: string | null;
+  refreshDirectUrl?: () => Promise<{
+    url: string;
+    bytes: number | null;
+  } | null>;
+  signal?: AbortSignal;
+  onProgress?: (received: number, total: number) => void;
+  onPhase?: (phase: VideoDownloadPhase) => void;
+}): Promise<number> {
+  const partName = videoTailPartFileName(input.fileName);
+  const sidecar = await input.dir.getFileHandle(partName, { create: true });
+  let total = input.total;
+  const remaining = () =>
+    total > input.mainOffset ? total - input.mainOffset : 0;
+  let tailOffset = resumeVideoTailOffset(
+    (
+      await withTimeout(
+        sidecar.getFile(),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "保存ファイルの確認",
+      )
+    ).size,
+    remaining() || Number.MAX_SAFE_INTEGER,
+  );
+  if (remaining() > 0) {
+    tailOffset = resumeVideoTailOffset(tailOffset, remaining());
+  }
+
+  let lastEmit = 0;
+  const emit = (force = false) => {
+    if (!input.onProgress) {
+      return;
+    }
+    const now = nowMs();
+    if (!force && now - lastEmit < PROGRESS_EMIT_MS) {
+      return;
+    }
+    lastEmit = now;
+    input.onProgress(input.mainOffset + tailOffset, total);
+  };
+  emit(true);
+  input.onPhase?.("downloading");
+
+  const persistTailFromFile = async () => {
+    const size = (
+      await withTimeout(
+        sidecar.getFile(),
+        VIDEO_WRITE_TIMEOUT_MS,
+        "保存ファイルの確認",
+      )
+    ).size;
+    tailOffset =
+      remaining() > 0 ? resumeVideoTailOffset(size, remaining()) : size;
+    emit(true);
+  };
+
+  const needMore = () => remaining() === 0 || tailOffset < remaining();
+
+  if (needMore()) {
+    let directUrl = input.directUrl;
+    let refreshed = false;
+    let preferSequential = false;
+    for (;;) {
+      if (input.signal?.aborted) {
+        throw abortError();
+      }
+      try {
+        if (
+          !preferSequential &&
+          directUrl &&
+          remaining() > 0 &&
+          tailOffset < remaining()
+        ) {
+          const written = await downloadDirectToFile({
+            url: directUrl,
+            file: sidecar,
+            offset: tailOffset,
+            total: remaining(),
+            sourceOffset: input.mainOffset,
+            retries: input.plan.retries,
+            signal: input.signal,
+            onBytes: (n) => {
+              tailOffset += n;
+              emit();
+            },
+            onWritten: async (writtenOffset) => {
+              tailOffset = writtenOffset;
+              emit(true);
+            },
+            onPhase: input.onPhase,
+          });
+          tailOffset = written;
+          emit(true);
+          break;
+        }
+        const written = await downloadSequentialToFile({
+          mediaId: input.mediaId,
+          file: sidecar,
+          fileOffset: tailOffset,
+          sourceStart: input.mainOffset + tailOffset,
+          sourceEnd: total,
+          plan: input.plan,
+          signal: input.signal,
+          onBytes: (n) => {
+            tailOffset += n;
+            emit();
+          },
+          onFileOffset: async (fileOffset) => {
+            tailOffset = fileOffset;
+            emit(true);
+          },
+          onTotal: (nextTotal) => {
+            if (nextTotal > 0) {
+              total = nextTotal;
+            }
+          },
+          directUrl,
+          onDirectFailed: () => {
+            directUrl = null;
+          },
+        });
+        tailOffset = written;
+        emit(true);
+        break;
+      } catch (error) {
+        if (isAbortError(error) || input.signal?.aborted) {
+          throw abortError();
+        }
+        await persistTailFromFile();
+        if (!refreshed && input.refreshDirectUrl) {
+          const refreshedUrl = await input.refreshDirectUrl().catch(() => null);
+          if (refreshedUrl?.url) {
+            refreshed = true;
+            directUrl = refreshedUrl.url;
+            if (refreshedUrl.bytes && refreshedUrl.bytes > 0) {
+              total = refreshedUrl.bytes;
+            }
+            continue;
+          }
+        }
+        if (!preferSequential) {
+          preferSequential = true;
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  await persistTailFromFile();
+  if (remaining() > 0 && tailOffset < remaining()) {
+    throw new Error(
+      `ダウンロードが完了しませんでした（${input.mainOffset + tailOffset}/${total}）`,
+    );
+  }
+  if (!(tailOffset > 0) && remaining() > 0) {
+    throw new Error("ダウンロードが完了しませんでした");
+  }
+
+  if (tailOffset > 0) {
+    let merged = 0;
+    await appendSidecarToMainFile({
+      file: input.file,
+      sidecar,
+      mainOffset: input.mainOffset,
+      maxBytes: remaining() > 0 ? remaining() : undefined,
+      signal: input.signal,
+      onBytes: (n) => {
+        merged += n;
+        if (input.onProgress) {
+          input.onProgress(input.mainOffset + merged, total);
+        }
+      },
+      onPhase: input.onPhase,
+    });
+    try {
+      await input.dir.removeEntry(partName);
+    } catch {
+      // 結合済みなら残り掃除で消える
+    }
+  }
+
+  const finalBytes = input.mainOffset + tailOffset;
+  if (!isFinishedVideoDownload(finalBytes, total)) {
+    throw new Error(
+      total > 0
+        ? `ダウンロードが完了しませんでした（${finalBytes}/${total}）`
+        : "ダウンロードが完了しませんでした",
+    );
+  }
+  return finalBytes;
 }
 
 export async function downloadVideoFile(input: {
@@ -956,6 +1371,7 @@ export async function downloadVideoFile(input: {
   } | null>;
   signal?: AbortSignal;
   onProgress?: (received: number, total: number) => void;
+  onPhase?: (phase: VideoDownloadPhase) => void;
 }): Promise<{ bytes: number; relPath: string }> {
   const { dir, fileName } = await resolveRelDir(
     input.root,
@@ -1042,54 +1458,80 @@ export async function downloadVideoFile(input: {
       if (knownTotal && knownTotal > offset) {
         total = knownTotal;
         emit(true);
-        try {
-          const written = await downloadDirectToFile({
-            url: directUrl,
-            file,
-            offset,
-            total,
-            retries: plan.retries,
-            signal: input.signal,
-            onBytes: (n) => {
-              // 表示用の受信量。保存済み位置（レジューム基準）は onWritten 側だけが進める
-              offset += n;
-              emit();
-            },
-            onWritten: async (writtenOffset) => {
-              await saveProgress(input.downloadId, writtenOffset);
-              lastSaved = writtenOffset;
-            },
-          });
-          offset = written;
-          await persist();
-          return { bytes: offset, relPath: input.relPath };
-        } catch (error) {
-          if (isAbortError(error) || input.signal?.aborted) {
-            // 表示用 offset は未書き込み分を含むことがあるので書き込み済み位置を保存する
-            await saveProgress(input.downloadId, lastSaved).catch(() => {});
-            throw abortError();
-          }
-          await restoreOffset();
-          // 大きな途中ファイルはプロキシへ落とさない。
-          // もう一度 createWritable が走り、同じ全コピーのあと
-          // Vercel 経由で残りを取ろうとしてまた応答なしになる
-          if (shouldAvoidProxyFallback(offset)) {
-            throw error;
-          }
-          total = 0;
-          emit(true);
+      }
+    }
+
+    if (shouldUseVideoTailSidecar(offset)) {
+      const written = await downloadViaTailSidecar({
+        dir,
+        file,
+        fileName,
+        mainOffset: offset,
+        total,
+        mediaId: input.mediaId,
+        plan,
+        directUrl,
+        refreshDirectUrl: input.refreshDirectUrl,
+        signal: input.signal,
+        onProgress: input.onProgress,
+        onPhase: input.onPhase,
+      });
+      offset = written;
+      await persist();
+      return { bytes: offset, relPath: input.relPath };
+    }
+
+    if (directUrl && total > offset && !input.signal?.aborted) {
+      try {
+        const written = await downloadDirectToFile({
+          url: directUrl,
+          file,
+          offset,
+          total,
+          retries: plan.retries,
+          signal: input.signal,
+          onPhase: input.onPhase,
+          onBytes: (n) => {
+            // 表示用の受信量。保存済み位置（レジューム基準）は onWritten 側だけが進める
+            offset += n;
+            emit();
+          },
+          onWritten: async (writtenOffset) => {
+            await saveProgress(input.downloadId, writtenOffset);
+            lastSaved = writtenOffset;
+          },
+        });
+        offset = written;
+        await persist();
+        return { bytes: offset, relPath: input.relPath };
+      } catch (error) {
+        if (isAbortError(error) || input.signal?.aborted) {
+          // 表示用 offset は未書き込み分を含むことがあるので書き込み済み位置を保存する
+          await saveProgress(input.downloadId, lastSaved).catch(() => {});
+          throw abortError();
         }
+        await restoreOffset();
+        // 大きな途中ファイルはプロキシへ落とさない。
+        // もう一度 createWritable が走り、同じ全コピーのあと
+        // Vercel 経由で残りを取ろうとしてまた応答なしになる
+        if (shouldAvoidProxyFallback(offset)) {
+          throw error;
+        }
+        total = 0;
+        emit(true);
       }
     }
 
     // プロキシ逐次。createWritable は 1 回だけ開いて使い回す（ADR-026）。
     // keepExistingData: true の開き直しは既存内容の全コピーが走るため、
     // チャンクごとに開くとファイルが大きいほど急激に遅くなる。
+    input.onPhase?.("opening");
     const writable = await withTimeout(
       file.createWritable({ keepExistingData: true }),
       videoOpenTimeoutMs(offset),
       "保存ファイルの準備",
     );
+    input.onPhase?.("downloading");
     try {
       if (input.signal?.aborted) {
         throw abortError();
@@ -1153,15 +1595,7 @@ export async function downloadVideoFile(input: {
       // （先に消すと、登録だけ失敗したときに最初から取り直しになる）
       return { bytes: offset, relPath: input.relPath };
     } finally {
-      try {
-        await withTimeout(
-          writable.close(),
-          VIDEO_WRITE_TIMEOUT_MS,
-          "ファイルのクローズ",
-        );
-      } catch {
-        // ignore
-      }
+      await closeWritable(writable);
     }
   };
 
@@ -1220,7 +1654,20 @@ export async function deleteVideoFile(
   relPath: string,
 ): Promise<void> {
   const { dir, fileName } = await resolveRelDir(root, relPath, false);
-  await dir.removeEntry(fileName);
+  let error: unknown;
+  try {
+    await dir.removeEntry(fileName);
+  } catch (caught) {
+    error = caught;
+  }
+  try {
+    await dir.removeEntry(videoTailPartFileName(fileName));
+  } catch {
+    // サイドカーが無いときは無視
+  }
+  if (error) {
+    throw error;
+  }
 }
 
 async function directoryEntries(

@@ -76,6 +76,29 @@ export function shouldAvoidProxyFallback(existingBytes: number): boolean {
   return existingBytes >= VIDEO_LARGE_RESUME_BYTES;
 }
 
+/**
+ * 大きな途中ファイルは、本体を keepExistingData で開き直さず
+ * 残りを別ファイルへ先に取る（ADR-026）。本体の全コピーは結合時だけ。
+ */
+export function shouldUseVideoTailSidecar(existingBytes: number): boolean {
+  return existingBytes >= VIDEO_LARGE_RESUME_BYTES;
+}
+
+/**
+ * ファイル上の書き込み範囲を CDN Range に直す。
+ * サイドカーはファイル先頭が 0 でも、CDN 上は本体の続きから読む。
+ */
+export function videoFileSourceRange(
+  fileStart: number,
+  fileEnd: number,
+  sourceOffset = 0,
+): { start: number; end: number } {
+  return {
+    start: sourceOffset + fileStart,
+    end: sourceOffset + fileEnd,
+  };
+}
+
 /** この時間バイトが増えなければ UI に「応答なし。再接続しています」を出す */
 export const VIDEO_STALL_NOTICE_MS = 30_000;
 

@@ -6,6 +6,7 @@ import {
   leftoverVideoRelPaths,
   resolveSavedVideoRelPath,
   resumeVideoOffset,
+  resumeVideoTailOffset,
 } from "./video-files";
 
 describe("resolveSavedVideoRelPath", () => {
@@ -99,5 +100,14 @@ describe("resumeVideoOffset", () => {
   it("starts from zero when the file is empty", () => {
     expect(resumeVideoOffset(100, 0)).toBe(0);
     expect(resumeVideoOffset(0, 0)).toBe(0);
+  });
+});
+
+describe("resumeVideoTailOffset", () => {
+  it("resumes a partial sidecar without passing the remaining bytes", () => {
+    expect(resumeVideoTailOffset(0, 220_000_000)).toBe(0);
+    expect(resumeVideoTailOffset(12_000_000, 220_000_000)).toBe(12_000_000);
+    expect(resumeVideoTailOffset(400_000_000, 220_000_000)).toBe(220_000_000);
+    expect(resumeVideoTailOffset(12_000_000, 0)).toBe(0);
   });
 });

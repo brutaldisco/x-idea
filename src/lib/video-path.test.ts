@@ -6,6 +6,7 @@ import {
   VIDEO_QUEUE_MAX,
   videoFileName,
   videoRelPath,
+  videoTailPartFileName,
 } from "./video-path";
 
 describe("videoRelPath", () => {
@@ -47,6 +48,7 @@ describe("sanitizeFolderName / isSafeVideoRelPath", () => {
       fileName: "2001_k.mp4",
     });
     expect(videoFileName("2001", "k")).toBe("2001_k.mp4");
+    expect(videoTailPartFileName("2001_k.mp4")).toBe("2001_k.mp4.part");
     expect(VIDEO_QUEUE_MAX).toBe(15);
   });
 });

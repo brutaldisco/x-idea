@@ -5,12 +5,14 @@ import {
   directChunkBytes,
   initialVideoDownloadPlan,
   shouldAvoidProxyFallback,
+  shouldUseVideoTailSidecar,
   tuneVideoDownloadPlan,
   VIDEO_CHUNK_MAX,
   VIDEO_CHUNK_MIN,
   VIDEO_LARGE_RESUME_BYTES,
   VIDEO_OPEN_TIMEOUT_MAX_MS,
   VIDEO_OPEN_TIMEOUT_MS,
+  videoFileSourceRange,
   videoOpenTimeoutMs,
 } from "./video-download-plan";
 
@@ -104,5 +106,31 @@ describe("shouldAvoidProxyFallback", () => {
     expect(shouldAvoidProxyFallback(64 * 1024 * 1024)).toBe(false);
     expect(shouldAvoidProxyFallback(VIDEO_LARGE_RESUME_BYTES)).toBe(true);
     expect(shouldAvoidProxyFallback(4 * 1024 * 1024 * 1024)).toBe(true);
+  });
+});
+
+describe("shouldUseVideoTailSidecar", () => {
+  it("uses a sidecar only after the large-resume threshold", () => {
+    expect(shouldUseVideoTailSidecar(0)).toBe(false);
+    expect(shouldUseVideoTailSidecar(VIDEO_LARGE_RESUME_BYTES - 1)).toBe(false);
+    expect(shouldUseVideoTailSidecar(VIDEO_LARGE_RESUME_BYTES)).toBe(true);
+    expect(shouldUseVideoTailSidecar(4 * 1024 * 1024 * 1024)).toBe(true);
+  });
+});
+
+describe("videoFileSourceRange", () => {
+  it("keeps file offsets when the sidecar starts at the CDN origin", () => {
+    expect(videoFileSourceRange(0, 8 * 1024 * 1024 - 1)).toEqual({
+      start: 0,
+      end: 8 * 1024 * 1024 - 1,
+    });
+  });
+
+  it("maps sidecar file offsets onto the remaining CDN range", () => {
+    const mainOffset = 4_328_521_728;
+    expect(videoFileSourceRange(0, 8 * 1024 * 1024 - 1, mainOffset)).toEqual({
+      start: mainOffset,
+      end: mainOffset + 8 * 1024 * 1024 - 1,
+    });
   });
 });

@@ -6,6 +6,11 @@ export function videoFileName(tweetId: string, mediaKey: string): string {
   return `${safeMediaSegment(tweetId)}_${safeMediaSegment(mediaKey)}.mp4`;
 }
 
+/** 大きな途中ファイルの残りを先に置くサイドカー（ADR-026） */
+export function videoTailPartFileName(fileName: string): string {
+  return `${fileName}.part`;
+}
+
 export function sanitizeFolderName(raw: string): string {
   const trimmed = raw.trim().slice(0, 120);
   const cleaned = [...trimmed]

@@ -64,6 +64,17 @@ export function resumeVideoOffset(
   return size;
 }
 
+/** サイドカーにすでに書いてある残りバイト。本体サイズは超えない */
+export function resumeVideoTailOffset(
+  partBytes: number,
+  remaining: number,
+): number {
+  if (!(remaining > 0) || !(partBytes > 0)) {
+    return 0;
+  }
+  return Math.min(partBytes, remaining);
+}
+
 /** 既知の総量に対して受信が足りない、または 0 バイトなら未完了 */
 export function isFinishedVideoDownload(
   received: number,
