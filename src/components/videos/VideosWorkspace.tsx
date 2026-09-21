@@ -1,7 +1,6 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -18,6 +17,7 @@ import {
   subscribeLibraryWide,
   videosGridClass,
 } from "@/lib/library-layout";
+import { VideoThumbImg } from "@/components/VideoThumbImg";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import {
   loadRepeatMode,
@@ -72,6 +72,11 @@ import {
   shouldSendVideoHeartbeat,
 } from "@/lib/video-queue";
 import { applyVideoItemSaveStatus } from "@/lib/video-save-status";
+import {
+  forgetVideoThumb,
+  moveVideoThumbCache,
+  savePlaybackThumbnail,
+} from "@/lib/video-thumb-cache";
 import {
   clearProgress,
   discardPartialVideoFiles,
@@ -1031,6 +1036,7 @@ export function VideosWorkspace({
     if (handle && item.relPath && item.status === "ready") {
       try {
         await moveVideoFile(handle, item.relPath, nextPath);
+        moveVideoThumbCache(item.relPath, nextPath);
       } catch (error) {
         setMessage(`ファイル移動に失敗しました: ${errorMessage(error)}`);
       }
@@ -1061,6 +1067,7 @@ export function VideosWorkspace({
       relPaths: [relPath],
       root: handle,
     });
+    forgetVideoThumb(relPath);
     await fetch(`/api/videos/${item.id}`, { method: "DELETE" });
     applyVideoItemSaveStatus(queryClient, item, null, null);
     if (leftover > 0) {
@@ -1467,12 +1474,12 @@ export function VideosWorkspace({
                         <span className="w-4 shrink-0" aria-hidden />
                       )}
                       <div className="relative h-16 w-24 shrink-0">
-                        <Image
+                        <VideoThumbImg
+                          relPath={item.relPath}
                           src={item.previewSrc}
                           alt=""
                           width={96}
                           height={64}
-                          unoptimized
                           className="h-16 w-24 rounded-lg object-cover"
                         />
                         <VideoThumbMarks
@@ -1672,53 +1679,58 @@ export function VideosWorkspace({
             </p>
           ) : (
             <ul className={videosGridClass(libraryWide)}>
-              {visible.map((item) => (
-                <li
-                  key={item.id}
-                  className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2"
-                >
-                  <button
-                    type="button"
-                    className="relative block w-full"
-                    onClick={() => void playItem(item)}
+              {visible.map((item) => {
+                const metaLine = [
+                  item.bytes ? formatBytes(item.bytes) : null,
+                  item.qualityLabel,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <li
+                    key={item.id}
+                    className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2"
                   >
-                    <Image
-                      src={item.previewSrc}
-                      alt=""
-                      width={480}
-                      height={270}
-                      unoptimized
-                      className="h-28 w-full object-cover"
-                    />
-                    {item.durationMs != null ? (
-                      <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
-                        {formatDuration(item.durationMs).label}
-                      </span>
-                    ) : null}
-                  </button>
-                  <div className="p-2">
-                    <p className="line-clamp-2 text-xs">
-                      {item.authorUsername ? `@${item.authorUsername} ` : ""}
-                      {item.excerpt}
-                    </p>
-                    <p className="mt-1 text-[10px] text-ink-2">
-                      {[
-                        item.downloadedAt?.slice(0, 10),
-                        item.bytes ? formatBytes(item.bytes) : null,
-                        item.qualityLabel,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    <VideoCardMenu
-                      item={item}
-                      folders={data.folders}
-                      onMove={(folderId) => void moveItem(item, folderId)}
-                      onDelete={() => void removeItem(item)}
-                    />
-                  </div>
-                </li>
-              ))}
+                    <button
+                      type="button"
+                      className="relative block w-full"
+                      onClick={() => void playItem(item)}
+                    >
+                      <VideoThumbImg
+                        relPath={item.relPath}
+                        src={item.previewSrc}
+                        alt=""
+                        width={480}
+                        height={270}
+                        className="h-28 w-full object-cover"
+                      />
+                      {item.durationMs != null ? (
+                        <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
+                          {formatDuration(item.durationMs).label}
+                        </span>
+                      ) : null}
+                    </button>
+                    <div className="p-2">
+                      <div className="flex items-center gap-2">
+                        {metaLine ? (
+                          <p className="min-w-0 flex-1 truncate text-[10px] text-ink-2">
+                            {metaLine}
+                          </p>
+                        ) : (
+                          <span className="min-w-0 flex-1" aria-hidden />
+                        )}
+                        <VideoCardMenu
+                          item={item}
+                          folders={data.folders}
+                          onMove={(folderId) => void moveItem(item, folderId)}
+                          onDelete={() => void removeItem(item)}
+                        />
+                      </div>
+                      <p className="mt-1 line-clamp-1 text-xs">{item.excerpt}</p>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -1741,6 +1753,22 @@ export function VideosWorkspace({
             onClose={closePlayer}
             onPrev={() => stepPlaying(-1)}
             onNext={() => stepPlaying(1)}
+            onSetThumbnail={
+              playing.item.relPath
+                ? async (seconds, dataUrl) => {
+                    const relPath = playing.item.relPath;
+                    if (!relPath) {
+                      return;
+                    }
+                    await savePlaybackThumbnail({
+                      relPath,
+                      seconds,
+                      dataUrl,
+                    });
+                    setMessage("サムネイルを設定しました");
+                  }
+                : undefined
+            }
             onEnded={() => {
               if (repeat === "folder") {
                 stepPlaying(1);
@@ -1819,45 +1847,39 @@ function VideoCardMenu({
   }, [open]);
 
   return (
-    <div className="mt-2 flex items-end justify-between gap-2 text-[11px]">
-      <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1">
-        {item.sourceId ? (
-          <Link
-            href={`/source/${item.sourceId}`}
-            className="text-accent hover:underline"
-          >
-            Source
-          </Link>
-        ) : null}
-        {item.postUrl ? (
-          <a
-            href={item.postUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-accent hover:underline"
-          >
-            X
-          </a>
-        ) : null}
-        <label className="text-ink-2">
-          <select
-            aria-label="フォルダ"
-            className="max-w-28 bg-transparent"
-            value={item.folderId ?? ""}
-            onChange={(event) => {
-              const value = event.target.value;
-              onMove(value.length > 0 ? value : null);
-            }}
-          >
-            <option value="">未分類</option>
-            {folders.map((folder) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+    <div className="flex shrink-0 items-center justify-end gap-1 text-[11px]">
+      <label className="relative inline-flex min-w-0 shrink text-ink-2">
+        <select
+          aria-label="フォルダ"
+          className="max-w-28 appearance-none bg-transparent pr-2.5"
+          value={item.folderId ?? ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            onMove(value.length > 0 ? value : null);
+          }}
+        >
+          <option value="">未分類</option>
+          {folders.map((folder) => (
+            <option key={folder.id} value={folder.id}>
+              {folder.name}
+            </option>
+          ))}
+        </select>
+        <svg
+          viewBox="0 0 12 12"
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 right-0 h-1.5 w-1.5 -translate-y-1/2 text-ink-2"
+        >
+          <path
+            d="M2.5 4.5 6 7.5 9.5 4.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </label>
       <div
         ref={rootRef}
         className="relative notranslate shrink-0"
@@ -1892,6 +1914,28 @@ function VideoCardMenu({
             className="fixed z-50 min-w-36 rounded-xl border border-line bg-paper/95 py-1 shadow-card backdrop-blur"
             style={{ top: coords.top, right: coords.right }}
           >
+            {item.sourceId ? (
+              <Link
+                href={`/source/${item.sourceId}`}
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="block px-3 py-2 text-sm hover:bg-paper-2"
+              >
+                ソースを開く
+              </Link>
+            ) : null}
+            {item.postUrl ? (
+              <a
+                href={item.postUrl}
+                target="_blank"
+                rel="noreferrer"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="block px-3 py-2 text-sm hover:bg-paper-2"
+              >
+                Xを開く
+              </a>
+            ) : null}
             <button
               type="button"
               role="menuitem"

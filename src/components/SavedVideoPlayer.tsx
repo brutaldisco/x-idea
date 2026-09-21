@@ -7,14 +7,17 @@ import {
   VideoPlayer,
 } from "@/components/videos/VideoPlayer";
 import type { RepeatMode } from "@/lib/video-playlist";
+import { savePlaybackThumbnail } from "@/lib/video-thumb-cache";
 
 export function SavedVideoPlayer({
   url,
   title,
+  relPath,
   onClose,
 }: {
   url: string;
   title: string;
+  relPath?: string | null;
   onClose: () => void;
 }) {
   const [repeat, setRepeat] = useState<RepeatMode>(() => loadRepeatMode());
@@ -36,6 +39,12 @@ export function SavedVideoPlayer({
       onClose={onClose}
       onPrev={() => undefined}
       onNext={() => undefined}
+      onSetThumbnail={
+        relPath
+          ? (seconds, dataUrl) =>
+              savePlaybackThumbnail({ relPath, seconds, dataUrl })
+          : undefined
+      }
       onEnded={() => {
         if (repeat === "off") {
           onClose();

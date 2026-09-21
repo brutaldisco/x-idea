@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { mediaVideoProxyFallbackPath } from "@/lib/media-video-api";
+import { captureVideoFrameDataUrl } from "@/lib/video-thumb";
 import {
   exitFullscreen,
   getFullscreenElement,
@@ -67,6 +68,7 @@ export function VideoPlayer({
   onPrev,
   onNext,
   onEnded,
+  onSetThumbnail,
 }: {
   url: string;
   title: string;
@@ -79,8 +81,10 @@ export function VideoPlayer({
   onPrev: () => void;
   onNext: () => void;
   onEnded: () => void;
+  onSetThumbnail?: (seconds: number, dataUrl: string) => Promise<void>;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const surfaceClickRef = useRef<number | null>(null);
   const idleTimerRef = useRef<number | null>(null);
@@ -88,10 +92,55 @@ export function VideoPlayer({
   const [paused, setPaused] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [playbackUrl, setPlaybackUrl] = useState(url);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [thumbnailSaved, setThumbnailSaved] = useState(false);
+  const [thumbnailError, setThumbnailError] = useState<string | null>(null);
 
   useEffect(() => {
     setPlaybackUrl(url);
+    setMenuOpen(false);
+    setThumbnailSaved(false);
+    setThumbnailError(null);
   }, [url]);
+
+  useEffect(() => {
+    if (!thumbnailSaved) {
+      return;
+    }
+    const timer = window.setTimeout(() => setThumbnailSaved(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [thumbnailSaved]);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [menuOpen]);
+
+  async function handleSetThumbnail() {
+    const video = videoRef.current;
+    if (!video || !onSetThumbnail || !Number.isFinite(video.currentTime)) {
+      return;
+    }
+    setThumbnailError(null);
+    try {
+      const dataUrl = captureVideoFrameDataUrl(video);
+      await onSetThumbnail(video.currentTime, dataUrl);
+      setThumbnailSaved(true);
+      setMenuOpen(false);
+    } catch (error) {
+      setThumbnailError(
+        error instanceof Error ? error.message : "サムネイルを設定できませんでした",
+      );
+    }
+  }
 
   useLayoutEffect(() => {
     const el = videoRef.current;
@@ -284,6 +333,41 @@ export function VideoPlayer({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {onSetThumbnail ? (
+            <div className="relative" ref={menuRef}>
+              <IconButton
+                label="メニュー"
+                pressed={menuOpen}
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                <MoreVerticalIcon />
+              </IconButton>
+              {menuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute top-full right-0 z-20 mt-1 min-w-44 rounded-xl border border-white/15 bg-neutral-900/95 py-1 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-white/10"
+                    onClick={() => {
+                      void handleSetThumbnail();
+                    }}
+                  >
+                    {thumbnailSaved
+                      ? "設定しました"
+                      : "サムネイルを設定する"}
+                  </button>
+                  {thumbnailError ? (
+                    <p className="px-3 pb-2 text-red-300 text-xs">
+                      {thumbnailError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <IconButton
             label={shellFullscreen ? "全画面を終了" : "全画面"}
             pressed={shellFullscreen}
@@ -556,6 +640,16 @@ function FolderLoopIcon() {
       <path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
       <path d="M9 14a3 3 0 1 0 3-3" />
       <path d="M12 11v3h-3" />
+    </PlayerIcon>
+  );
+}
+
+function MoreVerticalIcon() {
+  return (
+    <PlayerIcon>
+      <circle cx="12" cy="5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" />
     </PlayerIcon>
   );
 }

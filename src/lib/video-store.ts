@@ -32,6 +32,11 @@ import {
   videoRelPath,
   videoTailPartFileName,
 } from "@/lib/video-path";
+import {
+  parseThumbSidecar,
+  serializeThumbSidecar,
+  thumbSidecarName,
+} from "@/lib/video-thumb-sidecar";
 
 export type VideoDownloadPhase = "opening" | "downloading" | "merging";
 
@@ -1645,6 +1650,56 @@ export async function downloadVideoFile(input: {
   }
 }
 
+async function moveThumbSidecar(
+  fromDir: FileSystemDirectoryHandle,
+  fromFileName: string,
+  toDir: FileSystemDirectoryHandle,
+  toFileName: string,
+): Promise<void> {
+  const fromName = thumbSidecarName(fromFileName);
+  let file: File;
+  try {
+    file = await (await fromDir.getFileHandle(fromName)).getFile();
+  } catch {
+    return;
+  }
+  const dest = await toDir.getFileHandle(thumbSidecarName(toFileName), {
+    create: true,
+  });
+  const writable = await dest.createWritable();
+  await writable.write(await file.arrayBuffer());
+  await writable.close();
+  await fromDir.removeEntry(fromName);
+}
+
+export async function readVideoThumbSeekSeconds(
+  root: FileSystemDirectoryHandle,
+  relPath: string,
+): Promise<number | null> {
+  try {
+    const { dir, fileName } = await resolveRelDir(root, relPath, false);
+    const handle = await dir.getFileHandle(thumbSidecarName(fileName));
+    const text = await (await handle.getFile()).text();
+    return parseThumbSidecar(text) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeVideoThumbSeekSeconds(
+  root: FileSystemDirectoryHandle,
+  relPath: string,
+  seconds: number,
+): Promise<void> {
+  const { dir, fileName } = await resolveRelDir(root, relPath, false);
+  const handle = await dir.getFileHandle(thumbSidecarName(fileName), {
+    create: true,
+  });
+  const writable = await handle.createWritable();
+  await writable.write(serializeThumbSidecar(seconds));
+  await writable.close();
+}
+
 export async function moveVideoFile(
   root: FileSystemDirectoryHandle,
   fromPath: string,
@@ -1662,6 +1717,7 @@ export async function moveVideoFile(
   await writable.write(await blob.arrayBuffer());
   await writable.close();
   await from.dir.removeEntry(from.fileName);
+  await moveThumbSidecar(from.dir, from.fileName, to.dir, to.fileName);
 }
 
 export async function deleteVideoFile(
@@ -1679,6 +1735,11 @@ export async function deleteVideoFile(
     await dir.removeEntry(videoTailPartFileName(fileName));
   } catch {
     // サイドカーが無いときは無視
+  }
+  try {
+    await dir.removeEntry(thumbSidecarName(fileName));
+  } catch {
+    // サムネ指定が無いときは無視
   }
   if (error) {
     throw error;

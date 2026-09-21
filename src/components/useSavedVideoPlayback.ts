@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveSavedVideoUrl } from "@/lib/play-saved-video";
 
 export function useSavedVideoPlayback() {
-  const [session, setSession] = useState<{ url: string; title: string } | null>(
-    null,
-  );
+  const [session, setSession] = useState<{
+    url: string;
+    title: string;
+    relPath: string | null;
+  } | null>(null);
   const revokeRef = useRef<(() => void) | null>(null);
 
   const release = useCallback(() => {
@@ -23,7 +25,11 @@ export function useSavedVideoPlayback() {
       release();
       const resolved = await resolveSavedVideoUrl(input);
       revokeRef.current = resolved.revoke ?? null;
-      setSession({ url: resolved.url, title: input.title });
+      setSession({
+        url: resolved.url,
+        title: input.title,
+        relPath: input.videoRelPath ?? null,
+      });
     },
     [release],
   );

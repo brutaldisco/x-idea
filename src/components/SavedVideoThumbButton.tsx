@@ -38,6 +38,7 @@ export function SavedVideoThumbButton({
         <SavedVideoPlayer
           url={session.url}
           title={session.title}
+          relPath={session.relPath}
           onClose={close}
         />
       ) : null}

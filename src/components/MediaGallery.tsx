@@ -8,6 +8,7 @@ import { PhotoLightbox } from "@/components/PhotoLightbox";
 import { QueueBadge } from "@/components/QueueBadge";
 import { SavedBadge } from "@/components/SavedBadge";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
+import { VideoThumbImg } from "@/components/VideoThumbImg";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import { useLiveMediaVideoSave } from "@/lib/use-video-save-status";
 import { applyVideoSaveStatus } from "@/lib/video-save-status";
@@ -83,17 +84,31 @@ function MediaTile({
     : null;
   const preview = (
     <>
-      <Image
-        src={isVideo ? item.previewSrc : item.src}
-        alt={item.altText ?? (isVideo ? "動画プレビュー" : "画像")}
-        width={item.width ?? 1200}
-        height={item.height ?? 800}
-        unoptimized
-        className="max-h-[32rem] w-full object-contain"
-        onError={() => {
-          setImageFailed(true);
-        }}
-      />
+      {isVideo ? (
+        <VideoThumbImg
+          relPath={live.videoRelPath}
+          src={item.previewSrc}
+          alt={item.altText ?? "動画プレビュー"}
+          width={item.width ?? 1200}
+          height={item.height ?? 800}
+          className="max-h-[32rem] w-full object-contain"
+          onError={() => {
+            setImageFailed(true);
+          }}
+        />
+      ) : (
+        <Image
+          src={item.src}
+          alt={item.altText ?? "画像"}
+          width={item.width ?? 1200}
+          height={item.height ?? 800}
+          unoptimized
+          className="max-h-[32rem] w-full object-contain"
+          onError={() => {
+            setImageFailed(true);
+          }}
+        />
+      )}
       {playable ? (
         <span className="absolute inset-0 flex items-center justify-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-ink/70 text-paper text-xl">

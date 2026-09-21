@@ -1,8 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
+import { VideoThumbImg } from "@/components/VideoThumbImg";
+import { useSavedVideoThumb } from "@/lib/video-thumb-cache";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { SourceThumbFallback } from "@/components/SourceThumbFallback";
 import { sourceTransitionStyle } from "@/lib/view-transition";
@@ -47,8 +48,11 @@ export function SourceCardThumb({
   const playable =
     Boolean(mediaId) && mediaType !== "photo" && videoSaveStatus === "ready";
   const [imageFailed, setImageFailed] = useState(false);
+  const customThumb = useSavedVideoThumb(
+    mediaType !== "photo" ? videoRelPath : null,
+  );
 
-  const image = imageFailed ? (
+  const image = imageFailed && !customThumb ? (
     <SourceThumbFallback
       sourceId={sourceId}
       authorAvatarUrl={authorAvatarUrl}
@@ -59,14 +63,12 @@ export function SourceCardThumb({
       className={`h-full w-full bg-paper ${imageClassName}`}
     />
   ) : (
-    <Image
+    <VideoThumbImg
+      relPath={mediaType !== "photo" ? videoRelPath : null}
       src={thumbUrl}
       alt=""
       width={imageWidth}
       height={imageHeight}
-      unoptimized
-      loading="lazy"
-      decoding="async"
       className={imageClassName}
       onError={() => setImageFailed(true)}
     />

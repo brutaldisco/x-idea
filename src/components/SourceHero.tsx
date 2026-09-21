@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import type { ReactNode } from "react";
+import { VideoThumbImg } from "@/components/VideoThumbImg";
 import { ExpandablePhoto } from "@/components/PhotoLightbox";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { SourceMetaFields } from "@/components/SourceMetaFields";
@@ -122,12 +123,12 @@ export function SourceHero({
             title={hero.altText ?? "動画"}
             className="relative mt-4 block w-full overflow-hidden rounded-[var(--radius-card)] bg-paper-2"
           >
-            <Image
+            <VideoThumbImg
+              relPath={heroRelPath}
               src={heroSrc}
               alt={hero.altText ?? ""}
               width={hero.width ?? 1200}
               height={hero.height ?? 800}
-              unoptimized
               className="max-h-80 w-full object-cover"
             />
             <VideoThumbMarks
