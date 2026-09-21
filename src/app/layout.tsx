@@ -4,6 +4,10 @@ import type { ReactNode } from "react";
 import { LibraryQueryProvider } from "@/components/LibraryQueryProvider";
 import { OfflineBanner } from "@/components/pwa/OfflineBanner";
 import { PwaRuntime } from "@/components/pwa/PwaRuntime";
+import { LibraryLayoutRuntime } from "@/components/LibraryLayoutRuntime";
+import { ThemeRuntime } from "@/components/ThemeRuntime";
+import { libraryWideInitScript } from "@/lib/library-layout";
+import { themeInitScript } from "@/lib/theme";
 import {
   PWA_APPLE_TOUCH_ICON,
   PWA_BACKGROUND_COLOR,
@@ -73,8 +77,21 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ja" className={`${inter.variable} ${noto.variable} h-full`}>
+    <html
+      lang="ja"
+      className={`${inter.variable} ${noto.variable} h-full`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `${themeInitScript}${libraryWideInitScript}`,
+          }}
+        />
+      </head>
       <body className="min-h-dvh bg-paper font-sans text-ink antialiased">
+        <ThemeRuntime />
+        <LibraryLayoutRuntime />
         <PwaRuntime />
         <OfflineBanner />
         <LibraryQueryProvider>{children}</LibraryQueryProvider>

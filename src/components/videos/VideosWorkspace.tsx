@@ -4,7 +4,20 @@ import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import {
+  getLibraryWideServerSnapshot,
+  readLibraryWide,
+  subscribeLibraryWide,
+  videosGridClass,
+} from "@/lib/library-layout";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import {
   loadRepeatMode,
@@ -149,6 +162,11 @@ export function VideosWorkspace({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const libraryWide = useSyncExternalStore(
+    subscribeLibraryWide,
+    readLibraryWide,
+    getLibraryWideServerSnapshot,
+  );
   const { supported, linked, folderName } = useVideoSaveFolder(
     accountId,
     initialFolderName,
@@ -1653,7 +1671,7 @@ export function VideosWorkspace({
               保存した動画はまだありません。
             </p>
           ) : (
-            <ul className="mt-4 grid grid-cols-2 gap-3 min-[48rem]:grid-cols-3">
+            <ul className={videosGridClass(libraryWide)}>
               {visible.map((item) => (
                 <li
                   key={item.id}

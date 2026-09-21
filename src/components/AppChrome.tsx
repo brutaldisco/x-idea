@@ -2,10 +2,21 @@
 
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { useSyncExternalStore } from "react";
 import { BottomDock, DockProvider } from "@/components/BottomDock";
 import { InstallHint } from "@/components/pwa/InstallHint";
 import { TabBar } from "@/components/TabBar";
 import { TickOnMount } from "@/components/TickOnMount";
+import {
+  getLibraryGridWideServerSnapshot,
+  getLibraryWideServerSnapshot,
+  libraryShellMaxWidthClass,
+  readLibraryGridWide,
+  readLibraryWide,
+  subscribeLibraryGridWide,
+  subscribeLibraryWide,
+  wideGridShellActive,
+} from "@/lib/library-layout";
 import { isReaderSlotActive } from "@/lib/reader-slot";
 
 export function AppChrome({
@@ -23,17 +34,30 @@ export function AppChrome({
 }) {
   const pathname = usePathname();
   const readerOpen = Boolean(reader) && isReaderSlotActive(pathname);
-  const useWide = wide || readerOpen;
+  const libraryWide = useSyncExternalStore(
+    subscribeLibraryWide,
+    readLibraryWide,
+    getLibraryWideServerSnapshot,
+  );
+  const libraryGridWide = useSyncExternalStore(
+    subscribeLibraryGridWide,
+    readLibraryGridWide,
+    getLibraryGridWideServerSnapshot,
+  );
+  const wideGridActive = wideGridShellActive({
+    wideEnabled: libraryWide,
+    onLibraryGrid: libraryGridWide,
+    onVideos: pathname.startsWith("/videos"),
+  });
+  const shellClass = libraryShellMaxWidthClass({
+    readerOpen,
+    wideProp: wide,
+    wideGridActive,
+  });
 
   return (
     <DockProvider>
-      <div
-        className={`mx-auto min-h-dvh ${
-          useWide
-            ? "max-w-4xl pb-36 min-[48rem]:pb-32"
-            : "max-w-3xl pb-32 min-[48rem]:pb-24"
-        }`}
-      >
+      <div className={`mx-auto min-h-dvh ${shellClass}`}>
         <TickOnMount />
         <div hidden={readerOpen}>{children}</div>
         {readerOpen ? reader : null}

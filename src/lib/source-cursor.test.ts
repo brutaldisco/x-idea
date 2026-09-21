@@ -47,6 +47,10 @@ describe("source cursor", () => {
     expect(sourceCursorSql("posted_asc")).toContain("s.id < ?");
     expect(sourceCursorSql("video_saved")).toContain("vd.status = 'ready'");
     expect(sourceCursorSql("video_saved")).toContain("< ?");
+    expect(sourceCursorSql("video_unsaved")).toContain(
+      "m.type IN ('video', 'animated_gif')",
+    );
+    expect(sourceCursorSql("video_unsaved")).toContain("< ?");
   });
 
   it("uses saved_at for bookmark-time sorts", () => {
@@ -57,6 +61,25 @@ describe("source cursor", () => {
       sourceCursorKey({ ...item, videoSaveStatus: "ready" }, "video_saved"),
     ).toBe("1|2026-02-02");
     expect(sourceCursorKey(item, "video_saved")).toBe("0|2026-02-02");
+    expect(
+      sourceCursorKey(
+        {
+          ...item,
+          mediaType: "video",
+          videoSaveStatus: "failed",
+        },
+        "video_unsaved",
+      ),
+    ).toBe("1|2026-02-02");
+    expect(
+      sourceCursorKey(
+        { ...item, mediaType: "video", videoSaveStatus: "ready" },
+        "video_unsaved",
+      ),
+    ).toBe("0|2026-02-02");
+    expect(
+      sourceCursorKey({ ...item, mediaType: "photo" }, "video_unsaved"),
+    ).toBe("0|2026-02-02");
   });
 
   it("builds compact page slots with gaps", () => {

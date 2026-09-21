@@ -1,4 +1,8 @@
-import { type SourceSort, VIDEO_SAVED_SORT_KEY_SQL } from "@/lib/source-sort";
+import {
+  type SourceSort,
+  VIDEO_SAVED_SORT_KEY_SQL,
+  VIDEO_UNSAVED_SORT_KEY_SQL,
+} from "@/lib/source-sort";
 
 export const SOURCE_PAGE_SIZE = 60;
 export const SOURCE_PAGE_MAX = 100;
@@ -113,6 +117,9 @@ export function sourceSortKeySql(sort: SourceSort): string {
   if (sort === "video_saved") {
     return VIDEO_SAVED_SORT_KEY_SQL;
   }
+  if (sort === "video_unsaved") {
+    return VIDEO_UNSAVED_SORT_KEY_SQL;
+  }
   return "s.saved_at";
 }
 
@@ -128,6 +135,7 @@ export function sourceCursorKey(
   item: {
     postedAt: string | null;
     savedAt: string;
+    mediaType?: string | null;
     videoSaveStatus?: string | null;
   },
   sort: SourceSort,
@@ -135,6 +143,13 @@ export function sourceCursorKey(
   if (sort === "video_saved") {
     const ready = item.videoSaveStatus === "ready" ? "1" : "0";
     return `${ready}|${item.savedAt}`;
+  }
+  if (sort === "video_unsaved") {
+    const isVideo =
+      item.mediaType === "video" || item.mediaType === "animated_gif";
+    const unsaved =
+      isVideo && item.videoSaveStatus !== "ready" ? "1" : "0";
+    return `${unsaved}|${item.savedAt}`;
   }
   return item.savedAt;
 }

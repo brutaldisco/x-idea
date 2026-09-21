@@ -7,6 +7,7 @@ describe("parseSourceSort", () => {
     expect(parseSourceSort("posted_asc")).toBe("posted_asc");
     expect(parseSourceSort("saved_asc")).toBe("posted_asc");
     expect(parseSourceSort("video_saved")).toBe("video_saved");
+    expect(parseSourceSort("video_unsaved")).toBe("video_unsaved");
     expect(parseSourceSort("drop table")).toBe("posted_desc");
   });
 });
@@ -19,5 +20,10 @@ describe("sourceSortSql", () => {
     expect(sourceSortSql("posted_asc")).toContain("s.id DESC");
     expect(sourceSortSql("video_saved")).toContain("vd.status = 'ready'");
     expect(sourceSortSql("video_saved")).toContain("s.saved_at DESC");
+    expect(sourceSortSql("video_unsaved")).toContain(
+      "m.type IN ('video', 'animated_gif')",
+    );
+    expect(sourceSortSql("video_unsaved")).toContain("vd.status = 'ready'");
+    expect(sourceSortSql("video_unsaved")).toContain("s.saved_at DESC");
   });
 });

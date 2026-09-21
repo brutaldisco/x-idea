@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { VideosWorkspace } from "@/components/videos/VideosWorkspace";
+import { WIDE_GRID_PAGE_CLASS } from "@/lib/library-layout";
 import { getVideoSaveFolderName } from "@/server/settings";
 import { listVideoLibrary } from "@/server/videos/queue";
 import { contextAccountId, getAccountContext } from "@/server/x/context";
@@ -37,7 +38,7 @@ export default function VideosPage({
   searchParams: Promise<{ queue?: string }>;
 }) {
   return (
-    <main className="px-4 pt-8">
+    <main className={`px-4 pt-8 ${WIDE_GRID_PAGE_CLASS}`}>
       <Suspense
         fallback={<p className="mt-16 text-ink-2 text-sm">読み込み中…</p>}
       >

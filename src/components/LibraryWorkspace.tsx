@@ -23,6 +23,13 @@ import {
   writeLibraryAccountId,
 } from "@/lib/library-account";
 import {
+  getLibraryWideServerSnapshot,
+  libraryGridClass,
+  readLibraryWide,
+  setLibraryGridWide,
+  subscribeLibraryWide,
+} from "@/lib/library-layout";
+import {
   fetchLibraryTaxonomy,
   LIBRARY_STALE_MS,
   libraryFilterKey,
@@ -157,17 +164,19 @@ function LibraryCardSkeleton({ view }: { view: LibraryView }) {
 const LIST_SKELETON_KEYS = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 const GRID_SKELETON_KEYS = [...LIST_SKELETON_KEYS, "i", "j", "k", "l"] as const;
 
-function LibraryPageSkeleton({ view }: { view: LibraryView }) {
+function LibraryPageSkeleton({
+  view,
+  wide,
+}: {
+  view: LibraryView;
+  wide: boolean;
+}) {
   const keys = view === "grid" ? GRID_SKELETON_KEYS : LIST_SKELETON_KEYS;
   return (
     <ul
       aria-busy="true"
       aria-label="読み込み中"
-      className={
-        view === "grid"
-          ? "mt-4 grid min-w-0 grid-cols-2 gap-2 text-wrap min-[48rem]:grid-cols-3"
-          : "mt-4 grid min-w-0 grid-cols-1 gap-3 text-wrap"
-      }
+      className={libraryGridClass(view, wide)}
     >
       {keys.map((key) => (
         <LibraryCardSkeleton key={key} view={view} />
@@ -317,6 +326,15 @@ export function LibraryWorkspace({
   }
 
   const restoring = useIsRestoring();
+  const libraryWide = useSyncExternalStore(
+    subscribeLibraryWide,
+    readLibraryWide,
+    getLibraryWideServerSnapshot,
+  );
+  useEffect(() => {
+    setLibraryGridWide(libraryWide && view === "grid");
+    return () => setLibraryGridWide(false);
+  }, [libraryWide, view]);
   const storedAccountId = useSyncExternalStore(
     subscribeLibraryAccount,
     readLibraryAccountId,
@@ -697,7 +715,7 @@ export function LibraryWorkspace({
       </div>
 
       {paging ? (
-        <LibraryPageSkeleton view={view} />
+        <LibraryPageSkeleton view={view} wide={libraryWide} />
       ) : rows.length === 0 ? (
         <p className="mt-16 text-center text-ink-2">
           {hasLibraryFilters(filters)
@@ -705,13 +723,7 @@ export function LibraryWorkspace({
             : `${label}に保存した Source はまだありません。`}
         </p>
       ) : (
-        <ul
-          className={
-            view === "grid"
-              ? "mt-4 grid min-w-0 grid-cols-2 gap-2 text-wrap min-[48rem]:grid-cols-3"
-              : "mt-4 grid min-w-0 grid-cols-1 gap-3 text-wrap"
-          }
-        >
+        <ul className={libraryGridClass(view, libraryWide)}>
           {rows.map((item) => (
             <SourceCard
               key={item.id}

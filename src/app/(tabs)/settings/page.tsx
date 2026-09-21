@@ -7,6 +7,7 @@ import { ManualSyncButton } from "@/components/ManualSyncButton";
 import { MediaFolderLink } from "@/components/MediaFolderLink";
 import { MediaUsageCard } from "@/components/MediaUsageCard";
 import { InstallAppCard } from "@/components/pwa/InstallAppCard";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { SettingsFlagToggle } from "@/components/SettingsFlagToggle";
 import { SyncLimitsForm } from "@/components/SyncLimitsForm";
 import { AccountTaxonomyCard } from "@/components/settings/AccountTaxonomyCard";
@@ -116,6 +117,7 @@ async function SettingsBody({
         </p>
       ) : null}
       <InstallAppCard />
+      <ThemeToggle />
       <article
         className="notranslate rounded-[var(--radius-card)] border border-line bg-paper-2 p-4"
         lang="ja"

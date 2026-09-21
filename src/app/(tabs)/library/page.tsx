@@ -1,9 +1,12 @@
 import { Suspense } from "react";
 import { LibraryClient } from "@/components/LibraryClient";
+import { WIDE_GRID_PAGE_CLASS } from "@/lib/library-layout";
 
 export default function LibraryPage() {
   return (
-    <main className="min-w-0 overflow-x-clip px-4 pt-8">
+    <main
+      className={`min-w-0 overflow-x-clip px-4 pt-8 ${WIDE_GRID_PAGE_CLASS}`}
+    >
       <h1 className="font-semibold text-2xl">Library</h1>
       <form action="/ask" className="mt-4">
         <input

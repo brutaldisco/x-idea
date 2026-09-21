@@ -51,19 +51,80 @@
   --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-paper: oklch(18% 0.015 260);
-    --color-paper-2: oklch(22% 0.018 260);
-    --color-ink: oklch(96% 0.008 90);
-    --color-ink-2: oklch(78% 0.015 90);
-    --color-line: oklch(32% 0.02 260);
-    --color-ai-soft: oklch(28% 0.05 290);
-  }
+[data-theme="dark"] {
+  --color-paper: oklch(18% 0.015 260);
+  --color-paper-2: oklch(22% 0.018 260);
+  --color-ink: oklch(96% 0.008 90);
+  --color-ink-2: oklch(78% 0.015 90);
+  --color-line: oklch(32% 0.02 260);
+  --color-ai-soft: oklch(28% 0.05 290);
 }
 
 html {
   font-size: 16px;
+  --wide-grid-card: calc((48rem - 2rem - 2 * 0.5rem) / 3);
+  --wide-grid-gap: 0.5rem;
+  --wide-grid-page-pad: 1.25rem;
+}
+
+html[data-library-wide="true"] .wide-grid-page {
+  padding-left: max(
+    var(--wide-grid-page-pad),
+    env(safe-area-inset-left, 0px)
+  );
+  padding-right: max(
+    var(--wide-grid-page-pad),
+    env(safe-area-inset-right, 0px)
+  );
+}
+
+html[data-library-wide="true"] .app-shell-wide-grid {
+  max-width: calc(
+    3 * var(--wide-grid-card) + 2 * var(--wide-grid-gap) +
+      2 * var(--wide-grid-page-pad)
+  );
+}
+
+@media (min-width: 64rem) {
+  html[data-library-wide="true"] .app-shell-wide-grid {
+    max-width: calc(
+      4 * var(--wide-grid-card) + 3 * var(--wide-grid-gap) +
+        2 * var(--wide-grid-page-pad)
+    );
+  }
+}
+
+@media (min-width: 79.5rem) {
+  html[data-library-wide="true"] .app-shell-wide-grid {
+    max-width: calc(
+      5 * var(--wide-grid-card) + 4 * var(--wide-grid-gap) +
+        2 * var(--wide-grid-page-pad)
+    );
+  }
+}
+
+.wide-media-grid {
+  display: grid;
+  gap: var(--wide-grid-gap);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 48rem) {
+  html[data-library-wide="true"] .wide-media-grid {
+    grid-template-columns: repeat(3, minmax(0, var(--wide-grid-card)));
+  }
+}
+
+@media (min-width: 64rem) {
+  html[data-library-wide="true"] .wide-media-grid {
+    grid-template-columns: repeat(4, minmax(0, var(--wide-grid-card)));
+  }
+}
+
+@media (min-width: 79.5rem) {
+  html[data-library-wide="true"] .wide-media-grid {
+    grid-template-columns: repeat(5, minmax(0, var(--wide-grid-card)));
+  }
 }
 
 select,
