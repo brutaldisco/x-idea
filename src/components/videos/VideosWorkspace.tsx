@@ -1700,9 +1700,9 @@ export function VideosWorkspace({
                         relPath={item.relPath}
                         src={item.previewSrc}
                         alt=""
-                        width={480}
-                        height={270}
-                        className="h-28 w-full object-cover"
+                        width={240}
+                        height={144}
+                        className="mx-auto block h-[144px] w-[240px] max-w-full object-cover"
                       />
                       {item.durationMs != null ? (
                         <span className="absolute right-1 bottom-1 rounded bg-ink/80 px-1 text-[10px] text-paper">
@@ -1710,7 +1710,7 @@ export function VideosWorkspace({
                         </span>
                       ) : null}
                     </button>
-                    <div className="p-2">
+                    <div className="px-2 py-1">
                       <div className="flex items-center gap-2">
                         {metaLine ? (
                           <p className="min-w-0 flex-1 truncate text-[10px] text-ink-2">
@@ -1726,7 +1726,6 @@ export function VideosWorkspace({
                           onDelete={() => void removeItem(item)}
                         />
                       </div>
-                      <p className="mt-1 line-clamp-1 text-xs">{item.excerpt}</p>
                     </div>
                   </li>
                 );
@@ -1858,7 +1857,7 @@ function VideoCardMenu({
             onMove(value.length > 0 ? value : null);
           }}
         >
-          <option value="">未分類</option>
+          <option value="">ー</option>
           {folders.map((folder) => (
             <option key={folder.id} value={folder.id}>
               {folder.name}

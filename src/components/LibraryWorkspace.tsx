@@ -137,7 +137,7 @@ function LibraryCardSkeleton({ view }: { view: LibraryView }) {
         className="min-w-0 w-full overflow-hidden rounded-[var(--radius-card)] border border-line bg-paper-2 p-2"
         aria-hidden
       >
-        <span className="mb-1.5 block h-[112px] w-full animate-pulse rounded-lg bg-paper" />
+        <span className="mx-auto mb-1.5 block h-[128px] w-[240px] max-w-full animate-pulse rounded-lg bg-paper" />
         <span className="mt-1 block h-3 w-1/3 animate-pulse rounded bg-line" />
         <span className="mt-2 block h-3 w-full animate-pulse rounded bg-line" />
         <span className="mt-1.5 block h-3 w-2/3 animate-pulse rounded bg-line" />

@@ -13,6 +13,10 @@ import type { TaxonomyChipItem } from "@/lib/taxonomy-chip";
 import { useLiveSourceVideoSave } from "@/lib/use-video-save-status";
 import { canShowSaveVideosMenu } from "@/lib/video-queue";
 
+const GRID_THUMB_WIDTH = 240;
+const GRID_THUMB_HEIGHT = 128;
+const GRID_THUMB_CLASS = `mx-auto block h-[128px] w-[240px] max-w-full rounded-lg object-cover`;
+
 function ThumbPlaceholder({ className }: { className: string }) {
   return <span className={`block bg-paper ${className}`} aria-hidden />;
 }
@@ -102,14 +106,16 @@ export function SourceCard({
             href={`/source/${id}`}
             title={summary}
             thumbUrl={thumbSrc(mediaId, mediaType ?? null)}
-            imageWidth={448}
-            imageHeight={224}
+            imageWidth={variant === "grid" ? GRID_THUMB_WIDTH : 448}
+            imageHeight={variant === "grid" ? GRID_THUMB_HEIGHT : 224}
             wrapperClassName={
               variant === "grid"
                 ? "relative mb-1.5 block w-full"
                 : "relative mb-2 block w-full"
             }
-            imageClassName={`${variant === "grid" ? "h-[112px]" : "h-28"} w-full rounded-lg object-cover`}
+            imageClassName={
+              variant === "grid" ? GRID_THUMB_CLASS : "h-28 w-full rounded-lg object-cover"
+            }
             authorAvatarUrl={avatarFallback ? authorAvatarUrl : null}
             authorName={avatarFallback ? authorName : null}
             authorUsername={avatarFallback ? authorUsername : null}
@@ -135,7 +141,7 @@ export function SourceCard({
             avatarSize="md"
             className={
               variant === "grid"
-                ? "relative mb-1.5 h-[112px] w-full rounded-lg bg-paper"
+                ? `relative mb-1.5 ${GRID_THUMB_CLASS} bg-paper`
                 : "relative mb-2 h-28 w-full rounded-lg bg-paper"
             }
           />
@@ -150,7 +156,11 @@ export function SourceCard({
             }
           >
             <ThumbPlaceholder
-              className={`${variant === "grid" ? "h-[112px]" : "h-28"} w-full rounded-lg`}
+              className={
+                variant === "grid"
+                  ? GRID_THUMB_CLASS
+                  : "h-28 w-full rounded-lg"
+              }
             />
           </Link>
         )
