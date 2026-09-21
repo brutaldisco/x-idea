@@ -1,13 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Noto_Sans_JP } from "next/font/google";
 import type { ReactNode } from "react";
+import { LibraryLayoutRuntime } from "@/components/LibraryLayoutRuntime";
 import { LibraryQueryProvider } from "@/components/LibraryQueryProvider";
 import { OfflineBanner } from "@/components/pwa/OfflineBanner";
 import { PwaRuntime } from "@/components/pwa/PwaRuntime";
-import { LibraryLayoutRuntime } from "@/components/LibraryLayoutRuntime";
 import { ThemeRuntime } from "@/components/ThemeRuntime";
 import { libraryWideInitScript } from "@/lib/library-layout";
-import { themeInitScript } from "@/lib/theme";
 import {
   PWA_APPLE_TOUCH_ICON,
   PWA_BACKGROUND_COLOR,
@@ -17,6 +16,7 @@ import {
   PWA_TITLE_BAR_COLOR,
   pwaIconSrc,
 } from "@/lib/pwa";
+import { themeInitScript } from "@/lib/theme";
 import "./globals.css";
 
 const inter = Inter({
@@ -84,6 +84,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     >
       <head>
         <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: theme/layout init before paint
           dangerouslySetInnerHTML={{
             __html: `${themeInitScript}${libraryWideInitScript}`,
           }}

@@ -35,7 +35,9 @@ export function subscribeLibraryWide(onStoreChange: () => void): () => void {
   return () => listeners.delete(onStoreChange);
 }
 
-export function subscribeLibraryGridWide(onStoreChange: () => void): () => void {
+export function subscribeLibraryGridWide(
+  onStoreChange: () => void,
+): () => void {
   gridWideListeners.add(onStoreChange);
   return () => gridWideListeners.delete(onStoreChange);
 }
@@ -98,9 +100,7 @@ export function wideGridShellActive(input: {
   onLibraryGrid: boolean;
   onVideos: boolean;
 }): boolean {
-  return (
-    input.wideEnabled && (input.onVideos || input.onLibraryGrid)
-  );
+  return input.wideEnabled && (input.onVideos || input.onLibraryGrid);
 }
 
 export function libraryGridClass(view: LibraryView, wide: boolean): string {

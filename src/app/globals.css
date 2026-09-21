@@ -68,10 +68,7 @@ html {
 }
 
 html[data-library-wide="true"] .wide-grid-page {
-  padding-left: max(
-    var(--wide-grid-page-pad),
-    env(safe-area-inset-left, 0px)
-  );
+  padding-left: max(var(--wide-grid-page-pad), env(safe-area-inset-left, 0px));
   padding-right: max(
     var(--wide-grid-page-pad),
     env(safe-area-inset-right, 0px)
@@ -80,16 +77,24 @@ html[data-library-wide="true"] .wide-grid-page {
 
 html[data-library-wide="true"] .app-shell-wide-grid {
   max-width: calc(
-    3 * var(--wide-grid-card) + 2 * var(--wide-grid-gap) +
-      2 * var(--wide-grid-page-pad)
+    3 *
+    var(--wide-grid-card) +
+    2 *
+    var(--wide-grid-gap) +
+    2 *
+    var(--wide-grid-page-pad)
   );
 }
 
 @media (min-width: 64rem) {
   html[data-library-wide="true"] .app-shell-wide-grid {
     max-width: calc(
-      4 * var(--wide-grid-card) + 3 * var(--wide-grid-gap) +
-        2 * var(--wide-grid-page-pad)
+      4 *
+      var(--wide-grid-card) +
+      3 *
+      var(--wide-grid-gap) +
+      2 *
+      var(--wide-grid-page-pad)
     );
   }
 }
@@ -97,8 +102,12 @@ html[data-library-wide="true"] .app-shell-wide-grid {
 @media (min-width: 79.5rem) {
   html[data-library-wide="true"] .app-shell-wide-grid {
     max-width: calc(
-      5 * var(--wide-grid-card) + 4 * var(--wide-grid-gap) +
-        2 * var(--wide-grid-page-pad)
+      5 *
+      var(--wide-grid-card) +
+      4 *
+      var(--wide-grid-gap) +
+      2 *
+      var(--wide-grid-page-pad)
     );
   }
 }

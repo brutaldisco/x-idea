@@ -55,12 +55,10 @@ export function ThemeToggle() {
   return (
     <article className="rounded-[var(--radius-card)] border border-line bg-paper-2 p-4">
       <h2 className="font-semibold">表示</h2>
-      <label className="mt-3 flex items-center justify-between gap-3">
+      <div className="mt-3 flex items-center justify-between gap-3">
         <span className="text-sm">
           ダークモード
-          <span className="ml-2 text-ink-2 text-xs">
-            {dark ? "ON" : "OFF"}
-          </span>
+          <span className="ml-2 text-ink-2 text-xs">{dark ? "ON" : "OFF"}</span>
           <span className="mt-1 block text-ink-2 text-xs">
             ライトとダークを切り替えます。この端末に保存されます。
           </span>
@@ -74,16 +72,16 @@ export function ThemeToggle() {
             setMode(theme);
           }}
         />
-      </label>
-      <label className="mt-4 flex items-center justify-between gap-3 border-line border-t pt-4">
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-3 border-line border-t pt-4">
         <span className="text-sm">
           Library / Videos を広く（最大5列）
           <span className="ml-2 text-ink-2 text-xs">
             {libraryWide ? "ON" : "OFF"}
           </span>
           <span className="mt-1 block text-ink-2 text-xs">
-            カード幅は 3 列のまま、画面幅に応じて最大 5 列（入らなければ
-            4 列）表示します。
+            カード幅は 3 列のまま、画面幅に応じて最大 5 列（入らなければ 4
+            列）表示します。
           </span>
         </span>
         <SettingsSwitch
@@ -91,7 +89,7 @@ export function ThemeToggle() {
           label="Library / Videos を広く（最大5列）"
           onChange={applyLibraryWide}
         />
-      </label>
+      </div>
     </article>
   );
 }

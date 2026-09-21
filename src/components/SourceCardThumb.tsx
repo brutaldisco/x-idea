@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { VideoThumbImg } from "@/components/VideoThumbImg";
-import { useSavedVideoThumb } from "@/lib/video-thumb-cache";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { SourceThumbFallback } from "@/components/SourceThumbFallback";
+import { VideoThumbImg } from "@/components/VideoThumbImg";
+import { useSavedVideoThumb } from "@/lib/video-thumb-cache";
 import { sourceTransitionStyle } from "@/lib/view-transition";
 
 export function SourceCardThumb({
@@ -52,27 +52,28 @@ export function SourceCardThumb({
     mediaType !== "photo" ? videoRelPath : null,
   );
 
-  const image = imageFailed && !customThumb ? (
-    <SourceThumbFallback
-      sourceId={sourceId}
-      authorAvatarUrl={authorAvatarUrl}
-      authorName={authorName}
-      authorUsername={authorUsername}
-      avatarSize={avatarSize}
-      shareTransition={false}
-      className={`h-full w-full bg-paper ${imageClassName}`}
-    />
-  ) : (
-    <VideoThumbImg
-      relPath={mediaType !== "photo" ? videoRelPath : null}
-      src={thumbUrl}
-      alt=""
-      width={imageWidth}
-      height={imageHeight}
-      className={imageClassName}
-      onError={() => setImageFailed(true)}
-    />
-  );
+  const image =
+    imageFailed && !customThumb ? (
+      <SourceThumbFallback
+        sourceId={sourceId}
+        authorAvatarUrl={authorAvatarUrl}
+        authorName={authorName}
+        authorUsername={authorUsername}
+        avatarSize={avatarSize}
+        shareTransition={false}
+        className={`h-full w-full bg-paper ${imageClassName}`}
+      />
+    ) : (
+      <VideoThumbImg
+        relPath={mediaType !== "photo" ? videoRelPath : null}
+        src={thumbUrl}
+        alt=""
+        width={imageWidth}
+        height={imageHeight}
+        className={imageClassName}
+        onError={() => setImageFailed(true)}
+      />
+    );
 
   if (playable && mediaId) {
     return (

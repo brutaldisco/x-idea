@@ -8,7 +8,6 @@ import {
   useState,
 } from "react";
 import { mediaVideoProxyFallbackPath } from "@/lib/media-video-api";
-import { captureVideoFrameDataUrl } from "@/lib/video-thumb";
 import {
   exitFullscreen,
   getFullscreenElement,
@@ -26,6 +25,7 @@ import {
   type RepeatMode,
   toggleRepeatMode,
 } from "@/lib/video-playlist";
+import { captureVideoFrameDataUrl } from "@/lib/video-thumb";
 
 const STORAGE_KEY = "x-idea-video-repeat";
 const SURFACE_CLICK_MS = 220;
@@ -137,7 +137,9 @@ export function VideoPlayer({
       setMenuOpen(false);
     } catch (error) {
       setThumbnailError(
-        error instanceof Error ? error.message : "サムネイルを設定できませんでした",
+        error instanceof Error
+          ? error.message
+          : "サムネイルを設定できませんでした",
       );
     }
   }
@@ -355,9 +357,7 @@ export function VideoPlayer({
                       void handleSetThumbnail();
                     }}
                   >
-                    {thumbnailSaved
-                      ? "設定しました"
-                      : "サムネイルを設定する"}
+                    {thumbnailSaved ? "設定しました" : "サムネイルを設定する"}
                   </button>
                   {thumbnailError ? (
                     <p className="px-3 pb-2 text-red-300 text-xs">

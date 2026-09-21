@@ -2,10 +2,10 @@
 
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { VideoThumbImg } from "@/components/VideoThumbImg";
 import { ExpandablePhoto } from "@/components/PhotoLightbox";
 import { SavedVideoThumbButton } from "@/components/SavedVideoThumbButton";
 import { SourceMetaFields } from "@/components/SourceMetaFields";
+import { VideoThumbImg } from "@/components/VideoThumbImg";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import type { TaxonomyAccentId } from "@/lib/taxonomy-accent";
 import { useLiveMediaVideoSave } from "@/lib/use-video-save-status";

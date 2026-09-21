@@ -44,7 +44,9 @@ export function ThemeRuntime() {
         (event as CustomEvent<ThemeMode>).detail ?? resolveInitialTheme();
       applyThemeColor(mode);
     };
-    sync(new CustomEvent(THEME_CHANGE_EVENT, { detail: resolveInitialTheme() }));
+    sync(
+      new CustomEvent(THEME_CHANGE_EVENT, { detail: resolveInitialTheme() }),
+    );
     window.addEventListener(THEME_CHANGE_EVENT, sync);
     return () => window.removeEventListener(THEME_CHANGE_EVENT, sync);
   }, []);

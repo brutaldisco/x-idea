@@ -3,7 +3,9 @@ export const THEME_CHANGE_EVENT = "x-idea-theme-change";
 
 export type ThemeMode = "light" | "dark";
 
-export function isThemeMode(value: string | null | undefined): value is ThemeMode {
+export function isThemeMode(
+  value: string | null | undefined,
+): value is ThemeMode {
   return value === "light" || value === "dark";
 }
 
@@ -44,9 +46,7 @@ export function applyTheme(mode: ThemeMode): void {
   } catch {
     // private mode など
   }
-  window.dispatchEvent(
-    new CustomEvent(THEME_CHANGE_EVENT, { detail: mode }),
-  );
+  window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: mode }));
 }
 
 export function readTheme(): ThemeMode {

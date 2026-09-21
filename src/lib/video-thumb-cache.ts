@@ -2,7 +2,6 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { parseVideoRelPath } from "@/lib/video-path";
-import { captureFileFrameDataUrl } from "@/lib/video-thumb";
 import {
   ensureWritePermission,
   getVideoFile,
@@ -11,6 +10,7 @@ import {
   readVideoThumbSeekSeconds,
   writeVideoThumbSeekSeconds,
 } from "@/lib/video-store";
+import { captureFileFrameDataUrl } from "@/lib/video-thumb";
 
 const thumbs = new Map<string, string>();
 const listeners = new Set<() => void>();

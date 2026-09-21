@@ -23,13 +23,6 @@ import {
   writeLibraryAccountId,
 } from "@/lib/library-account";
 import {
-  getLibraryWideServerSnapshot,
-  libraryGridClass,
-  readLibraryWide,
-  setLibraryGridWide,
-  subscribeLibraryWide,
-} from "@/lib/library-layout";
-import {
   fetchLibraryTaxonomy,
   LIBRARY_STALE_MS,
   libraryFilterKey,
@@ -37,6 +30,13 @@ import {
   libraryTaxonomyQueryKey,
 } from "@/lib/library-cache";
 import { readDeletedSourceIds } from "@/lib/library-deleted";
+import {
+  getLibraryWideServerSnapshot,
+  libraryGridClass,
+  readLibraryWide,
+  setLibraryGridWide,
+  subscribeLibraryWide,
+} from "@/lib/library-layout";
 import { writeLibraryNeighbors } from "@/lib/library-neighbors";
 import {
   applyLibraryVisit,

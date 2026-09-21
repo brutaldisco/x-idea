@@ -147,8 +147,7 @@ export function sourceCursorKey(
   if (sort === "video_unsaved") {
     const isVideo =
       item.mediaType === "video" || item.mediaType === "animated_gif";
-    const unsaved =
-      isVideo && item.videoSaveStatus !== "ready" ? "1" : "0";
+    const unsaved = isVideo && item.videoSaveStatus !== "ready" ? "1" : "0";
     return `${unsaved}|${item.savedAt}`;
   }
   return item.savedAt;

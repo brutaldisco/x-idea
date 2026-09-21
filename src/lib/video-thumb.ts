@@ -78,7 +78,9 @@ export async function captureFileFrameDataUrl(
   video.src = objectUrl;
   try {
     await waitForEvent(video, "loadedmetadata");
-    const duration = Number.isFinite(video.duration) ? video.duration : undefined;
+    const duration = Number.isFinite(video.duration)
+      ? video.duration
+      : undefined;
     video.currentTime = resolveThumbSeekSeconds(duration, seekSeconds);
     await waitForEvent(video, "seeked");
     return captureVideoFrameDataUrl(video);

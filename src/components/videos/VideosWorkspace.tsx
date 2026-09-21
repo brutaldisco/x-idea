@@ -11,12 +11,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import {
-  getLibraryWideServerSnapshot,
-  readLibraryWide,
-  subscribeLibraryWide,
-  videosGridClass,
-} from "@/lib/library-layout";
 import { VideoThumbImg } from "@/components/VideoThumbImg";
 import { VideoThumbMarks } from "@/components/VideoThumbMarks";
 import {
@@ -30,6 +24,12 @@ import {
   removeSourceFromLibraryQueries,
 } from "@/lib/library-cache";
 import { rememberDeletedSource } from "@/lib/library-deleted";
+import {
+  getLibraryWideServerSnapshot,
+  readLibraryWide,
+  subscribeLibraryWide,
+  videosGridClass,
+} from "@/lib/library-layout";
 import {
   mediaVideoRedirectPath,
   mediaVideoUrlApiPath,
@@ -73,11 +73,6 @@ import {
 } from "@/lib/video-queue";
 import { applyVideoItemSaveStatus } from "@/lib/video-save-status";
 import {
-  forgetVideoThumb,
-  moveVideoThumbCache,
-  savePlaybackThumbnail,
-} from "@/lib/video-thumb-cache";
-import {
   clearProgress,
   discardPartialVideoFiles,
   downloadVideoFile,
@@ -91,6 +86,11 @@ import {
   sweepLeftoverVideoFiles,
   type VideoDownloadPhase,
 } from "@/lib/video-store";
+import {
+  forgetVideoThumb,
+  moveVideoThumbCache,
+  savePlaybackThumbnail,
+} from "@/lib/video-thumb-cache";
 import { formatDuration, formatVideoQueueMeta } from "@/server/media/select";
 import type {
   VideoFolder,
@@ -1869,6 +1869,7 @@ function VideoCardMenu({
           aria-hidden
           className="pointer-events-none absolute top-1/2 right-0 h-1.5 w-1.5 -translate-y-1/2 text-ink-2"
         >
+          <title>フォルダ選択</title>
           <path
             d="M2.5 4.5 6 7.5 9.5 4.5"
             fill="none"

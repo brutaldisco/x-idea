@@ -114,7 +114,9 @@ export function SourceCard({
                 : "relative mb-2 block w-full"
             }
             imageClassName={
-              variant === "grid" ? GRID_THUMB_CLASS : "h-28 w-full rounded-lg object-cover"
+              variant === "grid"
+                ? GRID_THUMB_CLASS
+                : "h-28 w-full rounded-lg object-cover"
             }
             authorAvatarUrl={avatarFallback ? authorAvatarUrl : null}
             authorName={avatarFallback ? authorName : null}
@@ -157,9 +159,7 @@ export function SourceCard({
           >
             <ThumbPlaceholder
               className={
-                variant === "grid"
-                  ? GRID_THUMB_CLASS
-                  : "h-28 w-full rounded-lg"
+                variant === "grid" ? GRID_THUMB_CLASS : "h-28 w-full rounded-lg"
               }
             />
           </Link>
