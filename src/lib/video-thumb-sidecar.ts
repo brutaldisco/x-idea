@@ -1,3 +1,4 @@
+/** 対応外形式と、容器へ移す前の従来 JSON。MP4 / MOV / M4V の正本はファイル内。 */
 export const THUMB_SIDECAR_SUFFIX = ".lvl.json";
 
 export type ThumbSidecarData = {

@@ -1,4 +1,9 @@
 import {
+  loadVideoThumbSeek,
+  type RandomAccessFile,
+  saveVideoThumbSeek,
+} from "@/lib/video-bmff-meta";
+import {
   probeDirectTotalBytes,
   VIDEO_CDN_FETCH_INIT,
 } from "@/lib/video-direct-fetch";
@@ -1769,6 +1774,89 @@ export async function downloadVideoFile(input: {
   }
 }
 
+function isNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "NotFoundError"
+  );
+}
+
+function copyBytes(data: Uint8Array): Uint8Array<ArrayBuffer> {
+  const copy = new Uint8Array(data.byteLength);
+  copy.set(data);
+  return copy;
+}
+
+/** ヘッダー走査と、uuid ボックスだけの seek 書き込み。映像バイトは渡さない。 */
+function bmffAccess(handle: FileSystemFileHandle): RandomAccessFile {
+  let snapshot: File | null = null;
+  const currentFile = async () => {
+    if (!snapshot) {
+      snapshot = await handle.getFile();
+    }
+    return snapshot;
+  };
+  const openWritable = async (label: string) => {
+    const size = snapshot?.size ?? (await currentFile()).size;
+    return withTimeout(
+      handle.createWritable({ keepExistingData: true }),
+      videoOpenTimeoutMs(size),
+      label,
+    );
+  };
+  return {
+    async size() {
+      return (await currentFile()).size;
+    },
+    async readAt(offset, length) {
+      const file = await currentFile();
+      const data = await file.slice(offset, offset + length).arrayBuffer();
+      return new Uint8Array(data);
+    },
+    async writeAt(offset, data) {
+      const writable = await openWritable("動画メタデータの準備");
+      try {
+        await writable.seek(offset);
+        await writable.write(copyBytes(data));
+        await writable.close();
+      } catch (error) {
+        await writable.abort().catch(() => {});
+        throw error;
+      } finally {
+        snapshot = null;
+      }
+    },
+    async truncate(size) {
+      const writable = await openWritable("動画メタデータの復元");
+      try {
+        await writable.truncate(size);
+        await writable.close();
+      } catch (error) {
+        await writable.abort().catch(() => {});
+        throw error;
+      } finally {
+        snapshot = null;
+      }
+    },
+  };
+}
+
+async function removeThumbSidecar(
+  dir: FileSystemDirectoryHandle,
+  fileName: string,
+): Promise<void> {
+  try {
+    await dir.removeEntry(thumbSidecarName(fileName));
+  } catch (error) {
+    if (isNotFound(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 async function moveThumbSidecar(
   fromDir: FileSystemDirectoryHandle,
   fromFileName: string,
@@ -1797,9 +1885,15 @@ export async function readVideoThumbSeekSeconds(
 ): Promise<number | null> {
   try {
     const { dir, fileName } = await resolveRelDir(root, relPath, false);
-    const handle = await dir.getFileHandle(thumbSidecarName(fileName));
-    const text = await (await handle.getFile()).text();
-    return parseThumbSidecar(text) ?? null;
+    return await loadVideoThumbSeek({
+      fileName,
+      openVideo: async () => bmffAccess(await dir.getFileHandle(fileName)),
+      readSidecar: async () => {
+        const handle = await dir.getFileHandle(thumbSidecarName(fileName));
+        const text = await (await handle.getFile()).text();
+        return parseThumbSidecar(text) ?? null;
+      },
+    });
   } catch {
     return null;
   }
@@ -1811,12 +1905,20 @@ export async function writeVideoThumbSeekSeconds(
   seconds: number,
 ): Promise<void> {
   const { dir, fileName } = await resolveRelDir(root, relPath, false);
-  const handle = await dir.getFileHandle(thumbSidecarName(fileName), {
-    create: true,
+  await saveVideoThumbSeek({
+    fileName,
+    seconds,
+    openVideo: async () => bmffAccess(await dir.getFileHandle(fileName)),
+    writeSidecar: async (value) => {
+      const handle = await dir.getFileHandle(thumbSidecarName(fileName), {
+        create: true,
+      });
+      const writable = await handle.createWritable();
+      await writable.write(serializeThumbSidecar(value));
+      await writable.close();
+    },
+    deleteSidecar: () => removeThumbSidecar(dir, fileName),
   });
-  const writable = await handle.createWritable();
-  await writable.write(serializeThumbSidecar(seconds));
-  await writable.close();
 }
 
 export async function moveVideoFile(
@@ -1836,6 +1938,7 @@ export async function moveVideoFile(
   await writable.write(await blob.arrayBuffer());
   await writable.close();
   await from.dir.removeEntry(from.fileName);
+  // uuid ボックスはファイル本体と一緒に移る。対応外と未移行の JSON だけ追従する。
   await moveThumbSidecar(from.dir, from.fileName, to.dir, to.fileName);
 }
 
@@ -1858,7 +1961,8 @@ export async function deleteVideoFile(
   try {
     await dir.removeEntry(thumbSidecarName(fileName));
   } catch {
-    // サムネ指定が無いときは無視
+    // 未移行 JSON や対応外形式のサイドカーが無いときは無視。
+    // 容器内の値は動画ファイルと一緒に消えている。
   }
   if (error) {
     throw error;
