@@ -180,6 +180,7 @@ export function VideosWorkspace({
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [progress, setProgress] = useState<
@@ -973,36 +974,49 @@ export function VideosWorkspace({
   }
 
   async function cleanBrokenFiles() {
-    const handle = await resolveRoot();
-    if (!handle) {
-      setMessage("Settings で保存フォルダを選んでください");
+    if (cleaning) {
       return;
     }
-    if (!(await ensureWritePermission(handle))) {
-      setMessage("フォルダへの書き込みを許可してください");
-      return;
+    setCleaning(true);
+    setMessage("途中ファイルを削除しています…");
+    try {
+      const handle = await resolveRoot();
+      if (!handle) {
+        setMessage("Settings で保存フォルダを選んでください");
+        return;
+      }
+      if (!(await ensureWritePermission(handle))) {
+        setMessage("フォルダへの書き込みを許可してください");
+        return;
+      }
+      const res = await fetch("/api/videos/queue", { cache: "no-store" });
+      const payload = res.ok
+        ? ((await res.json()) as VideoLibraryPayload)
+        : data;
+      const failed = payload.queue.filter((item) => item.status === "failed");
+      const discarded = await discardPartialVideoFiles({
+        downloadIds: failed.map((item) => item.id),
+        accountId: accountId ?? failed[0]?.accountId ?? null,
+        relPaths: failed.map(itemRelPath),
+        root: handle,
+      });
+      const { removed } = await sweepLeftoverVideoFiles({
+        accountId,
+        protectedRelPaths: payload.protectedRelPaths ?? [],
+        root: handle,
+      });
+      const total = discarded.removed + removed;
+      setMessage(
+        total > 0
+          ? `途中ファイルを ${total} 件削除しました`
+          : "削除する途中ファイルはありませんでした",
+      );
+      await refresh();
+    } catch (error) {
+      setMessage(`途中ファイルを削除できませんでした: ${errorMessage(error)}`);
+    } finally {
+      setCleaning(false);
     }
-    const res = await fetch("/api/videos/queue", { cache: "no-store" });
-    const payload = res.ok ? ((await res.json()) as VideoLibraryPayload) : data;
-    const failed = payload.queue.filter((item) => item.status === "failed");
-    const discarded = await discardPartialVideoFiles({
-      downloadIds: failed.map((item) => item.id),
-      accountId: accountId ?? failed[0]?.accountId ?? null,
-      relPaths: failed.map(itemRelPath),
-      root: handle,
-    });
-    const { removed } = await sweepLeftoverVideoFiles({
-      accountId,
-      protectedRelPaths: payload.protectedRelPaths ?? [],
-      root: handle,
-    });
-    const total = discarded.removed + removed;
-    setMessage(
-      total > 0
-        ? `開けない途中ファイルを ${total} 件削除しました`
-        : "削除する途中ファイルはありません",
-    );
-    await refresh();
   }
 
   async function createFolder() {
@@ -1319,11 +1333,12 @@ export function VideosWorkspace({
                 ) : (
                   <button
                     type="button"
-                    disabled={!supported || !linked}
+                    disabled={!supported || !linked || cleaning}
+                    aria-busy={cleaning}
                     onClick={() => void cleanBrokenFiles()}
                     className="rounded-full border border-line px-3 py-1.5 text-ink-2 text-sm hover:bg-paper disabled:opacity-40"
                   >
-                    途中ファイルを削除
+                    {cleaning ? "削除中…" : "途中ファイルを削除"}
                   </button>
                 )}
                 <button
@@ -1350,6 +1365,11 @@ export function VideosWorkspace({
               </div>
             </div>
             {eta ? <p className="mt-1 text-ink-2 text-xs">{eta}</p> : null}
+            {message ? (
+              <p className="mt-2 text-ink-2 text-xs" aria-live="polite">
+                {message}
+              </p>
+            ) : null}
             {supported && !linked ? (
               <p className="mt-2 text-ink-2 text-xs">
                 {folderName ? (
@@ -1661,6 +1681,12 @@ export function VideosWorkspace({
           </article>
         ) : null}
 
+        {!queueOpen && message ? (
+          <p className="text-ink-2 text-xs" aria-live="polite">
+            {message}
+          </p>
+        ) : null}
+
         <section>
           <div className="flex flex-wrap items-center gap-2">
             <Chip
@@ -1750,8 +1776,6 @@ export function VideosWorkspace({
             </ul>
           )}
         </section>
-
-        {message ? <p className="text-ink-2 text-xs">{message}</p> : null}
 
         {playing ? (
           <VideoPlayer
