@@ -6,6 +6,7 @@ import {
   DIRECT_PARALLEL,
   directChunkBytes,
   initialVideoDownloadPlan,
+  nextTailSidecarFetch,
   shouldAvoidProxyFallback,
   shouldUseVideoTailSidecar,
   tuneVideoDownloadPlan,
@@ -818,7 +819,7 @@ async function downloadDirectToFile(input: {
   const chunk = directChunkBytes(input.planTotal ?? input.total);
   const existingBytes = input.offset;
   const sourceOffset = input.sourceOffset ?? 0;
-  if (existingBytes >= VIDEO_LARGE_RESUME_BYTES && sourceOffset === 0) {
+  if (existingBytes >= VIDEO_LARGE_RESUME_BYTES) {
     input.onPhase?.("opening");
   }
   const writable = await withTimeout(
@@ -1044,13 +1045,18 @@ async function downloadSequentialToFile(input: {
   onTotal?: (total: number) => void;
   directUrl?: string | null;
   onDirectFailed?: () => void;
+  onPhase?: (phase: VideoDownloadPhase) => void;
 }): Promise<number> {
   const existing = input.fileOffset;
+  if (existing >= VIDEO_LARGE_RESUME_BYTES) {
+    input.onPhase?.("opening");
+  }
   const writable = await withTimeout(
     input.file.createWritable({ keepExistingData: existing > 0 }),
     videoOpenTimeoutMs(existing),
     "保存ファイルの準備",
   );
+  input.onPhase?.("downloading");
   try {
     if (input.signal?.aborted) {
       throw abortError();
@@ -1278,10 +1284,11 @@ async function downloadViaTailSidecar(input: {
     lastSaved = received;
     await saveProgress(input.downloadId, received);
   };
+  // 再開位置を出す前に取得フェーズにする。監視が武装され、
+  // バイトが増えない「計測中」のまま放置されない
+  input.onPhase?.("downloading");
   emit(true);
   await persistCombinedProgress(true);
-  // サイドカーの開きは小さい。残り取得中は「開いています」にしない
-  input.onPhase?.("downloading");
 
   const persistTailFromFile = async () => {
     tailOffset = tailOffsetFromPartFile(
@@ -1295,14 +1302,16 @@ async function downloadViaTailSidecar(input: {
 
   if (tailSidecarNeedsFetch(total, input.mainOffset, tailOffset)) {
     let directUrl = input.directUrl;
-    let preferSequential = false;
+    let fetchMode: "direct" | "sequential" =
+      directUrl && remaining() > 0 ? "direct" : "sequential";
+    let directFailures = 0;
     for (;;) {
       if (input.signal?.aborted) {
         throw abortError();
       }
       try {
         if (
-          !preferSequential &&
+          fetchMode === "direct" &&
           directUrl &&
           remaining() > 0 &&
           tailOffset < remaining()
@@ -1361,6 +1370,7 @@ async function downloadViaTailSidecar(input: {
           onDirectFailed: () => {
             directUrl = null;
           },
+          onPhase: input.onPhase,
         });
         tailOffset = written;
         emit(true);
@@ -1378,24 +1388,31 @@ async function downloadViaTailSidecar(input: {
             refreshDirectUrl: input.refreshDirectUrl,
           });
         }
-        // サイドカーは小さいので、失敗しても全コピーの代償はない。
-        // URL を取り直して残りの続きから何度でも取り直す（ADR-026）
-        if (input.refreshDirectUrl) {
-          const refreshedUrl = await input.refreshDirectUrl().catch(() => null);
-          if (refreshedUrl?.url) {
-            directUrl = refreshedUrl.url;
-            preferSequential = false;
-            if (refreshedUrl.bytes && refreshedUrl.bytes > 0) {
-              total = refreshedUrl.bytes;
-            }
-            continue;
-          }
+        const refreshed = input.refreshDirectUrl
+          ? await input.refreshDirectUrl().catch(() => null)
+          : null;
+        if (refreshed?.url) {
+          directUrl = refreshed.url;
         }
-        if (!preferSequential) {
-          preferSequential = true;
-          continue;
+        if (refreshed?.bytes && refreshed.bytes > 0) {
+          total = refreshed.bytes;
         }
-        throw error;
+        await persistTailFromFile();
+        if (!tailSidecarNeedsFetch(total, input.mainOffset, tailOffset)) {
+          break;
+        }
+        // 直接が失敗しても URL がある限り直接だけを繰り返さない。
+        // 数回で逐次へ落とし、それも失敗したら中断として表に出す（ADR-026）
+        const next = nextTailSidecarFetch({
+          mode: fetchMode,
+          directFailures,
+          gotFreshUrl: Boolean(refreshed?.url),
+        });
+        directFailures = next.directFailures;
+        fetchMode = next.mode;
+        if (next.giveUp) {
+          throw error;
+        }
       }
     }
   }
@@ -1493,12 +1510,20 @@ export async function downloadVideoFile(input: {
   );
 
   const plan = initialVideoDownloadPlan(input.estimatedBytes);
-  const byteHint =
-    input.directBytes ??
-    input.expectedTotalBytes ??
-    input.estimatedBytes ??
-    null;
-  let total = byteHint != null && byteHint > 0 ? byteHint : 0;
+  // URL API の bytes だけを確定サイズにする。progress_total や
+  // 画質からの概算は表示用で、これより大きいと存在しない残りを
+  // 取り続けて結合に進まない
+  const trustedTotal =
+    input.directBytes != null && input.directBytes > 0
+      ? input.directBytes
+      : null;
+  const softTotal =
+    input.expectedTotalBytes != null && input.expectedTotalBytes > 0
+      ? input.expectedTotalBytes
+      : input.estimatedBytes != null && input.estimatedBytes > 0
+        ? input.estimatedBytes
+        : null;
+  let total = trustedTotal ?? 0;
   let lastEmit = 0;
   let lastSaved = offset;
   const emit = (force = false) => {
@@ -1555,17 +1580,22 @@ export async function downloadVideoFile(input: {
     if (directUrl && !input.signal?.aborted) {
       const knownTotal = await resolveDirectTotalBytes({
         url: directUrl,
-        hintedBytes: byteHint,
+        hintedBytes: trustedTotal,
         signal: input.signal,
       });
       if (knownTotal && knownTotal <= offset) {
-        // すでに取り終わっている（完了登録だけ失敗したケース）
+        // すでに取り終わっている（完了登録だけ失敗したケース）。
+        // 概算より実サイズが小さいときも、ここで完了にする
         return { bytes: offset, relPath: input.relPath };
       }
       if (knownTotal && knownTotal > offset) {
         total = knownTotal;
         emit(true);
       }
+    }
+    if (!(total > 0) && softTotal) {
+      total = softTotal;
+      emit(true);
     }
 
     if (await shouldResumeViaTailSidecar(dir, fileName, offset)) {
@@ -1575,7 +1605,7 @@ export async function downloadVideoFile(input: {
         fileName,
         mainOffset: offset,
         total,
-        hintedTotalBytes: byteHint,
+        hintedTotalBytes: softTotal,
         mediaId: input.mediaId,
         plan,
         directUrl,

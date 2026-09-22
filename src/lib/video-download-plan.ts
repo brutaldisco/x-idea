@@ -85,6 +85,34 @@ export function shouldUseVideoTailSidecar(existingBytes: number): boolean {
 }
 
 /**
+ * サイドカーの CDN 直接が失敗したあと、URL を取り直して直接を再試行する回数。
+ * これを超えたら逐次（プロキシ含む）へ落とす。成功する URL がある限り直接だけを
+ * 繰り返すと、残りが取れないまま「計測中」で固まる（ADR-026）。
+ */
+export const VIDEO_TAIL_DIRECT_REFRESHES = 2;
+
+export type TailFetchMode = "direct" | "sequential";
+
+export function nextTailSidecarFetch(input: {
+  mode: TailFetchMode;
+  directFailures: number;
+  gotFreshUrl: boolean;
+}): { mode: TailFetchMode; directFailures: number; giveUp: boolean } {
+  if (input.mode === "sequential") {
+    return {
+      mode: "sequential",
+      directFailures: input.directFailures,
+      giveUp: true,
+    };
+  }
+  const directFailures = input.directFailures + 1;
+  if (input.gotFreshUrl && directFailures <= VIDEO_TAIL_DIRECT_REFRESHES) {
+    return { mode: "direct", directFailures, giveUp: false };
+  }
+  return { mode: "sequential", directFailures, giveUp: false };
+}
+
+/**
  * ファイル上の書き込み範囲を CDN Range に直す。
  * サイドカーはファイル先頭が 0 でも、CDN 上は本体の続きから読む。
  */

@@ -9,6 +9,7 @@ import {
   isVideoSourceGoneError,
   mediaHasQueueableVideos,
   parseDbUtcMs,
+  shouldAbortSilentVideoDownload,
   shouldArmVideoStallWatchdog,
   shouldSendVideoHeartbeat,
   sourceVideosQueueMessage,
@@ -178,6 +179,18 @@ describe("shouldArmVideoStallWatchdog", () => {
     expect(shouldArmVideoStallWatchdog(4_328_521_728, 4_328_521_728)).toBe(
       false,
     );
+  });
+});
+
+describe("shouldAbortSilentVideoDownload", () => {
+  it("keeps large file copies and merges running", () => {
+    expect(shouldAbortSilentVideoDownload("opening")).toBe(false);
+    expect(shouldAbortSilentVideoDownload("merging")).toBe(false);
+  });
+
+  it("aborts a silent tail fetch even after a large resume cursor", () => {
+    expect(shouldAbortSilentVideoDownload("downloading")).toBe(true);
+    expect(shouldAbortSilentVideoDownload(null)).toBe(true);
   });
 });
 

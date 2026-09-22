@@ -192,6 +192,18 @@ export function shouldArmVideoStallWatchdog(
 }
 
 /**
+ * 無音のダウンロードを切ってよいか。
+ * opening / merging は大きいファイルの全コピーでバイトが増えないので切らない。
+ * downloading（残り取得）は 256MB 超でも切る。切らないと再開位置の表示のまま
+ * 「計測中」で固まり、結合まで進まない。
+ */
+export function shouldAbortSilentVideoDownload(
+  phase: "opening" | "downloading" | "merging" | null,
+): boolean {
+  return phase !== "opening" && phase !== "merging";
+}
+
+/**
  * ダウンロード失敗の理由が「元のページが X 上に無い（404）」か。
  * 404 はリトライしても成功しないので、途中から再開ではなく
  * 投稿の削除を促す判定に使う。

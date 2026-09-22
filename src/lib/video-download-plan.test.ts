@@ -4,6 +4,7 @@ import {
   DIRECT_PARALLEL,
   directChunkBytes,
   initialVideoDownloadPlan,
+  nextTailSidecarFetch,
   shouldAvoidProxyFallback,
   shouldUseVideoTailSidecar,
   tuneVideoDownloadPlan,
@@ -115,6 +116,45 @@ describe("shouldUseVideoTailSidecar", () => {
     expect(shouldUseVideoTailSidecar(VIDEO_LARGE_RESUME_BYTES - 1)).toBe(false);
     expect(shouldUseVideoTailSidecar(VIDEO_LARGE_RESUME_BYTES)).toBe(true);
     expect(shouldUseVideoTailSidecar(4 * 1024 * 1024 * 1024)).toBe(true);
+  });
+});
+
+describe("nextTailSidecarFetch", () => {
+  it("refreshes the direct URL a few times, then falls through to sequential", () => {
+    expect(
+      nextTailSidecarFetch({
+        mode: "direct",
+        directFailures: 0,
+        gotFreshUrl: true,
+      }),
+    ).toEqual({ mode: "direct", directFailures: 1, giveUp: false });
+    expect(
+      nextTailSidecarFetch({
+        mode: "direct",
+        directFailures: 2,
+        gotFreshUrl: true,
+      }),
+    ).toEqual({ mode: "sequential", directFailures: 3, giveUp: false });
+  });
+
+  it("does not stay on direct when the URL cannot be refreshed", () => {
+    expect(
+      nextTailSidecarFetch({
+        mode: "direct",
+        directFailures: 0,
+        gotFreshUrl: false,
+      }).mode,
+    ).toBe("sequential");
+  });
+
+  it("gives up after sequential fails instead of looping forever", () => {
+    expect(
+      nextTailSidecarFetch({
+        mode: "sequential",
+        directFailures: 3,
+        gotFreshUrl: true,
+      }).giveUp,
+    ).toBe(true);
   });
 });
 

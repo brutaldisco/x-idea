@@ -38,7 +38,6 @@ import {
 import {
   VIDEO_FILE_PARALLEL,
   VIDEO_HEARTBEAT_MS,
-  VIDEO_LARGE_RESUME_BYTES,
   VIDEO_STALL_MAX_RESTARTS,
   VIDEO_STALL_NOTICE_MS,
   VIDEO_STALL_WATCHDOG_MS,
@@ -68,6 +67,7 @@ import {
   isResumableVideoQueueStatus,
   isVideoLeaseStale,
   isVideoSourceGoneError,
+  shouldAbortSilentVideoDownload,
   shouldArmVideoStallWatchdog,
   shouldSendVideoHeartbeat,
 } from "@/lib/video-queue";
@@ -197,6 +197,8 @@ export function VideosWorkspace({
   const itemControllersRef = useRef<Map<string, AbortController>>(new Map());
   /** 各本が最後にバイトを受信した時刻。応答なし検出に使う */
   const lastByteAtRef = useRef<Map<string, number>>(new Map());
+  /** opening / merging 中は無音でも切らない */
+  const downloadPhaseRef = useRef<Map<string, VideoDownloadPhase>>(new Map());
   const beatReceivedRef = useRef<Map<string, number>>(new Map());
   const [stalledIds, setStalledIds] = useState<string[]>([]);
   const [openingIds, setOpeningIds] = useState<string[]>([]);
@@ -401,13 +403,14 @@ export function VideosWorkspace({
           continue;
         }
         const silentMs = now - last;
+        const phase = downloadPhaseRef.current.get(id) ?? null;
+        if (!shouldAbortSilentVideoDownload(phase)) {
+          continue;
+        }
         if (silentMs >= VIDEO_STALL_WATCHDOG_MS) {
-          // 大きな途中ファイルは切断して開き直すと全コピーが再走するため、
-          // チャンク側のスタール検知と URL 取り直しに任せる
-          const received = beatReceivedRef.current.get(id) ?? 0;
-          if (received < VIDEO_LARGE_RESUME_BYTES) {
-            itemControllersRef.current.get(id)?.abort();
-          }
+          // 残り取得中は大きい途中ファイルでも切る。開き直しと結合の
+          // 全コピー中（opening / merging）は上で除外している
+          itemControllersRef.current.get(id)?.abort();
         } else if (silentMs >= VIDEO_STALL_NOTICE_MS) {
           stalled.push(id);
         }
@@ -661,7 +664,7 @@ export function VideosWorkspace({
         const directUrl = initial?.url ?? null;
         const expectedTotalBytes =
           item.progressTotal ?? item.estimatedBytes ?? null;
-        const directBytes = initial?.bytes ?? expectedTotalBytes ?? null;
+        const directBytes = initial?.bytes ?? null;
         // 応答なしの取り直し: ウォッチドッグがその本だけ切断したら、
         // 保存済み位置から静かにやり直す。尽きたら「応答なし」で failed にする
         let result: { bytes: number; relPath: string } | null = null;
@@ -692,8 +695,18 @@ export function VideosWorkspace({
             });
           };
           const applyPhase = (phase: VideoDownloadPhase) => {
+            downloadPhaseRef.current.set(item.id, phase);
             setPhaseFlag(setOpeningIds, phase === "opening");
             setPhaseFlag(setMergingIds, phase === "merging");
+            if (phase === "downloading") {
+              // 再開位置を出しただけでバイトが増えなくても、
+              // 残り取得中の無音は「応答なし」として扱う
+              if (!lastByteAtRef.current.has(item.id)) {
+                lastByteAtRef.current.set(item.id, Date.now());
+              }
+            } else {
+              lastByteAtRef.current.delete(item.id);
+            }
           };
           try {
             result = await downloadVideoFile({
@@ -749,6 +762,7 @@ export function VideosWorkspace({
             controller.signal.removeEventListener("abort", onBatchAbort);
             itemControllersRef.current.delete(item.id);
             lastByteAtRef.current.delete(item.id);
+            downloadPhaseRef.current.delete(item.id);
             beatReceivedRef.current.delete(item.id);
             setOpeningIds((ids) => ids.filter((id) => id !== item.id));
             setMergingIds((ids) => ids.filter((id) => id !== item.id));
