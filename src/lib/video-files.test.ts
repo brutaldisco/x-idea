@@ -7,6 +7,8 @@ import {
   resolveSavedVideoRelPath,
   resumeVideoOffset,
   resumeVideoTailOffset,
+  tailRemainingBytes,
+  tailSidecarNeedsFetch,
 } from "./video-files";
 
 describe("resolveSavedVideoRelPath", () => {
@@ -109,5 +111,23 @@ describe("resumeVideoTailOffset", () => {
     expect(resumeVideoTailOffset(12_000_000, 220_000_000)).toBe(12_000_000);
     expect(resumeVideoTailOffset(400_000_000, 220_000_000)).toBe(220_000_000);
     expect(resumeVideoTailOffset(12_000_000, 0)).toBe(0);
+  });
+});
+
+describe("tailSidecarNeedsFetch", () => {
+  it("compares tail progress to remaining when total is known", () => {
+    const total = 338 * 1024 * 1024;
+    const main = 300 * 1024 * 1024;
+    const remaining = tailRemainingBytes(total, main);
+    expect(tailSidecarNeedsFetch(total, main, 0)).toBe(true);
+    expect(tailSidecarNeedsFetch(total, main, remaining - 1)).toBe(true);
+    expect(tailSidecarNeedsFetch(total, main, remaining)).toBe(false);
+  });
+
+  it("keeps trying while total is unknown", () => {
+    expect(tailSidecarNeedsFetch(0, 300 * 1024 * 1024, 0)).toBe(true);
+    expect(tailSidecarNeedsFetch(0, 300 * 1024 * 1024, 10 * 1024 * 1024)).toBe(
+      true,
+    );
   });
 });

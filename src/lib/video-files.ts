@@ -75,6 +75,27 @@ export function resumeVideoTailOffset(
   return Math.min(partBytes, remaining);
 }
 
+/** 本体 mainOffset 以降に取るべき残りバイト（total が不明なら 0） */
+export function tailRemainingBytes(total: number, mainOffset: number): number {
+  return total > mainOffset ? total - mainOffset : 0;
+}
+
+/**
+ * `.part` へ残りを取る必要があるか。
+ * total が分かっているときは tailOffset と remaining を比較する。
+ * 不明なときは取得を試す（空の .part から再開するため false にしない）。
+ */
+export function tailSidecarNeedsFetch(
+  total: number,
+  mainOffset: number,
+  tailOffset: number,
+): boolean {
+  if (total > 0) {
+    return tailOffset < tailRemainingBytes(total, mainOffset);
+  }
+  return true;
+}
+
 /** 既知の総量に対して受信が足りない、または 0 バイトなら未完了 */
 export function isFinishedVideoDownload(
   received: number,

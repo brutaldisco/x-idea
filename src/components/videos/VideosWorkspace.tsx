@@ -659,7 +659,9 @@ export function VideosWorkspace({
         };
         const initial = await resolveDirectUrl();
         const directUrl = initial?.url ?? null;
-        const directBytes = initial?.bytes ?? null;
+        const expectedTotalBytes =
+          item.progressTotal ?? item.estimatedBytes ?? null;
+        const directBytes = initial?.bytes ?? expectedTotalBytes ?? null;
         // 応答なしの取り直し: ウォッチドッグがその本だけ切断したら、
         // 保存済み位置から静かにやり直す。尽きたら「応答なし」で failed にする
         let result: { bytes: number; relPath: string } | null = null;
@@ -700,6 +702,7 @@ export function VideosWorkspace({
               relPath,
               root: handle,
               estimatedBytes: item.estimatedBytes,
+              expectedTotalBytes,
               directUrl,
               directBytes,
               // 502 等で両経路が失敗したとき、URL を取り直して CDN 直接から
