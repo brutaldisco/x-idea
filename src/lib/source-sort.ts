@@ -35,16 +35,24 @@ export const VIDEO_UNSAVED_SQL = `CASE WHEN EXISTS (
   LIMIT 1
 ) THEN 1 ELSE 0 END`;
 
-export const VIDEO_UNSAVED_SORT_KEY_SQL = `(CASE WHEN EXISTS (
-  SELECT 1 FROM media_assets m
-  WHERE m.x_post_id = p.id AND m.type IN ('video', 'animated_gif')
-  LIMIT 1
-) AND NOT EXISTS (
-  SELECT 1 FROM media_assets m
-  JOIN video_downloads vd ON vd.media_id = m.id
-  WHERE m.x_post_id = p.id AND vd.status = 'ready'
-  LIMIT 1
-) THEN '1' ELSE '0' END) || '|' || ${BOOKMARK_AT_SQL}`;
+/**
+ * カードに出る投稿日。ISO（`T` / `Z`）と SQLite の `saved_at` を
+ * 同じ文字列順に揃える。
+ */
+export function postedSortTime(
+  postedAt: string | null | undefined,
+  savedAt: string,
+): string {
+  const raw = postedAt && postedAt.length > 0 ? postedAt : savedAt;
+  return raw.replaceAll("T", " ").replaceAll("Z", "");
+}
+
+/** 未保存グループは投稿日、それ以外はブックマーク時刻。 */
+export const VIDEO_UNSAVED_TIME_SQL = `CASE WHEN ${VIDEO_UNSAVED_SQL} = 1
+  THEN REPLACE(REPLACE(COALESCE(NULLIF(p.posted_at, ''), ${BOOKMARK_AT_SQL}), 'T', ' '), 'Z', '')
+  ELSE ${BOOKMARK_AT_SQL} END`;
+
+export const VIDEO_UNSAVED_SORT_KEY_SQL = `(CASE WHEN ${VIDEO_UNSAVED_SQL} = 1 THEN '1' ELSE '0' END) || '|' || (${VIDEO_UNSAVED_TIME_SQL})`;
 
 export type SourceSort = (typeof SOURCE_SORTS)[number]["id"];
 
@@ -65,7 +73,9 @@ export function sourceSortSql(sort: SourceSort): string {
     case "video_saved":
       return `${VIDEO_READY_SQL} DESC, ${BOOKMARK_AT_SQL} DESC, s.id ASC`;
     case "video_unsaved":
-      return `${VIDEO_UNSAVED_SQL} DESC, ${BOOKMARK_AT_SQL} DESC, s.id ASC`;
+      // 未保存どうしはカードの投稿日。一括取り込みで saved_at が同じだと
+      // ブックマーク時刻では投稿日がバラバラに見える
+      return `${VIDEO_UNSAVED_SQL} DESC, ${VIDEO_UNSAVED_TIME_SQL} DESC, s.id ASC`;
     default:
       return `${BOOKMARK_AT_SQL} DESC, s.id ASC`;
   }

@@ -1,4 +1,5 @@
 import {
+  postedSortTime,
   type SourceSort,
   VIDEO_SAVED_SORT_KEY_SQL,
   VIDEO_UNSAVED_SORT_KEY_SQL,
@@ -148,7 +149,11 @@ export function sourceCursorKey(
     const isVideo =
       item.mediaType === "video" || item.mediaType === "animated_gif";
     const unsaved = isVideo && item.videoSaveStatus !== "ready" ? "1" : "0";
-    return `${unsaved}|${item.savedAt}`;
+    const time =
+      unsaved === "1"
+        ? postedSortTime(item.postedAt, item.savedAt)
+        : item.savedAt;
+    return `${unsaved}|${time}`;
   }
   return item.savedAt;
 }

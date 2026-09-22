@@ -70,7 +70,7 @@ describe("source cursor", () => {
         },
         "video_unsaved",
       ),
-    ).toBe("1|2026-02-02");
+    ).toBe("1|2026-01-01");
     expect(
       sourceCursorKey(
         { ...item, mediaType: "video", videoSaveStatus: "ready" },

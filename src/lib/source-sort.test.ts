@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSourceSort, sourceSortSql } from "./source-sort";
+import { parseSourceSort, postedSortTime, sourceSortSql } from "./source-sort";
 
 describe("parseSourceSort", () => {
   it("defaults to newest bookmarked and accepts known ids", () => {
@@ -24,6 +24,18 @@ describe("sourceSortSql", () => {
       "m.type IN ('video', 'animated_gif')",
     );
     expect(sourceSortSql("video_unsaved")).toContain("vd.status = 'ready'");
-    expect(sourceSortSql("video_unsaved")).toContain("s.saved_at DESC");
+    expect(sourceSortSql("video_unsaved")).toContain("p.posted_at");
+    expect(sourceSortSql("video_unsaved")).toContain("s.id ASC");
+  });
+});
+
+describe("postedSortTime", () => {
+  it("normalizes ISO timestamps so they sort with sqlite datetimes", () => {
+    expect(
+      postedSortTime("2026-09-21T12:38:06.000Z", "2026-09-22 03:00:40"),
+    ).toBe("2026-09-21 12:38:06.000");
+    expect(postedSortTime(null, "2026-09-22 03:00:40")).toBe(
+      "2026-09-22 03:00:40",
+    );
   });
 });
