@@ -1,11 +1,13 @@
 import { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LIBRARY_SOURCES_KEY,
   LIBRARY_TAXONOMY_KEY,
   libraryFilterKey,
+  libraryNeedsRefresh,
   libraryQueryKey,
   libraryTaxonomyQueryKey,
+  markLibraryStale,
   patchSourceInLibraryQueries,
   removeSourceFromLibraryPage,
   removeSourceFromLibraryQueries,
@@ -85,4 +87,26 @@ describe("library cache", () => {
     expect(client.getQueryData(taxKey)).toBeUndefined();
     expect(taxKey[0]).toBe(LIBRARY_TAXONOMY_KEY);
   });
+
+  it("asks Library to reload data taken before a sync", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+    });
+    vi.stubGlobal("window", { dispatchEvent: () => true });
+    const before = Date.now() - 1_000;
+    markLibraryStale();
+    expect(libraryNeedsRefresh(before)).toBe(true);
+    expect(libraryNeedsRefresh(Date.now() + 1_000)).toBe(false);
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });

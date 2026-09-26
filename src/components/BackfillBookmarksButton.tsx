@@ -3,8 +3,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { resetLibraryQueries } from "@/lib/library-cache";
-import { clearSourcesHttpCache } from "@/lib/pwa";
+import { refreshLibraryAfterWrite } from "@/lib/library-cache";
+import { describeSyncResult } from "@/lib/sync-status";
 
 export function BackfillBookmarksButton({
   accountId,
@@ -17,17 +17,20 @@ export function BackfillBookmarksButton({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "fetching" | "done" | "error">(
+    "idle",
+  );
   const [message, setMessage] = useState<string | null>(null);
 
   return (
     <div className="mt-3">
       <button
         type="button"
-        disabled={disabled || busy}
+        disabled={disabled || phase === "fetching"}
+        aria-busy={phase === "fetching"}
         onClick={() => {
-          setBusy(true);
-          setMessage(null);
+          setPhase("fetching");
+          setMessage("過去のブックマークを取得しています。");
           void fetch("/api/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -38,29 +41,45 @@ export function BackfillBookmarksButton({
           })
             .then(async (res) => {
               if (res.status === 429) {
+                setPhase("error");
                 setMessage("60秒待ってから再実行してください。");
                 return;
               }
-              if (!res.ok) {
-                setMessage("取り込みを開始できませんでした。");
-                return;
-              }
+              const body = (await res.json().catch(() => null)) as {
+                created?: number;
+                errors?: number;
+              } | null;
+              const outcome = describeSyncResult({
+                ok: res.ok,
+                created: Number(body?.created ?? 0),
+                errors: Number(body?.errors ?? 0),
+                kind: "backfill",
+              });
+              setPhase(outcome.phase);
               setMessage(
-                "過去分の取り込みを実行しました。まだ残っていれば、もう一度押してください。",
+                outcome.phase === "done"
+                  ? `${outcome.detail}まだ残っていれば、もう一度押してください。`
+                  : outcome.detail,
               );
-              resetLibraryQueries(queryClient);
-              void clearSourcesHttpCache();
-              router.refresh();
+              if (outcome.phase === "done") {
+                await refreshLibraryAfterWrite(queryClient);
+                router.refresh();
+              }
             })
-            .finally(() => setBusy(false));
+            .catch(() => {
+              setPhase("error");
+              setMessage("取り込みを開始できませんでした。");
+            });
         }}
         className="rounded-full border border-line px-4 py-2 text-sm disabled:opacity-40"
       >
-        {busy
-          ? "取り込み中…"
-          : exhausted
-            ? "過去の取り込みを再試行"
-            : "過去のブックマークを取り込む"}
+        {phase === "fetching"
+          ? "取得中…"
+          : phase === "done"
+            ? "取得済み"
+            : exhausted
+              ? "過去の取り込みを再試行"
+              : "過去のブックマークを取り込む"}
       </button>
       <p className="mt-2 text-ink-2 text-xs">
         「今すぐ同期」は新着だけです。こちらは X
@@ -72,7 +91,18 @@ export function BackfillBookmarksButton({
           前回は一覧の末尾まで到達しました。まだ残っているなら再試行できます。
         </p>
       ) : null}
-      {message ? <p className="mt-1 text-ink-2 text-xs">{message}</p> : null}
+      {message ? (
+        <output
+          className={`mt-1 block text-xs ${phase === "done" ? "text-ok" : "text-ink-2"}`}
+        >
+          {phase === "fetching"
+            ? "取得中 · "
+            : phase === "done"
+              ? "取得済み · "
+              : ""}
+          {message}
+        </output>
+      ) : null}
     </div>
   );
 }

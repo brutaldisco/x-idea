@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { getClient } from "@/db/client";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
 import { enqueueJob } from "@/server/jobs/queue";
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
       typeof body.x_account_id === "string" && body.x_account_id.length > 0
         ? body.x_account_id
         : undefined;
+    const since = new Date().toISOString();
     await enqueueJob({
       type: "sync_bookmarks",
       payload: {
@@ -64,7 +66,19 @@ export async function POST(request: Request) {
         : `manual:${Math.floor(now / THROTTLE_MS)}`,
     });
     const result = await runJobs({ max: 3 });
-    return Response.json({ ok: true, ...result });
+    const summary = await getClient().execute({
+      sql: `SELECT COALESCE(SUM(new_sources), 0) AS created,
+                   COALESCE(SUM(CASE WHEN status != 'ok' THEN 1 ELSE 0 END), 0) AS errors
+            FROM sync_runs
+            WHERE trigger = 'manual' AND started_at >= ?`,
+      args: [since],
+    });
+    return Response.json({
+      ok: true,
+      ...result,
+      created: Number(summary.rows[0]?.created ?? 0),
+      errors: Number(summary.rows[0]?.errors ?? 0),
+    });
   } catch (error) {
     return Response.json(toErrorBody(error), { status: 500 });
   }

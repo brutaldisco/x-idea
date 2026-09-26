@@ -159,7 +159,7 @@ async function handle(request, url) {
     return cacheFirst(request, RUNTIME);
   }
   if (path.startsWith("/api/sources")) {
-    if (isDevHost()) {
+    if (isDevHost() || request.cache === "no-store") {
       return fetch(request);
     }
     return staleWhileRevalidate(

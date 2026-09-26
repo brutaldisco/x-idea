@@ -23,9 +23,11 @@ import {
   writeLibraryAccountId,
 } from "@/lib/library-account";
 import {
+  clearLibraryStaleMark,
   fetchLibraryTaxonomy,
   LIBRARY_STALE_MS,
   libraryFilterKey,
+  libraryNeedsRefresh,
   libraryQueryKey,
   libraryTaxonomyQueryKey,
 } from "@/lib/library-cache";
@@ -95,6 +97,7 @@ async function fetchPage(input: {
   sort: SourceSort;
   filters: LibraryFilters;
   page: number;
+  fresh?: boolean;
 }): Promise<Page> {
   const params = new URLSearchParams();
   params.set("limit", String(SOURCE_PAGE_SIZE));
@@ -123,6 +126,7 @@ async function fetchPage(input: {
   }
   const res = await fetch(`/api/sources?${params.toString()}`, {
     credentials: "same-origin",
+    cache: input.fresh ? "no-store" : "default",
   });
   if (!res.ok) {
     throw new Error("一覧を読めませんでした");
@@ -342,13 +346,31 @@ export function LibraryWorkspace({
   );
   const query = useQuery({
     queryKey,
-    queryFn: () => fetchPage({ sort, filters, page }),
+    queryFn: () =>
+      fetchPage({
+        sort,
+        filters,
+        page,
+        fresh: libraryNeedsRefresh(0),
+      }),
     enabled: !restoring,
-    refetchOnMount: (entry) => entry.state.data == null,
+    refetchOnMount: (entry) =>
+      entry.state.data == null ||
+      libraryNeedsRefresh(entry.state.dataUpdatedAt),
     refetchOnReconnect: false,
     placeholderData: keepPreviousData,
     staleTime: LIBRARY_STALE_MS,
   });
+  useEffect(() => {
+    if (
+      query.isSuccess &&
+      !query.isFetching &&
+      query.dataUpdatedAt > 0 &&
+      !libraryNeedsRefresh(query.dataUpdatedAt)
+    ) {
+      clearLibraryStaleMark();
+    }
+  }, [query.dataUpdatedAt, query.isFetching, query.isSuccess]);
   const accountId = storedAccountId || query.data?.accountId || "";
   const taxonomyQuery = useQuery({
     queryKey: libraryTaxonomyQueryKey(accountId),

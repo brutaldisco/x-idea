@@ -9,6 +9,48 @@ import type { SourceSort } from "@/lib/source-sort";
 export const LIBRARY_SOURCES_KEY = "sources";
 export const LIBRARY_TAXONOMY_KEY = "taxonomy";
 export const LIBRARY_STALE_MS = 5 * 60_000;
+export const LIBRARY_STALE_EVENT = "x-idea-library-stale";
+
+const LIBRARY_STALE_KEY = "x-idea.library.stale-at";
+
+export function markLibraryStale(): void {
+  if (typeof sessionStorage === "undefined") {
+    return;
+  }
+  sessionStorage.setItem(LIBRARY_STALE_KEY, String(Date.now()));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(LIBRARY_STALE_EVENT));
+  }
+}
+
+/** 同期より前に取った一覧なら true。次の表示で取り直す。 */
+export function libraryNeedsRefresh(dataUpdatedAt: number): boolean {
+  if (typeof sessionStorage === "undefined") {
+    return false;
+  }
+  const at = Number(sessionStorage.getItem(LIBRARY_STALE_KEY) ?? "");
+  return Number.isFinite(at) && at > dataUpdatedAt;
+}
+
+export function clearLibraryStaleMark(): void {
+  if (typeof sessionStorage === "undefined") {
+    return;
+  }
+  sessionStorage.removeItem(LIBRARY_STALE_KEY);
+}
+
+/** SW の古い /api/sources を捨て、開いている Library を取り直す。 */
+export async function refreshLibraryAfterWrite(
+  client: QueryClient,
+): Promise<void> {
+  const { clearSourcesHttpCache } = await import("@/lib/pwa");
+  await clearSourcesHttpCache();
+  markLibraryStale();
+  await client.refetchQueries({
+    queryKey: [LIBRARY_SOURCES_KEY],
+    type: "active",
+  });
+}
 
 export type LibraryTaxonomy = {
   categories: { id: string; name: string; color?: string | null }[];
