@@ -1,8 +1,9 @@
 import { getClient } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { applyTweetLookupGaps } from "@/server/ingest/bookmark";
+import { estimatePostReadUsd } from "@/server/usage/estimate";
 import { fetchTweetsByIds } from "@/server/x/client";
-import { writeContextRun } from "@/server/x/context-spend";
+import { canSpendContext, writeContextRun } from "@/server/x/context-spend";
 
 export const GONE_SWEEP_BATCH = 100;
 
@@ -143,6 +144,15 @@ export async function runGoneSweepAndRecord(input: {
   accessToken: string;
   cursor: string | null;
 }): Promise<{ purged: number; nextCursor: string | null }> {
+  // Post read 課金の無限周回でクレジットを使い切る事故があったため、
+  // スレッド展開と同じ月次上限で止める（ADR-018）。
+  if (!(await canSpendContext(estimatePostReadUsd(GONE_SWEEP_BATCH)))) {
+    logger.info(
+      { accountId: input.accountId },
+      "gone sweep skipped: monthly context cap",
+    );
+    return { purged: 0, nextCursor: input.cursor };
+  }
   try {
     const swept = await sweepGoneSavedBookmarks(input);
     if (swept.checked > 0) {

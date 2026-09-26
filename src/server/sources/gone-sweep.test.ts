@@ -1,32 +1,89 @@
-import { describe, expect, it } from "vitest";
-import {
-  formatGoneSweepCursor,
-  parseGoneSweepCursor,
-  shouldRestartGoneSweep,
-} from "./gone-sweep";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-describe("gone sweep cursor", () => {
-  it("round-trips saved_at and source id", () => {
-    const raw = formatGoneSweepCursor("2026-09-08 13:48:46", "01ABC");
-    expect(parseGoneSweepCursor(raw)).toEqual({
-      savedAt: "2026-09-08 13:48:46",
-      sourceId: "01ABC",
+const {
+  execute,
+  fetchTweetsByIds,
+  applyTweetLookupGaps,
+  canSpendContext,
+  writeContextRun,
+} = vi.hoisted(() => ({
+  execute: vi.fn(),
+  fetchTweetsByIds: vi.fn(),
+  applyTweetLookupGaps: vi.fn(),
+  canSpendContext: vi.fn(),
+  writeContextRun: vi.fn(),
+}));
+
+vi.mock("@/db/client", () => ({
+  getClient: () => ({ execute }),
+}));
+vi.mock("@/lib/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("@/server/ingest/bookmark", () => ({ applyTweetLookupGaps }));
+vi.mock("@/server/x/client", () => ({ fetchTweetsByIds }));
+vi.mock("@/server/x/context-spend", () => ({
+  canSpendContext,
+  writeContextRun,
+}));
+
+import { runGoneSweepAndRecord } from "./gone-sweep";
+
+beforeEach(() => {
+  execute.mockReset();
+  fetchTweetsByIds.mockReset();
+  applyTweetLookupGaps.mockReset();
+  canSpendContext.mockReset();
+  writeContextRun.mockReset();
+});
+
+describe("runGoneSweepAndRecord monthly cap", () => {
+  it("skips the sweep without calling the X API when over the cap", async () => {
+    canSpendContext.mockResolvedValueOnce(false);
+    const out = await runGoneSweepAndRecord({
+      accountId: "a1",
+      accessToken: "token",
+      cursor: "2026-09-01 00:00:00\ts0",
     });
+    expect(out).toEqual({
+      purged: 0,
+      nextCursor: "2026-09-01 00:00:00\ts0",
+    });
+    expect(fetchTweetsByIds).not.toHaveBeenCalled();
+    expect(writeContextRun).not.toHaveBeenCalled();
   });
 
-  it("rejects empty or malformed values", () => {
-    expect(parseGoneSweepCursor(null)).toBeNull();
-    expect(parseGoneSweepCursor("no-tab")).toBeNull();
-    expect(parseGoneSweepCursor("\tonly-id")).toBeNull();
-  });
+  it("runs the sweep as before when within the cap", async () => {
+    canSpendContext.mockResolvedValueOnce(true);
+    execute.mockResolvedValueOnce({
+      rows: [
+        { source_id: "s1", tweet_id: "t1", saved_at: "2026-09-01 00:00:00" },
+      ],
+    });
+    fetchTweetsByIds.mockResolvedValueOnce({
+      tweets: [],
+      users: new Map(),
+      media: new Map(),
+      includedTweets: new Map(),
+      errors: [],
+      nextToken: null,
+      resourcesRead: 1,
+      rateLimit: { remaining: null, reset: null },
+    });
+    applyTweetLookupGaps.mockResolvedValueOnce({ purged: 1, unavailable: 0 });
 
-  it("restarts from the beginning after a full pass", () => {
-    expect(
-      shouldRestartGoneSweep({ savedAt: "2026-09-11", sourceId: "01ABC" }, 0),
-    ).toBe(true);
-    expect(shouldRestartGoneSweep(null, 0)).toBe(false);
-    expect(
-      shouldRestartGoneSweep({ savedAt: "2026-09-11", sourceId: "01ABC" }, 10),
-    ).toBe(false);
+    const out = await runGoneSweepAndRecord({
+      accountId: "a1",
+      accessToken: "token",
+      cursor: null,
+    });
+    expect(out.purged).toBe(1);
+    expect(out.nextCursor).toBe("2026-09-01 00:00:00\ts1");
+    expect(writeContextRun).toHaveBeenCalledWith({
+      accountId: "a1",
+      mode: "gone_sweep",
+      resources: 1,
+      status: "ok",
+    });
   });
 });

@@ -13,7 +13,7 @@ v3.1 までは `x_account` をシングルトン（0..1 行）としていた。
 - `x_account` は複数行。`x_user_id` を一意キーにし、同一アカウントの再連携は上書き更新する。
 - 上限は 3。4 つ目の追加は拒否する。
 - `sources.x_account_id` と `sync_runs.x_account_id` を追加し、どのアカウント由来かを保持する。
-- 同期カーソル（`last_sync_head_tweet_id` / `last_synced_at`）は `settings` から `x_account` へ移し、アカウント別に持つ。
+- 同期カーソル（`last_sync_head_tweet_id` / `last_synced_at`）は `settings` から `x_account` へ移し、アカウント別に持つ。移行 UPDATE は一度だけ流す。`applyMigration` は起動のたびに全 SQL を再実行するため、無条件 UPDATE を `0001` に残すと先頭アカウントのカーソルが `settings` の旧値（NULL）で毎回上書きされ、そのアカウントが永遠に initial 同期（毎回最大 100 件の読み直し）に戻る事故が起きた（2026-09-26 に UPDATE 文を除去。ADR-018 / `0013_reset_gone_sweep.sql` と同じ教訓）。
 - アプリ側のログイン・ユーザー切替・`user_id` は追加しない。あくまで「自分の複数アカウント」。
 
 ## 影響

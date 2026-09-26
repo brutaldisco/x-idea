@@ -6,7 +6,7 @@ import { estimatePostReadUsd } from "@/server/usage/estimate";
 export async function monthContextSpendUsd(): Promise<number> {
   const result = await getClient().execute(
     `SELECT COALESCE(SUM(est_cost_usd), 0) AS n FROM sync_runs
-     WHERE mode IN ('thread', 'reply_context')
+     WHERE mode IN ('thread', 'reply_context', 'gone_sweep')
        AND started_at >= datetime('now', 'start of month')
      LIMIT 1`,
   );
