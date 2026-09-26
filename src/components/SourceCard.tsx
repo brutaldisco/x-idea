@@ -15,7 +15,11 @@ import { canShowSaveVideosMenu } from "@/lib/video-queue";
 
 const GRID_THUMB_WIDTH = 240;
 const GRID_THUMB_HEIGHT = 128;
-const GRID_THUMB_CLASS = `mx-auto block h-[128px] w-[240px] max-w-full rounded-lg object-cover`;
+/** 15:8 は 240×128。画像もアバターもこの枠の高さに揃える。 */
+const GRID_THUMB_BOX =
+  "relative mb-1.5 aspect-[15/8] w-full overflow-hidden rounded-lg bg-paper";
+const GRID_THUMB_FRAME = `block ${GRID_THUMB_BOX}`;
+const GRID_THUMB_IMAGE = "absolute inset-0 h-full w-full object-cover";
 
 function ThumbPlaceholder({ className }: { className: string }) {
   return <span className={`block bg-paper ${className}`} aria-hidden />;
@@ -110,12 +114,12 @@ export function SourceCard({
             imageHeight={variant === "grid" ? GRID_THUMB_HEIGHT : 224}
             wrapperClassName={
               variant === "grid"
-                ? "relative mb-1.5 block w-full"
+                ? GRID_THUMB_FRAME
                 : "relative mb-2 block w-full"
             }
             imageClassName={
               variant === "grid"
-                ? GRID_THUMB_CLASS
+                ? GRID_THUMB_IMAGE
                 : "h-28 w-full rounded-lg object-cover"
             }
             authorAvatarUrl={avatarFallback ? authorAvatarUrl : null}
@@ -143,7 +147,7 @@ export function SourceCard({
             avatarSize="md"
             className={
               variant === "grid"
-                ? `relative mb-1.5 ${GRID_THUMB_CLASS} bg-paper`
+                ? GRID_THUMB_BOX
                 : "relative mb-2 h-28 w-full rounded-lg bg-paper"
             }
           />
@@ -153,13 +157,15 @@ export function SourceCard({
             transitionTypes={["nav-forward"]}
             className={
               variant === "grid"
-                ? "relative mb-1.5 block w-full"
+                ? GRID_THUMB_FRAME
                 : "relative mb-2 block w-full"
             }
           >
             <ThumbPlaceholder
               className={
-                variant === "grid" ? GRID_THUMB_CLASS : "h-28 w-full rounded-lg"
+                variant === "grid"
+                  ? "absolute inset-0 h-full w-full"
+                  : "h-28 w-full rounded-lg"
               }
             />
           </Link>

@@ -61,7 +61,7 @@ export function SourceCardThumb({
         authorUsername={authorUsername}
         avatarSize={avatarSize}
         shareTransition={false}
-        className={`h-full w-full bg-paper ${imageClassName}`}
+        className={`bg-paper ${imageClassName}`}
       />
     ) : (
       <VideoThumbImg
