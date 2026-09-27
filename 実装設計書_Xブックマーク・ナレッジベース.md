@@ -2104,6 +2104,7 @@ AI フィールドとユーザー記述フィールドは別カラム。AI は�
 | T-615 | 動画 DL の CDN 直接・4 並列 Range 化（`/api/media/[id]/url` 追加、プロキシ逐次へフォールバック） | `video-store.ts`, `video-download-plan.ts`, `server/media/resolve-download-url.ts`, `api/media/[id]/url` | T-610 | 大きな動画が従来比で大幅に速く終わる。直接取得を遮ってもプロキシ経路で完了する |
 | T-616 | 動画本体バイトを Vercel から外す（`/url` が `bytes` と `?redirect=1` を返す。HEAD 非依存の CDN 逐次。再生・Safari 保存も 302） | `probe-remote-bytes.ts`, `video-direct-fetch.ts`, `video-store.ts`, `play-saved-video.ts`, `VideoPlayer.tsx` | T-615 | 一括 DL・再生・Safari 保存で本体が `/file` を通らない。直接取得不能時だけプロキシ |
 | T-617 | 動画 DL の障害分離（ファイル間 2 本並行、オフラインで全体 abort しない、`failed` を途中から再開対象に含める） | `VideosWorkspace.tsx`, `video-queue.ts`, `server/videos/queue.ts` | T-616 | 1 本が失敗しても残りが進む。`failed` が「すべて開始」で途中から再開する |
+| T-618 | 動画 DL のディスク正本再開（reconcile、merge/complete-only、fail 進捗、CLI `video:resume`） | `video-resume-reconcile.ts`, `video-store.ts`, `VideosWorkspace.tsx`, `scripts/video-resume-cli.mts`, ADR-028 | T-617 | 89% 付近で `failed` でも tail のみ再開→結合。取り切り済みはネットなしで `ready` |
 
 ---
 

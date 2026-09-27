@@ -29,6 +29,9 @@ coverage/
 playwright-report/
 test-results/
 
+# 調査用の一時スクリプト（リポジトリ直下）
+.tmp-*.mts
+
 # os / editor
 .DS_Store
 *.log
