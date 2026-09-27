@@ -38,10 +38,11 @@ import {
 import {
   VIDEO_FILE_PARALLEL,
   VIDEO_HEARTBEAT_MS,
-  VIDEO_STALL_MAX_RESTARTS,
   VIDEO_STALL_NOTICE_MS,
   VIDEO_STALL_WATCHDOG_MS,
   VIDEO_URL_RESOLVE_MS,
+  videoStallMaxRestarts,
+  videoStallRestartBackoffMs,
 } from "@/lib/video-download-plan";
 import { isIncompleteVideoFile } from "@/lib/video-files";
 import { useVideoSaveFolder } from "@/lib/video-folder";
@@ -69,8 +70,10 @@ import {
   isVideoSourceGoneError,
   shouldAbortSilentVideoDownload,
   shouldArmVideoStallWatchdog,
+  shouldAutoResumeFailedVideo,
   shouldSendVideoHeartbeat,
 } from "@/lib/video-queue";
+import { effectiveSavedProgress } from "@/lib/video-resume-reconcile";
 import { applyVideoItemSaveStatus } from "@/lib/video-save-status";
 import {
   clearProgress,
@@ -80,6 +83,7 @@ import {
   getVideoFile,
   hasWritePermission,
   loadVideoRoot,
+  measureLocalVideoProgress,
   moveVideoFile,
   removeSavedVideoFiles,
   suggestedRelPath,
@@ -204,10 +208,12 @@ export function VideosWorkspace({
   const [stalledIds, setStalledIds] = useState<string[]>([]);
   const [openingIds, setOpeningIds] = useState<string[]>([]);
   const [mergingIds, setMergingIds] = useState<string[]>([]);
+  const [verifyingIds, setVerifyingIds] = useState<string[]>([]);
   /** このタブが停止した項目。409 のときだけ再 queued → start してよい */
   const releasedIdsRef = useRef<Set<string>>(new Set());
   const sweptRef = useRef(false);
   const autoResumeRef = useRef(false);
+  const failedAutoResumeRef = useRef(false);
   const [offlineHint, setOfflineHint] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [ownsDownloadLock, setOwnsDownloadLock] = useState(false);
@@ -284,8 +290,7 @@ export function VideosWorkspace({
   }, [accountId, root, linked, data.protectedRelPaths]);
 
   // 前のセッションで中断したダウンロードを自動で再開する（ADR-025）。
-  // 対象はリース切れの downloading だけ。queued（手動停止を含む）や
-  // failed（原因を見てから再開したいもの）は自動では動かさない。
+  // 対象はリース切れの downloading。failed で進捗あり（404 除く）は ADR-028。
   const startDownloadsRef = useRef<((ids?: string[]) => Promise<void>) | null>(
     null,
   );
@@ -329,6 +334,39 @@ export function VideosWorkspace({
       await startDownloadsRef.current?.(ids);
     })();
   }, [accountId, root, linked, busy, data.queue, nowMs, ownsDownloadLock]);
+
+  useEffect(() => {
+    if (
+      failedAutoResumeRef.current ||
+      !accountId ||
+      !root ||
+      !linked ||
+      busy ||
+      !navigator.onLine
+    ) {
+      return;
+    }
+    const failedResumable = data.queue.filter((item) =>
+      shouldAutoResumeFailedVideo({
+        status: item.status,
+        error: item.error,
+        progressBytes: item.progressBytes,
+      }),
+    );
+    if (failedResumable.length === 0) {
+      return;
+    }
+    failedAutoResumeRef.current = true;
+    void (async () => {
+      if (!(await hasWritePermission(root))) {
+        return;
+      }
+      setMessage(
+        `失敗した ${failedResumable.length} 件を途中から自動で再開します`,
+      );
+      await startDownloadsRef.current?.(failedResumable.map((item) => item.id));
+    })();
+  }, [accountId, root, linked, busy, data.queue]);
 
   useEffect(() => {
     const onOffline = () => {
@@ -699,13 +737,14 @@ export function VideosWorkspace({
             downloadPhaseRef.current.set(item.id, phase);
             setPhaseFlag(setOpeningIds, phase === "opening");
             setPhaseFlag(setMergingIds, phase === "merging");
+            setPhaseFlag(setVerifyingIds, phase === "verifying");
             if (phase === "downloading") {
               // 再開位置を出しただけでバイトが増えなくても、
               // 残り取得中の無音は「応答なし」として扱う
               if (!lastByteAtRef.current.has(item.id)) {
                 lastByteAtRef.current.set(item.id, Date.now());
               }
-            } else {
+            } else if (phase !== "verifying") {
               lastByteAtRef.current.delete(item.id);
             }
           };
@@ -749,11 +788,19 @@ export function VideosWorkspace({
           } catch (error) {
             if (!controller.signal.aborted && itemController.signal.aborted) {
               // ウォッチドッグが切った（ユーザーの停止ではない）
-              if (stallRestarts < VIDEO_STALL_MAX_RESTARTS) {
+              const maxRestarts = videoStallMaxRestarts(
+                beat.received,
+                beat.total,
+              );
+              if (stallRestarts < maxRestarts) {
                 stallRestarts += 1;
-                // 取り直すあいだもリースを保つため、回復の意思表示として
-                // 1 回だけ強制的に送る（固まったままの本は送らない）
                 sendHeartbeat(true);
+                await new Promise((resolve) =>
+                  setTimeout(
+                    resolve,
+                    videoStallRestartBackoffMs(stallRestarts - 1),
+                  ),
+                );
                 continue;
               }
               throw new Error("ダウンロードが止まりました（応答なし）");
@@ -767,6 +814,7 @@ export function VideosWorkspace({
             beatReceivedRef.current.delete(item.id);
             setOpeningIds((ids) => ids.filter((id) => id !== item.id));
             setMergingIds((ids) => ids.filter((id) => id !== item.id));
+            setVerifyingIds((ids) => ids.filter((id) => id !== item.id));
           }
         }
         if (!result) {
@@ -817,12 +865,35 @@ export function VideosWorkspace({
         }
         failCount += 1;
         const messageText = errorMessage(error);
+        let failReceived = beat.received;
+        let failTotal =
+          beat.total > 0
+            ? beat.total
+            : (item.progressTotal ?? item.estimatedBytes ?? 0);
+        if (handle) {
+          const local = await measureLocalVideoProgress({
+            root: handle,
+            relPath,
+          });
+          if (local) {
+            failReceived = effectiveSavedProgress(
+              failReceived,
+              local.mainSize,
+              local.partSize,
+            );
+            if (failTotal <= 0 && item.progressTotal) {
+              failTotal = item.progressTotal;
+            }
+          }
+        }
         await fetch(`/api/videos/queue/${item.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "fail",
             error: messageText,
+            received: failReceived > 0 ? failReceived : undefined,
+            total: failTotal > 0 ? failTotal : undefined,
           }),
         });
         // 途中ファイルと進捗（IndexedDB）は残す。「再試行」で続きから取り直せる。
@@ -1437,27 +1508,33 @@ export function VideosWorkspace({
                   const itemStopping = stopping && downloading;
                   const merging =
                     downloading && !stopping && mergingIds.includes(item.id);
+                  const verifying =
+                    downloading && !stopping && verifyingIds.includes(item.id);
                   const stalled =
                     downloading &&
                     !stopping &&
                     !merging &&
+                    !verifying &&
                     stalledIds.includes(item.id);
                   const opening =
                     downloading &&
                     !stopping &&
                     !stalled &&
                     !merging &&
+                    !verifying &&
                     openingIds.includes(item.id);
                   const speedLabel =
                     downloading && !stopping
-                      ? merging
-                        ? "保存ファイルに結合しています…"
-                        : stalled
-                          ? "応答なし。再接続しています…"
-                          : opening
-                            ? "保存ファイルを開いています…"
-                            : (formatDownloadSpeed(prog?.bps ?? null) ??
-                              "計測中")
+                      ? verifying
+                        ? "保存ファイルを確認しています…"
+                        : merging
+                          ? "保存ファイルに結合しています…"
+                          : stalled
+                            ? "応答なし。再接続しています…"
+                            : opening
+                              ? "保存ファイルを開いています…"
+                              : (formatDownloadSpeed(prog?.bps ?? null) ??
+                                "計測中")
                       : null;
                   // 元のページが X 上で消えた（404）失敗は再開しても
                   // 成功しないので、投稿の削除を促す
@@ -1484,7 +1561,9 @@ export function VideosWorkspace({
                   // ハートビートが残した停止位置（ADR-025）
                   const savedLabel =
                     item.progressBytes != null && item.progressBytes > 0
-                      ? `${formatBytes(item.progressBytes)} まで保存済み`
+                      ? item.progressTotal != null && item.progressTotal > 0
+                        ? `${formatBytes(item.progressBytes)} / ${formatBytes(item.progressTotal)} 保存済み`
+                        : `${formatBytes(item.progressBytes)} まで保存済み`
                       : null;
                   const fileMeta = formatVideoQueueMeta({
                     bytes: item.bytes,

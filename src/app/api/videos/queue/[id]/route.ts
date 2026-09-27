@@ -3,6 +3,7 @@ import { ensureSchema } from "@/db/ensure";
 import { AppError, toErrorBody } from "@/lib/errors";
 import { isSameOrigin } from "@/lib/origin";
 import {
+  failVideoDownload,
   markVideoDownloading,
   markVideoProgress,
   updateVideoQueue,
@@ -45,10 +46,17 @@ export async function POST(
       });
       return Response.json({ ok: true });
     }
+    if (body.action === "fail") {
+      const item = await failVideoDownload(id, ctx, {
+        error: body.error,
+        received: body.received,
+        total: body.total,
+      });
+      return Response.json({ ok: true, item });
+    }
     if (
       body.action !== "cancel" &&
       body.action !== "retry" &&
-      body.action !== "fail" &&
       body.action !== "requeue"
     ) {
       return Response.json(

@@ -143,8 +143,31 @@ export const VIDEO_URL_RESOLVE_MS = 30_000;
  */
 export const VIDEO_STALL_WATCHDOG_MS = 75_000;
 
-/** ウォッチドッグによる自動取り直しの上限。超えたら failed にする */
+/** ウォッチドッグによる自動取り直しの上限（既定）。超えたら failed にする */
 export const VIDEO_STALL_MAX_RESTARTS = 3;
+
+/** 残りが少ない・大容量途中ファイルほど再試行を増やす（ADR-028） */
+export function videoStallMaxRestarts(received: number, total: number): number {
+  if (total > 0 && received > 0 && received < total) {
+    const remainingRatio = (total - received) / total;
+    if (remainingRatio <= 0.05) {
+      return 12;
+    }
+    if (remainingRatio <= 0.15) {
+      return 8;
+    }
+  }
+  if (received >= VIDEO_LARGE_RESUME_BYTES) {
+    return 6;
+  }
+  return VIDEO_STALL_MAX_RESTARTS;
+}
+
+/** ウォッチドッグ再試行の待ち（指数バックオフ、上限 30 秒） */
+export function videoStallRestartBackoffMs(attempt: number): number {
+  const base = 2_000;
+  return Math.min(30_000, base * 2 ** Math.max(0, attempt));
+}
 
 /**
  * downloading のリース有効時間（ADR-025）。この間ハートビートが途絶えたら

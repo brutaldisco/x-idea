@@ -501,6 +501,37 @@ export async function updateVideoQueue(
   return loadVideoItem(id);
 }
 
+/** 失敗時もディスク上の進捗をサーバーに残す（ADR-028） */
+export async function failVideoDownload(
+  id: string,
+  ctx: AccountContext,
+  input: { error?: string; received?: unknown; total?: unknown },
+): Promise<VideoItem> {
+  const accountId = contextAccountId(ctx);
+  if (!accountId) {
+    throw new AppError("VALIDATION", "アカウントを選んでください");
+  }
+  await ownedItem(id, accountId);
+  const received = asPositiveInt(input.received);
+  const total = asPositiveInt(input.total);
+  await getClient().execute({
+    sql: `UPDATE video_downloads SET
+            status = 'failed',
+            error = ?,
+            last_progress_at = datetime('now'),
+            progress_bytes = COALESCE(?, progress_bytes),
+            progress_total = COALESCE(?, progress_total)
+          WHERE id = ?`,
+    args: [
+      input.error?.slice(0, 400) ?? "download failed",
+      received,
+      total,
+      id,
+    ],
+  });
+  return loadVideoItem(id);
+}
+
 export async function markVideoDownloading(
   id: string,
   ctx: AccountContext,

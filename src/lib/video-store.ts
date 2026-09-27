@@ -41,12 +41,23 @@ import {
   videoTailPartFileName,
 } from "@/lib/video-path";
 import {
+  hasMp4FtypAtStart,
+  reconcileLocalVideoState,
+} from "@/lib/video-resume-reconcile";
+import {
   parseThumbSidecar,
   serializeThumbSidecar,
   thumbSidecarName,
 } from "@/lib/video-thumb-sidecar";
 
-export type VideoDownloadPhase = "opening" | "downloading" | "merging";
+export type VideoDownloadPhase =
+  | "opening"
+  | "downloading"
+  | "merging"
+  | "verifying";
+
+/** サイドカー結合時の読み込みチャンク（メモリ抑制、ADR-028） */
+const VIDEO_MERGE_CHUNK_BYTES = 32 * 1024 * 1024;
 
 const DB_NAME = "x-idea-videos";
 const DB_VERSION = 1;
@@ -1140,11 +1151,11 @@ async function appendSidecarToMainFile(input: {
     VIDEO_WRITE_TIMEOUT_MS,
     "保存ファイルの確認",
   );
-  const blob =
+  const partBytes =
     input.maxBytes != null && raw.size > input.maxBytes
-      ? raw.slice(0, input.maxBytes)
-      : raw;
-  if (!(blob.size > 0)) {
+      ? input.maxBytes
+      : raw.size;
+  if (!(partBytes > 0)) {
     throw new Error("結合する途中ファイルが空です");
   }
   const writable = await withTimeout(
@@ -1161,9 +1172,72 @@ async function appendSidecarToMainFile(input: {
       VIDEO_WRITE_TIMEOUT_MS,
       "ファイルのシーク",
     );
-    await writeBlobToWritable(writable, blob, input.signal, input.onBytes);
+    let written = 0;
+    while (written < partBytes) {
+      if (input.signal?.aborted) {
+        throw abortError();
+      }
+      const end = Math.min(written + VIDEO_MERGE_CHUNK_BYTES, partBytes);
+      const chunk = raw.slice(written, end);
+      await writeBlobToWritable(writable, chunk, input.signal, input.onBytes);
+      written = end;
+    }
   } finally {
     await closeWritable(writable);
+  }
+}
+
+export type LocalVideoProgressSnapshot = {
+  mainSize: number;
+  partSize: number;
+  received: number;
+  mainHasFtyp: boolean;
+};
+
+async function readPartSize(
+  dir: FileSystemDirectoryHandle,
+  fileName: string,
+): Promise<number> {
+  try {
+    const part = await dir.getFileHandle(videoTailPartFileName(fileName));
+    return await readPartFileBytes(part);
+  } catch {
+    return 0;
+  }
+}
+
+/** ディスク上の本体 + .part から再開用スナップショット（正本） */
+export async function measureLocalVideoProgress(input: {
+  root: FileSystemDirectoryHandle;
+  relPath: string;
+}): Promise<LocalVideoProgressSnapshot | null> {
+  if (!isSafeVideoRelPath(input.relPath)) {
+    return null;
+  }
+  try {
+    const { dir, fileName } = await resolveRelDir(
+      input.root,
+      input.relPath,
+      false,
+    );
+    const file = await dir.getFileHandle(fileName);
+    const main = await withTimeout(
+      file.getFile(),
+      VIDEO_WRITE_TIMEOUT_MS,
+      "保存ファイルの確認",
+    );
+    const partSize = await readPartSize(dir, fileName);
+    const head = new Uint8Array(await main.slice(0, 8).arrayBuffer());
+    const mainHasFtyp = hasMp4FtypAtStart(head);
+    const mainSize = main.size;
+    return {
+      mainSize,
+      partSize,
+      received: mainSize + partSize,
+      mainHasFtyp,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -1503,16 +1577,15 @@ export async function downloadVideoFile(input: {
     true,
   );
   const file = await dir.getFileHandle(fileName, { create: true });
-  let offset = resumeVideoOffset(
-    await loadProgress(input.downloadId),
-    (
-      await withTimeout(
-        file.getFile(),
-        VIDEO_WRITE_TIMEOUT_MS,
-        "保存ファイルの確認",
-      )
-    ).size,
+  const mainBlob = await withTimeout(
+    file.getFile(),
+    VIDEO_WRITE_TIMEOUT_MS,
+    "保存ファイルの確認",
   );
+  const partSize = await readPartSize(dir, fileName);
+  const mainHead = new Uint8Array(await mainBlob.slice(0, 8).arrayBuffer());
+  const mainHasFtyp = hasMp4FtypAtStart(mainHead);
+  const savedProgress = await loadProgress(input.downloadId);
 
   const plan = initialVideoDownloadPlan(input.estimatedBytes);
   // URL API の bytes だけを確定サイズにする。progress_total や
@@ -1528,7 +1601,24 @@ export async function downloadVideoFile(input: {
       : input.estimatedBytes != null && input.estimatedBytes > 0
         ? input.estimatedBytes
         : null;
-  let total = trustedTotal ?? 0;
+  const resumeState = reconcileLocalVideoState({
+    mainSize: mainBlob.size,
+    partSize,
+    savedProgress,
+    trustedTotal,
+    softTotal,
+    mainHasFtyp,
+  });
+
+  if (resumeState.phase === "complete-only") {
+    input.onPhase?.("verifying");
+    input.onProgress?.(resumeState.received, resumeState.total);
+    await saveProgress(input.downloadId, resumeState.received);
+    return { bytes: resumeState.received, relPath: input.relPath };
+  }
+
+  let offset = resumeVideoOffset(savedProgress, mainBlob.size);
+  let total = trustedTotal ?? resumeState.total ?? 0;
   let lastEmit = 0;
   let lastSaved = offset;
   const emit = (force = false) => {

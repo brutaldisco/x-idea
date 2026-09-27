@@ -19,6 +19,7 @@ pnpm install
 cp .env.example .env.local   # 付録D の変数を設定
 pnpm db:migrate              # drizzle/ の SQL を適用（ローカルは file:local.db）
 pnpm db:seed                 # settings / 初期カテゴリ / job_schedules
+pnpm video:resume -- --id <downloadId>   # 任意: VIDEO_LOCAL_ROOT + Turso で途中 failed を tail 再開（ADR-028）
 pnpm dev                     # http://localhost:3344 （このリポジトリ専用。他アプリの 3000 と分けている）
 ```
 
