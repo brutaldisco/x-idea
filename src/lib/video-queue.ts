@@ -198,9 +198,24 @@ export function shouldArmVideoStallWatchdog(
  * 「計測中」で固まり、結合まで進まない。
  */
 export function shouldAbortSilentVideoDownload(
-  phase: "opening" | "downloading" | "merging" | null,
+  phase: "opening" | "downloading" | "merging" | "verifying" | null,
 ): boolean {
-  return phase !== "opening" && phase !== "merging";
+  return phase !== "opening" && phase !== "merging" && phase !== "verifying";
+}
+
+/** failed だがローカル進捗があり、404 以外なら控えめ自動再開の対象 */
+export function shouldAutoResumeFailedVideo(input: {
+  status: string;
+  error: string | null | undefined;
+  progressBytes: number | null | undefined;
+}): boolean {
+  if (input.status !== "failed") {
+    return false;
+  }
+  if (isVideoSourceGoneError(input.error)) {
+    return false;
+  }
+  return (input.progressBytes ?? 0) > 0;
 }
 
 /**

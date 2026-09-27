@@ -11,6 +11,7 @@ import {
   parseDbUtcMs,
   shouldAbortSilentVideoDownload,
   shouldArmVideoStallWatchdog,
+  shouldAutoResumeFailedVideo,
   shouldSendVideoHeartbeat,
   sourceVideosQueueMessage,
   tallySourceVideoQueue,
@@ -186,11 +187,38 @@ describe("shouldAbortSilentVideoDownload", () => {
   it("keeps large file copies and merges running", () => {
     expect(shouldAbortSilentVideoDownload("opening")).toBe(false);
     expect(shouldAbortSilentVideoDownload("merging")).toBe(false);
+    expect(shouldAbortSilentVideoDownload("verifying")).toBe(false);
   });
 
   it("aborts a silent tail fetch even after a large resume cursor", () => {
     expect(shouldAbortSilentVideoDownload("downloading")).toBe(true);
     expect(shouldAbortSilentVideoDownload(null)).toBe(true);
+  });
+});
+
+describe("shouldAutoResumeFailedVideo", () => {
+  it("resumes failed downloads with saved progress but not 404", () => {
+    expect(
+      shouldAutoResumeFailedVideo({
+        status: "failed",
+        error: "timeout",
+        progressBytes: 1_000,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoResumeFailedVideo({
+        status: "failed",
+        error: "download failed (404)",
+        progressBytes: 1_000,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoResumeFailedVideo({
+        status: "queued",
+        error: null,
+        progressBytes: 1_000,
+      }),
+    ).toBe(false);
   });
 });
 

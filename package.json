@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "tsx src/db/cli.ts migrate",
-    "db:seed": "tsx src/db/cli.ts seed"
+    "db:seed": "tsx src/db/cli.ts seed",
+    "video:resume": "tsx scripts/video-resume-cli.mts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.64",

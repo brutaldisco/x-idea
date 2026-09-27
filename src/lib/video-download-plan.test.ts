@@ -15,6 +15,8 @@ import {
   VIDEO_OPEN_TIMEOUT_MS,
   videoFileSourceRange,
   videoOpenTimeoutMs,
+  videoStallMaxRestarts,
+  videoStallRestartBackoffMs,
 } from "./video-download-plan";
 
 describe("video download plan", () => {
@@ -172,5 +174,21 @@ describe("videoFileSourceRange", () => {
       start: mainOffset,
       end: mainOffset + 8 * 1024 * 1024 - 1,
     });
+  });
+});
+
+describe("videoStallMaxRestarts", () => {
+  it("raises the cap near completion and for large files", () => {
+    expect(videoStallMaxRestarts(0, 0)).toBe(3);
+    expect(videoStallMaxRestarts(950, 1000)).toBe(12);
+    expect(videoStallMaxRestarts(850, 1000)).toBe(8);
+    expect(videoStallMaxRestarts(VIDEO_LARGE_RESUME_BYTES, 0)).toBe(6);
+  });
+});
+
+describe("videoStallRestartBackoffMs", () => {
+  it("backs off exponentially up to 30s", () => {
+    expect(videoStallRestartBackoffMs(0)).toBe(2_000);
+    expect(videoStallRestartBackoffMs(4)).toBe(30_000);
   });
 });
