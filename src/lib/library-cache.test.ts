@@ -12,6 +12,7 @@ import {
   removeSourceFromLibraryPage,
   removeSourceFromLibraryQueries,
   resetLibraryQueries,
+  subscribeLibraryStale,
 } from "@/lib/library-cache";
 
 describe("library cache", () => {
@@ -104,6 +105,38 @@ describe("library cache", () => {
     markLibraryStale();
     expect(libraryNeedsRefresh(before)).toBe(true);
     expect(libraryNeedsRefresh(Date.now() + 1_000)).toBe(false);
+  });
+
+  it("notifies subscribers when marked stale", () => {
+    const listener = vi.fn();
+    const handlers = new Map<string, Set<() => void>>();
+    vi.stubGlobal("window", {
+      addEventListener: (type: string, handler: () => void) => {
+        const set = handlers.get(type) ?? new Set();
+        set.add(handler);
+        handlers.set(type, set);
+      },
+      removeEventListener: (type: string, handler: () => void) => {
+        handlers.get(type)?.delete(handler);
+      },
+      dispatchEvent: (event: Event) => {
+        for (const handler of handlers.get(event.type) ?? []) {
+          handler();
+        }
+        return true;
+      },
+    });
+    vi.stubGlobal("sessionStorage", {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    });
+    const unsub = subscribeLibraryStale(listener);
+    markLibraryStale();
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+    markLibraryStale();
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -23,6 +23,16 @@ export function markLibraryStale(): void {
   }
 }
 
+/** 同期完了などで markLibraryStale されたあと、開いている Library が取り直す。 */
+export function subscribeLibraryStale(listener: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+  const handler = () => listener();
+  window.addEventListener(LIBRARY_STALE_EVENT, handler);
+  return () => window.removeEventListener(LIBRARY_STALE_EVENT, handler);
+}
+
 /** 同期より前に取った一覧なら true。次の表示で取り直す。 */
 export function libraryNeedsRefresh(dataUpdatedAt: number): boolean {
   if (typeof sessionStorage === "undefined") {
@@ -46,9 +56,9 @@ export async function refreshLibraryAfterWrite(
   const { clearSourcesHttpCache } = await import("@/lib/pwa");
   await clearSourcesHttpCache();
   markLibraryStale();
-  await client.refetchQueries({
+  await client.invalidateQueries({
     queryKey: [LIBRARY_SOURCES_KEY],
-    type: "active",
+    refetchType: "all",
   });
 }
 

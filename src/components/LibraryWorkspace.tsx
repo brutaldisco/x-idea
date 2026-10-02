@@ -4,6 +4,7 @@ import {
   keepPreviousData,
   useIsRestoring,
   useQuery,
+  useQueryClient,
 } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -25,11 +26,12 @@ import {
 import {
   clearLibraryStaleMark,
   fetchLibraryTaxonomy,
-  LIBRARY_STALE_MS,
+  LIBRARY_SOURCES_KEY,
   libraryFilterKey,
   libraryNeedsRefresh,
   libraryQueryKey,
   libraryTaxonomyQueryKey,
+  subscribeLibraryStale,
 } from "@/lib/library-cache";
 import { readDeletedSourceIds } from "@/lib/library-deleted";
 import {
@@ -97,7 +99,6 @@ async function fetchPage(input: {
   sort: SourceSort;
   filters: LibraryFilters;
   page: number;
-  fresh?: boolean;
 }): Promise<Page> {
   const params = new URLSearchParams();
   params.set("limit", String(SOURCE_PAGE_SIZE));
@@ -126,7 +127,7 @@ async function fetchPage(input: {
   }
   const res = await fetch(`/api/sources?${params.toString()}`, {
     credentials: "same-origin",
-    cache: input.fresh ? "no-store" : "default",
+    cache: "no-store",
   });
   if (!res.ok) {
     throw new Error("一覧を読めませんでした");
@@ -344,6 +345,15 @@ export function LibraryWorkspace({
     readLibraryAccountId,
     getLibraryAccountServerSnapshot,
   );
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    return subscribeLibraryStale(() => {
+      void queryClient.invalidateQueries({
+        queryKey: [LIBRARY_SOURCES_KEY],
+        refetchType: "active",
+      });
+    });
+  }, [queryClient]);
   const query = useQuery({
     queryKey,
     queryFn: () =>
@@ -351,15 +361,16 @@ export function LibraryWorkspace({
         sort,
         filters,
         page,
-        fresh: libraryNeedsRefresh(0),
       }),
     enabled: !restoring,
     refetchOnMount: (entry) =>
       entry.state.data == null ||
-      libraryNeedsRefresh(entry.state.dataUpdatedAt),
-    refetchOnReconnect: false,
+      libraryNeedsRefresh(entry.state.dataUpdatedAt) ||
+      entry.isStale(),
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     placeholderData: keepPreviousData,
-    staleTime: LIBRARY_STALE_MS,
+    staleTime: 0,
   });
   useEffect(() => {
     if (
