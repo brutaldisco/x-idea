@@ -2334,7 +2334,7 @@ images: [image_1, image_2]（添付）                 ← P2
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | 任意 | 3 つ揃うと Google ゲート（ADR-012） |
 | `ALLOWED_GOOGLE_EMAIL` | 任意 | 入れる Google アカウント（1 件） |
 | `GOOGLE_REDIRECT_URI` | 任意 | 既定は `{APP_URL}/api/auth/google/callback` |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | P2 | Web Push。契約不要。`npx web-push generate-vapid-keys` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | P2 | Web Push。契約不要。`pnpm dlx web-push generate-vapid-keys` |
 | `ANTHROPIC_API_KEY` | 任意 | 有料トグル OFF のあいだ未使用 |
 | `OPENAI_API_KEY` | 任意 | 有料トグル OFF のあいだ未使用 |
 | `SENTRY_DSN` | 任意 | `observability_json.sentry` が true のときだけ初期化 |
@@ -2432,7 +2432,7 @@ x-idea/
 | H-04 | **Google AI Studio** | プロジェクト作成 → API キー発行 → **Rate limits 画面で実クォータを記録** → `GEMINI_API_KEY` を Vercel に設定。課金アカウントは作らない（有料トグル OFF） | $0 | `ai_paid_enabled=OFF` | キーなしでも `MOCK_EXTERNAL=1` で UI/ジョブ実装可 |
 | H-05 | **cron-job.org**（または GitHub Actions `schedule`） | `POST https://x-idea.vercel.app/api/jobs/tick`、ヘッダー `Authorization: Bearer <CRON_SECRET>`、間隔 1〜5 分。シークレットを URL に載せない | $0 | — | アプリ起動時 tick で代替可。本番の定期同期には必要 |
 | H-06 | **Vercel 環境変数** | 付録D をすべて登録。最低限: `TURSO_*`, `GEMINI_API_KEY`, `CRON_SECRET`, `APP_URL=https://x-idea.vercel.app`, `SESSION_SECRET`, `X_*`（未発行なら空で Preview のみ） | $0 | — | キー欠落時は該当機能を OFF のまま |
-| H-07 | **VAPID**（P2） | `npx web-push generate-vapid-keys` をローカルで実行し、3 変数を Vercel に設定。外部契約なし | $0 | 通知トグル（P2、既定 OFF） | Phase 4 まで不要 |
+| H-07 | **VAPID**（P2） | `pnpm dlx web-push generate-vapid-keys` をローカルで実行し、3 変数を Vercel に設定。外部契約なし | $0 | 通知トグル（P2、既定 OFF） | Phase 4 まで不要 |
 | H-08 | **Google OAuth**（任意ゲート） | Cloud Console で Web クライアント。JS origin と redirect に本番と `http://localhost:3344`（`pnpm dev` 固定）。テストユーザーに自分のメール。`GOOGLE_*` と `ALLOWED_GOOGLE_EMAIL` を Vercel / ローカルに設定 | $0 | — | 未設定ならゲートなし、またはパスコードのみ |
 
 ### H.2 契約・審査が必要（すぐできないことがある）
@@ -2474,9 +2474,9 @@ x-idea/
 CLI を使う場合（ログイン済みなら）:
 
 ```bash
-npx vercel login
-npx vercel link --yes --project x-idea
-npx vercel env pull .env.local
+pnpm dlx vercel login
+pnpm dlx vercel link --yes --project x-idea
+pnpm dlx vercel env pull .env.local
 ```
 
 ### H.5 設定値の対応表（実装の正）
