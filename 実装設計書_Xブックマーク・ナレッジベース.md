@@ -661,6 +661,7 @@ UI/UX の判断に迷ったら以下に従う。
 
 - `turso dev --db-file local.db` または `file:local.db` で開発。`drizzle-kit migrate` を本番と同じ SQL で適用。
 - `.env.local` は付録D。`pnpm dev` で Turbopack 起動。
+- 依存は **pnpm のみ**（`packageManager` + `scripts/preinstall`）。`npm install` は拒否。フェッチ再試行はルート `.npmrc`。
 - X / Gemini は `msw` フィクスチャでモック可能（`MOCK_EXTERNAL=1`）。
 
 ---

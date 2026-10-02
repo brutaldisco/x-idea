@@ -23,6 +23,14 @@ pnpm video:resume -- --id <downloadId>   # 任意: VIDEO_LOCAL_ROOT + Turso で�
 pnpm dev                     # http://localhost:3344 （このリポジトリ専用。他アプリの 3000 と分けている）
 ```
 
+- **パッケージマネージャ**: `pnpm` のみ（`packageManager` + `preinstall`）。`npm install` は使わない（sharp 等の optional バイナリ取得で lockfile と食い違う）。
+- **不安定回線**: ルート `.npmrc` でフェッチ再試行を長めに設定済み。
+
+### Videos（大容量動画）
+
+- **ダウンロード済み**に出るのは DB 上 `ready`（保存完了）のみ。途中は「ダウンロード中」に留まる。
+- **取消**は途中ファイルを削除する。再開したいときは取消せず、タブを閉じて Videos を開き直し **「すべて開始」**（ADR-028）。`failed` のままなら `pnpm video:resume -- --id <downloadId>`。
+
 ## 外部サービス
 
 | サービス | 用途 | 備考 |

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "preinstall": "node scripts/enforce-pnpm.mjs",
     "dev": "next dev --port 3344",
     "build": "next build",
     "start": "next start",
