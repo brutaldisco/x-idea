@@ -3,12 +3,16 @@
  *
  *   VIDEO_LOCAL_ROOT=/path/to/x-idea_video/002 pnpm video:resume -- --id <downloadId>
  *   pnpm video:resume -- --all-failed
+ *   pnpm video:resume -- --all-queued
  */
 import { createReadStream } from "node:fs";
-import { open, stat, unlink } from "node:fs/promises";
+import { mkdir, open, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { getClient } from "@/db/client";
-import { VIDEO_CDN_FETCH_INIT } from "@/lib/video-direct-fetch";
+import {
+  probeDirectTotalBytes,
+  VIDEO_CDN_FETCH_INIT,
+} from "@/lib/video-direct-fetch";
 import { isFinishedVideoDownload } from "@/lib/video-files";
 import { isSafeVideoRelPath, videoRelPath } from "@/lib/video-path";
 import {
@@ -21,7 +25,7 @@ const CHUNK = 16 * 1024 * 1024;
 
 function usage(): never {
   console.error(
-    "Usage: pnpm video:resume -- --id <downloadId> | --all-failed [--dry-run]",
+    "Usage: pnpm video:resume -- --id <downloadId> | --all-failed | --all-queued [--dry-run]",
   );
   process.exit(1);
 }
@@ -79,6 +83,32 @@ async function loadRow(id: string): Promise<Row | null> {
   };
 }
 
+async function listQueued(): Promise<Row[]> {
+  const res = await getClient().execute({
+    sql: `SELECT d.id, d.media_id, d.status, d.progress_bytes, d.progress_total,
+                 d.rel_path, d.x_account_id AS account_id,
+                 p.tweet_id, m.media_key
+          FROM video_downloads d
+          JOIN media_assets m ON m.id = d.media_id
+          JOIN x_posts p ON p.id = m.x_post_id
+          WHERE d.status = 'queued'
+          ORDER BY d.queued_at`,
+  });
+  return res.rows.map((row) => ({
+    id: String(row.id),
+    media_id: String(row.media_id),
+    status: String(row.status),
+    progress_bytes:
+      row.progress_bytes == null ? null : Number(row.progress_bytes),
+    progress_total:
+      row.progress_total == null ? null : Number(row.progress_total),
+    rel_path: row.rel_path == null ? null : String(row.rel_path),
+    account_id: String(row.account_id),
+    tweet_id: String(row.tweet_id),
+    media_key: String(row.media_key),
+  }));
+}
+
 async function listFailed(): Promise<Row[]> {
   const res = await getClient().execute({
     sql: `SELECT d.id, d.media_id, d.status, d.progress_bytes, d.progress_total,
@@ -128,6 +158,59 @@ async function fetchRange(
   });
 }
 
+async function resolveDownloadTotal(
+  row: Row,
+  stateTotal: number,
+): Promise<{ total: number; url: string } | null> {
+  const resolved = await resolveVideoDownloadUrl(row.media_id);
+  if (!resolved.ok) {
+    console.error(`skip ${row.id}: ${resolved.error.message}`);
+    return null;
+  }
+  let total = stateTotal;
+  if (!(total > 0)) {
+    total = (await probeDirectTotalBytes(resolved.url)) ?? 0;
+  }
+  if (!(total > 0)) {
+    return null;
+  }
+  return { total, url: resolved.url };
+}
+
+async function fetchFullToMain(
+  mainPath: string,
+  url: string,
+  total: number,
+  startOffset: number,
+): Promise<boolean> {
+  await mkdir(path.dirname(mainPath), { recursive: true });
+  let offset = startOffset;
+  while (offset < total) {
+    const cdnEnd = Math.min(offset + CHUNK - 1, total - 1);
+    const res = await fetchRange(url, offset, cdnEnd);
+    if (res.status === 416) {
+      break;
+    }
+    if (!(res.status === 206 || res.status === 200)) {
+      console.error(`  Range ${res.status} at ${offset}`);
+      return false;
+    }
+    const body = Buffer.from(await res.arrayBuffer());
+    if (body.length === 0) {
+      return false;
+    }
+    const fh = await open(mainPath, offset === 0 && startOffset === 0 ? "w" : "r+");
+    try {
+      await fh.write(body, 0, body.length, offset);
+    } finally {
+      await fh.close();
+    }
+    offset += body.length;
+    console.log(`  fetch ${offset}/${total}`);
+  }
+  return offset >= total;
+}
+
 async function copyPartOntoMain(
   mainPath: string,
   partPath: string,
@@ -161,8 +244,7 @@ async function resumeRow(row: Row, dryRun: boolean): Promise<boolean> {
   try {
     mainSize = (await stat(mainPath)).size;
   } catch {
-    console.error(`skip ${row.id}: 本体なし ${mainPath}`);
-    return false;
+    mainSize = 0;
   }
   try {
     partSize = (await stat(partPath)).size;
@@ -170,11 +252,14 @@ async function resumeRow(row: Row, dryRun: boolean): Promise<boolean> {
     partSize = 0;
   }
 
-  const head = Buffer.alloc(8);
-  const fh = await open(mainPath, "r");
-  await fh.read(head, 0, 8, 0);
-  await fh.close();
-  const mainHasFtyp = hasMp4FtypAtStart(new Uint8Array(head));
+  let mainHasFtyp = false;
+  if (mainSize >= 8) {
+    const head = Buffer.alloc(8);
+    const fh = await open(mainPath, "r");
+    await fh.read(head, 0, 8, 0);
+    await fh.close();
+    mainHasFtyp = hasMp4FtypAtStart(new Uint8Array(head));
+  }
 
   const softTotal = row.progress_total ?? 0;
   const state = reconcileLocalVideoState({
@@ -191,8 +276,30 @@ async function resumeRow(row: Row, dryRun: boolean): Promise<boolean> {
   );
 
   if (state.phase === "fresh") {
-    console.error(`skip ${row.id}: 再開対象なし（最初からになります）`);
-    return false;
+    if (dryRun) {
+      console.log(`${row.id} phase=fresh (full download)`);
+      return true;
+    }
+    const resolved = await resolveDownloadTotal(row, state.total);
+    if (!resolved) {
+      console.error(`skip ${row.id}: 総サイズ不明`);
+      return false;
+    }
+    const { total, url } = resolved;
+    console.log(`${row.id} phase=fresh total=${total}`);
+    const ok = await fetchFullToMain(mainPath, url, total, mainSize);
+    if (!ok) {
+      console.error(`skip ${row.id}: 取得未完了`);
+      return false;
+    }
+    const finalSize = (await stat(mainPath)).size;
+    if (!isFinishedVideoDownload(finalSize, total)) {
+      console.error(`skip ${row.id}: サイズ不足 ${finalSize}/${total}`);
+      return false;
+    }
+    await markReady(row.id, rel, finalSize);
+    console.log(`  ready ${finalSize}`);
+    return true;
   }
 
   if (dryRun) {
@@ -204,10 +311,34 @@ async function resumeRow(row: Row, dryRun: boolean): Promise<boolean> {
     return true;
   }
 
-  const total = state.total;
-  if (!(total > 0)) {
+  const resolvedTotal = await resolveDownloadTotal(row, state.total);
+  if (!resolvedTotal) {
     console.error(`skip ${row.id}: 総サイズ不明`);
     return false;
+  }
+  const total = resolvedTotal.total;
+
+  // CLI のフル取得は .part なしで本体へ追記する。中断後は tail サイドカーではなくここで再開
+  if (partSize === 0 && mainSize > 0 && mainSize < total) {
+    console.log(`${row.id} phase=fetch-full-resume total=${total}`);
+    const ok = await fetchFullToMain(
+      mainPath,
+      resolvedTotal.url,
+      total,
+      mainSize,
+    );
+    if (!ok) {
+      console.error(`skip ${row.id}: 取得未完了`);
+      return false;
+    }
+    const finalSize = (await stat(mainPath)).size;
+    if (!isFinishedVideoDownload(finalSize, total)) {
+      console.error(`skip ${row.id}: サイズ不足 ${finalSize}/${total}`);
+      return false;
+    }
+    await markReady(row.id, rel, finalSize);
+    console.log(`  ready ${finalSize}`);
+    return true;
   }
 
   const mainOffset = state.mainOffset;
@@ -310,6 +441,23 @@ async function main(): Promise<void> {
     const rows = await listFailed();
     if (rows.length === 0) {
       console.log("failed で進捗ありの行はありません");
+      return;
+    }
+    let ok = 0;
+    for (const row of rows) {
+      if (await resumeRow(row, dryRun)) {
+        ok += 1;
+      }
+    }
+    console.log(`done ${ok}/${rows.length}`);
+    return;
+  }
+
+  const allQueued = args.includes("--all-queued");
+  if (allQueued) {
+    const rows = await listQueued();
+    if (rows.length === 0) {
+      console.log("queued の行はありません");
       return;
     }
     let ok = 0;
