@@ -198,6 +198,7 @@ describe("iso bmff video metadata", () => {
       ok: true,
       fileSize: media.length,
       metaOffset: null,
+      legacyOffset: null,
     });
     expect(
       file.reads.every((read) => read.length <= VIDEO_META_HEADER_PROBE),
@@ -275,6 +276,39 @@ describe("iso bmff video metadata", () => {
     expect(file.snapshot().length).toBe(withBox.length);
     expect(file.snapshot().subarray(0, media.length)).toEqual(media);
     expect(await readVideoFileMetadata(file)).toBe(3.5);
+  });
+
+  it("reads a legacy lvl box and replaces it with the shared box", async () => {
+    const media = sampleContainer();
+    const legacy = new Uint8Array(64);
+    const view = new DataView(legacy.buffer);
+    view.setUint32(0, 64, false);
+    legacy.set(new TextEncoder().encode("uuid"), 4);
+    legacy.set(new TextEncoder().encode("lvl-thumb-seek01"), 8);
+    legacy[24] = 1;
+    legacy[25] = 1;
+    view.setFloat64(28, 18.5, false);
+    const file = new MemoryFile(concat([media, legacy]));
+    expect(await readVideoFileMetadata(file)).toBe(18.5);
+    const calls: string[] = [];
+    await saveVideoThumbSeek({
+      fileName: "clip.mp4",
+      seconds: 18.5,
+      openVideo: async () => file,
+      writeSidecar: async () => {
+        calls.push("write-sidecar");
+      },
+      deleteSidecar: async () => {
+        calls.push("delete-sidecar");
+      },
+    });
+    expect(calls).toEqual(["delete-sidecar"]);
+    expect(file.snapshot().subarray(0, media.length)).toEqual(media);
+    expect(file.snapshot().length).toBe(media.length + VIDEO_META_BOX_SIZE);
+    expect(new TextDecoder().decode(file.snapshot())).not.toContain(
+      "lvl-thumb-seek01",
+    );
+    expect(await readVideoFileMetadata(file)).toBe(18.5);
   });
 
   it("does not write into a size-zero box, a short box, or trailing bytes", async () => {

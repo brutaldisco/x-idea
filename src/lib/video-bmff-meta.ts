@@ -32,6 +32,10 @@ export const VIDEO_META_BOX_SIZE = UUID_HEADER + PAYLOAD_SIZE;
 
 const FLAG_THUMB_SEEK = 0x01;
 const PAYLOAD_VERSION = 1;
+const LEGACY_BOX_SIZE = 64;
+const LEGACY_USER_TYPE = Uint8Array.from("lvl-thumb-seek01", (char) =>
+  char.charCodeAt(0),
+);
 
 export interface RandomAccessFile {
   size(): Promise<number>;
@@ -49,7 +53,12 @@ export type VideoMetaRefusal =
   | "readback";
 
 export type TopLevelScan =
-  | { ok: true; fileSize: number; metaOffset: number | null }
+  | {
+      ok: true;
+      fileSize: number;
+      metaOffset: number | null;
+      legacyOffset: number | null;
+    }
   | { ok: false; reason: Exclude<VideoMetaRefusal, "readback"> };
 
 export type VideoMetaWriteResult =
@@ -127,6 +136,7 @@ export async function scanTopLevelBoxes(
   }
   let offset = 0;
   let metaOffset: number | null = null;
+  let legacyOffset: number | null = null;
   while (offset < fileSize) {
     const head = await readExact(file, offset, 8);
     if (!head) {
@@ -171,6 +181,11 @@ export async function scanTopLevelBoxes(
           return { ok: false, reason: "invalid-size" };
         }
         metaOffset = offset;
+      } else if (
+        boxSize === LEGACY_BOX_SIZE &&
+        sameBytes(userType, LEGACY_USER_TYPE)
+      ) {
+        legacyOffset = offset;
       }
     }
     if (boxSize > fileSize - offset) {
@@ -181,21 +196,62 @@ export async function scanTopLevelBoxes(
   if (offset !== fileSize) {
     return { ok: false, reason: "size-mismatch" };
   }
-  return { ok: true, fileSize, metaOffset };
+  return { ok: true, fileSize, metaOffset, legacyOffset };
+}
+
+export function decodeLegacyThumbBox(box: Uint8Array): number | null {
+  if (box.byteLength < LEGACY_BOX_SIZE) {
+    return null;
+  }
+  const view = new DataView(box.buffer, box.byteOffset, box.byteLength);
+  if (view.getUint32(0, false) !== LEGACY_BOX_SIZE) {
+    return null;
+  }
+  if (
+    box[4] !== 0x75 ||
+    box[5] !== 0x75 ||
+    box[6] !== 0x69 ||
+    box[7] !== 0x64
+  ) {
+    return null;
+  }
+  for (let i = 0; i < LEGACY_USER_TYPE.byteLength; i++) {
+    if (box[8 + i] !== LEGACY_USER_TYPE[i]) {
+      return null;
+    }
+  }
+  if (box[24] !== PAYLOAD_VERSION || (box[25] & FLAG_THUMB_SEEK) === 0) {
+    return null;
+  }
+  const seconds = view.getFloat64(28, false);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return null;
+  }
+  return seconds;
 }
 
 export async function readVideoFileMetadata(
   file: RandomAccessFile,
 ): Promise<number | null> {
   const scan = await scanTopLevelBoxes(file);
-  if (!scan.ok || scan.metaOffset == null) {
+  if (!scan.ok) {
     return null;
   }
-  const box = await readExact(file, scan.metaOffset, VIDEO_META_BOX_SIZE);
-  if (!box) {
-    return null;
+  if (scan.metaOffset != null) {
+    const box = await readExact(file, scan.metaOffset, VIDEO_META_BOX_SIZE);
+    if (!box) {
+      return null;
+    }
+    return decodeVideoMetaBox(box);
   }
-  return decodeVideoMetaBox(box);
+  if (scan.legacyOffset != null) {
+    const box = await readExact(file, scan.legacyOffset, LEGACY_BOX_SIZE);
+    if (!box) {
+      return null;
+    }
+    return decodeLegacyThumbBox(box);
+  }
+  return null;
 }
 
 export async function writeVideoFileMetadata(
@@ -228,12 +284,14 @@ export async function saveVideoThumbSeek(input: {
     await input.writeSidecar(input.seconds);
     return "sidecar";
   }
-  const result = await writeVideoFileMetadata(
-    await input.openVideo(),
-    input.seconds,
-  );
+  const file = await input.openVideo();
+  const before = await scanTopLevelBoxes(file);
+  const result = await writeVideoFileMetadata(file, input.seconds);
   if (!result.ok) {
     throw new Error(`動画にサムネ位置を書けませんでした (${result.reason})`);
+  }
+  if (before.ok && before.legacyOffset != null) {
+    await removeTopLevelBox(file, before.legacyOffset, LEGACY_BOX_SIZE);
   }
   await input.deleteSidecar();
   return "embedded";
@@ -273,6 +331,41 @@ export function unchangedMediaRanges(scan: {
     [0, scan.metaOffset],
     [scan.metaOffset + VIDEO_META_BOX_SIZE, scan.fileSize],
   ];
+}
+
+async function removeTopLevelBox(
+  file: RandomAccessFile,
+  offset: number,
+  boxSize: number,
+): Promise<void> {
+  const fileSize = await file.size();
+  const tailStart = offset + boxSize;
+  const tailLength = fileSize - tailStart;
+  if (tailLength < 0) {
+    throw new Error("metadata rollback failed");
+  }
+  if (tailLength === 0) {
+    await file.truncate(offset);
+    if ((await file.size()) !== offset) {
+      throw new Error("metadata rollback failed");
+    }
+    return;
+  }
+  const chunkSize = 1024 * 1024;
+  let copied = 0;
+  while (copied < tailLength) {
+    const length = Math.min(chunkSize, tailLength - copied);
+    const bytes = await file.readAt(tailStart + copied, length);
+    if (bytes.byteLength !== length) {
+      throw new Error("metadata rollback failed");
+    }
+    await file.writeAt(offset + copied, bytes);
+    copied += length;
+  }
+  await file.truncate(fileSize - boxSize);
+  if ((await file.size()) !== fileSize - boxSize) {
+    throw new Error("metadata rollback failed");
+  }
 }
 
 async function appendMetaBox(
