@@ -13,10 +13,11 @@ describe("videoBadgeCopy", () => {
   it("marks queue and download as キュー", () => {
     expect(videoBadgeCopy("queued")).toEqual({
       label: "キュー",
-      title: "ダウンロード待ち、または実行中",
+      title: "ダウンロード待ち、実行中、または一時停止",
       tone: "pending",
     });
     expect(videoBadgeCopy("downloading").label).toBe("キュー");
+    expect(videoBadgeCopy("paused").label).toBe("キュー");
   });
 
   it("keeps unsaved videos as 動画", () => {

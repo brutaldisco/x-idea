@@ -29,6 +29,7 @@ import {
 import {
   isFinishedVideoDownload,
   leftoverVideoRelPaths,
+  mergeResumeCursor,
   resumeVideoOffset,
   resumeVideoTailOffset,
   tailRemainingBytes,
@@ -275,11 +276,32 @@ export async function loadProgress(downloadId: string): Promise<number> {
   return typeof value === "number" && value > 0 ? value : 0;
 }
 
+/**
+ * 再開カーソルを IndexedDB に残す。
+ * grow は進んだ位置だけを採用し、0 で消さない。
+ * commit は一時停止時にディスクで測った位置を正として書き直す。
+ */
+export async function rememberVideoProgress(
+  downloadId: string,
+  received: number,
+  mode: "grow" | "commit" = "grow",
+): Promise<number> {
+  const prev = await loadProgress(downloadId);
+  const next =
+    mode === "commit" && received > 0
+      ? Math.floor(received)
+      : mergeResumeCursor(prev, received);
+  if (next > 0) {
+    await idbSet(progressKey(downloadId), next);
+  }
+  return next > 0 ? next : prev;
+}
+
 async function saveProgress(
   downloadId: string,
   received: number,
 ): Promise<void> {
-  await idbSet(progressKey(downloadId), received);
+  await rememberVideoProgress(downloadId, received, "grow");
 }
 
 export async function clearProgress(downloadId: string): Promise<void> {
@@ -1457,6 +1479,9 @@ async function downloadViaTailSidecar(input: {
         break;
       } catch (error) {
         if (isAbortError(error) || input.signal?.aborted) {
+          // close 済みの .part サイズをカーソルにする。
+          // ここで捨てると外側が本体位置だけを書き、途中からが先頭に戻る
+          await persistTailFromFile().catch(() => undefined);
           throw abortError();
         }
         await persistTailFromFile();
@@ -1558,6 +1583,8 @@ export async function downloadVideoFile(input: {
   estimatedBytes?: number | null;
   /** キューに記録された総バイト（再開時の total ヒント） */
   expectedTotalBytes?: number | null;
+  /** サーバーに残した停止位置。IndexedDB が空でも、この値をカーソルの下限にする */
+  savedBytes?: number | null;
   /** あれば CDN から直接・並列で取得し、失敗時はプロキシ経路へ落ちる（ADR-021） */
   directUrl?: string | null;
   /** `/url` がサーバー側で読んだ総バイト。HEAD なしでも並列できる */
@@ -1585,7 +1612,10 @@ export async function downloadVideoFile(input: {
   const partSize = await readPartSize(dir, fileName);
   const mainHead = new Uint8Array(await mainBlob.slice(0, 8).arrayBuffer());
   const mainHasFtyp = hasMp4FtypAtStart(mainHead);
-  const savedProgress = await loadProgress(input.downloadId);
+  const savedProgress = await rememberVideoProgress(
+    input.downloadId,
+    input.savedBytes ?? 0,
+  );
 
   const plan = initialVideoDownloadPlan(input.estimatedBytes);
   // URL API の bytes だけを確定サイズにする。progress_total や

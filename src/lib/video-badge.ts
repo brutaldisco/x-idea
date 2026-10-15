@@ -16,10 +16,14 @@ export function videoBadgeCopy(
       tone: "saved",
     };
   }
-  if (saveStatus === "queued" || saveStatus === "downloading") {
+  if (
+    saveStatus === "queued" ||
+    saveStatus === "downloading" ||
+    saveStatus === "paused"
+  ) {
     return {
       label: "キュー",
-      title: "ダウンロード待ち、または実行中",
+      title: "ダウンロード待ち、実行中、または一時停止",
       tone: "pending",
     };
   }

@@ -49,6 +49,36 @@ export function collectSavedVideoRelPaths(
 }
 
 /**
+ * 途中再開のカーソル。正の値は下げない。
+ * 0 や未計測で、すでに進んだ位置を消して最初からにしない。
+ */
+export function mergeResumeCursor(
+  previous: number | null | undefined,
+  incoming: number | null | undefined,
+): number {
+  const prev = previous != null && previous > 0 ? Math.floor(previous) : 0;
+  const next = incoming != null && incoming > 0 ? Math.floor(incoming) : 0;
+  return Math.max(prev, next);
+}
+
+/**
+ * 一時停止で残すバイト位置。
+ * ディスクが読めたらそれを正にする（未書き込みの受信量では進めない）。
+ * ディスクがまだ 0 のときは、既存カーソルを 0 に戻さない。
+ */
+export function committedPauseBytes(input: {
+  diskBytes: number;
+  savedProgress: number;
+  previousBytes?: number | null;
+}): number {
+  const disk = input.diskBytes > 0 ? Math.floor(input.diskBytes) : 0;
+  if (disk > 0) {
+    return disk;
+  }
+  return mergeResumeCursor(input.savedProgress, input.previousBytes);
+}
+
+/**
  * 再開位置。IndexedDB の進捗を優先しつつ、ファイルより先は進まない。
  * 進捗が消えていてもファイルに途中まで書いてあればそのサイズから続ける。
  */

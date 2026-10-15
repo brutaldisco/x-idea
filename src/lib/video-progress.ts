@@ -152,6 +152,9 @@ export function videoQueueStatusLabel(
   if (status === "downloading") {
     return percent != null ? `ダウンロード中 ${percent}%` : "ダウンロード中";
   }
+  if (status === "paused") {
+    return percent != null ? `一時停止 ${percent}%` : "一時停止";
+  }
   if (status === "queued") {
     return "待機中";
   }

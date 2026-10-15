@@ -21,7 +21,12 @@ const listeners = new Set<Listener>();
 export function videoSaveIsInFlight(
   status: string | null | undefined,
 ): boolean {
-  return status === "queued" || status === "downloading" || status === "ready";
+  return (
+    status === "queued" ||
+    status === "downloading" ||
+    status === "paused" ||
+    status === "ready"
+  );
 }
 
 export function libraryVideoSaveFields(

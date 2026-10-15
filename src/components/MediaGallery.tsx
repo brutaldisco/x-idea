@@ -227,7 +227,7 @@ function VideoSaveControl({
       </span>
     );
   }
-  if (status === "queued" || status === "downloading") {
+  if (status === "queued" || status === "downloading" || status === "paused") {
     return (
       <span className="flex items-center gap-2 text-xs">
         <QueueBadge compact={false} />

@@ -27,6 +27,8 @@ export function isVideoMediaType(type: string | null | undefined): boolean {
  * （= 以前のセッションや通信途絶で取り残された）ものだけ再開対象にする。
  * failed は途中ファイルと進捗を残しているので、そのまま続きから再開できる
  * （ADR-023。キュー上限の更新はサーバー側で別途行う）。
+ * paused はユーザーが一時停止した位置。自動では動かさず、開始操作で
+ * そのバイトから続ける（ADR-029）。
  */
 export function isResumableVideoQueueStatus(
   status: string,
@@ -35,6 +37,7 @@ export function isResumableVideoQueueStatus(
   return (
     status === "queued" ||
     status === "failed" ||
+    status === "paused" ||
     (status === "downloading" && !active)
   );
 }
@@ -244,7 +247,8 @@ export function mediaHasQueueableVideos(
       isVideoMediaType(item.type) &&
       item.videoSaveStatus !== "ready" &&
       item.videoSaveStatus !== "queued" &&
-      item.videoSaveStatus !== "downloading",
+      item.videoSaveStatus !== "downloading" &&
+      item.videoSaveStatus !== "paused",
   );
 }
 

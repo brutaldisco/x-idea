@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   collectSavedVideoRelPaths,
+  committedPauseBytes,
   isFinishedVideoDownload,
   isIncompleteVideoFile,
   leftoverVideoRelPaths,
+  mergeResumeCursor,
   resolveSavedVideoRelPath,
   resumeVideoOffset,
   resumeVideoTailOffset,
@@ -86,6 +88,39 @@ describe("leftoverVideoRelPaths", () => {
         ["acc/a.mp4", "acc/c.mp4"],
       ),
     ).toEqual(["acc/b.mp4"]);
+  });
+});
+
+describe("mergeResumeCursor / committedPauseBytes", () => {
+  it("keeps a later cursor and ignores empty measurements", () => {
+    expect(mergeResumeCursor(80, 0)).toBe(80);
+    expect(mergeResumeCursor(0, 40)).toBe(40);
+    expect(mergeResumeCursor(80, 120)).toBe(120);
+    expect(mergeResumeCursor(null, undefined)).toBe(0);
+  });
+
+  it("pauses at the file size and does not rewind to zero", () => {
+    expect(
+      committedPauseBytes({
+        diskBytes: 50_000_000,
+        savedProgress: 90_000_000,
+        previousBytes: 10,
+      }),
+    ).toBe(50_000_000);
+    expect(
+      committedPauseBytes({
+        diskBytes: 0,
+        savedProgress: 50_000_000,
+        previousBytes: 10,
+      }),
+    ).toBe(50_000_000);
+    expect(
+      committedPauseBytes({
+        diskBytes: 0,
+        savedProgress: 0,
+        previousBytes: 0,
+      }),
+    ).toBe(0);
   });
 });
 

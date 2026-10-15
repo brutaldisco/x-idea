@@ -39,6 +39,7 @@ describe("mediaHasQueueableVideos", () => {
         { type: "photo" },
         { type: "video", videoSaveStatus: "ready" },
         { type: "animated_gif", videoSaveStatus: "queued" },
+        { type: "video", videoSaveStatus: "paused" },
       ]),
     ).toBe(false);
     expect(
@@ -61,6 +62,11 @@ describe("isResumableVideoQueueStatus", () => {
   it("lets failed items resume from their saved progress", () => {
     expect(isResumableVideoQueueStatus("failed", false)).toBe(true);
     expect(isResumableVideoQueueStatus("failed", true)).toBe(true);
+  });
+
+  it("lets a paused download resume without treating it as a fresh queue item", () => {
+    expect(isResumableVideoQueueStatus("paused", false)).toBe(true);
+    expect(isResumableVideoQueueStatus("paused", true)).toBe(true);
   });
 });
 

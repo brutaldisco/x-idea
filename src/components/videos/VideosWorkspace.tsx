@@ -44,7 +44,7 @@ import {
   videoStallMaxRestarts,
   videoStallRestartBackoffMs,
 } from "@/lib/video-download-plan";
-import { isIncompleteVideoFile } from "@/lib/video-files";
+import { committedPauseBytes, isIncompleteVideoFile } from "@/lib/video-files";
 import { useVideoSaveFolder } from "@/lib/video-folder";
 import {
   folderPlaylist,
@@ -82,9 +82,11 @@ import {
   ensureWritePermission,
   getVideoFile,
   hasWritePermission,
+  loadProgress,
   loadVideoRoot,
   measureLocalVideoProgress,
   moveVideoFile,
+  rememberVideoProgress,
   removeSavedVideoFiles,
   suggestedRelPath,
   sweepLeftoverVideoFiles,
@@ -158,6 +160,34 @@ async function requeueItem(id: string): Promise<boolean> {
   return false;
 }
 
+/** 書き込み済み位置を残して paused にする。0 バイトではカーソルを消さない */
+async function pauseItemOnServer(
+  id: string,
+  received: number,
+  total: number,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const res = await fetch(`/api/videos/queue/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "pause",
+          received: received > 0 ? received : undefined,
+          total: total > 0 ? total : undefined,
+        }),
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      // retry
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200 * 2 ** attempt));
+  }
+  return false;
+}
+
 export function VideosWorkspace({
   accountId,
   initial,
@@ -184,6 +214,7 @@ export function VideosWorkspace({
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [pausingIds, setPausingIds] = useState<string[]>([]);
   const [cleaning, setCleaning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -197,6 +228,11 @@ export function VideosWorkspace({
   } | null>(null);
   const [repeat, setRepeat] = useState<RepeatMode>("folder");
   const abortRef = useRef<AbortController | null>(null);
+  const busyRef = useRef(false);
+  const queueRef = useRef(initial.queue);
+  const extraIdsRef = useRef<string[]>([]);
+  /** ユーザーが一時停止した項目。ウォッチドッグの切断と区別する */
+  const pausedIdsRef = useRef<Set<string>>(new Set());
   const activeRef = useRef<Set<string>>(new Set());
   /** 実行中の各本を個別に止めるためのコントローラ（スタール時の取り直し用） */
   const itemControllersRef = useRef<Map<string, AbortController>>(new Map());
@@ -209,7 +245,7 @@ export function VideosWorkspace({
   const [openingIds, setOpeningIds] = useState<string[]>([]);
   const [mergingIds, setMergingIds] = useState<string[]>([]);
   const [verifyingIds, setVerifyingIds] = useState<string[]>([]);
-  /** このタブが停止した項目。409 のときだけ再 queued → start してよい */
+  /** このタブが止めた項目。409 のときだけ再 queued → start してよい */
   const releasedIdsRef = useRef<Set<string>>(new Set());
   const sweptRef = useRef(false);
   const autoResumeRef = useRef(false);
@@ -220,6 +256,7 @@ export function VideosWorkspace({
   const [queueOpen, setQueueOpen] = useState(initialQueueOpen);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  queueRef.current = data.queue;
 
   useEffect(() => {
     setData(initial);
@@ -523,26 +560,46 @@ export function VideosWorkspace({
     });
   }
 
-  async function startDownloads(ids?: string[]) {
+  async function startDownloads(ids?: string[], options?: { force?: boolean }) {
+    if (busyRef.current && !options?.force) {
+      if (ids?.length) {
+        for (const id of ids) {
+          if (!extraIdsRef.current.includes(id)) {
+            extraIdsRef.current.push(id);
+          }
+        }
+      }
+      return;
+    }
+    busyRef.current = true;
+    const stopBusy = () => {
+      busyRef.current = false;
+      setBusy(false);
+      setStopping(false);
+      abortRef.current = null;
+    };
     const handle = await resolveRoot();
     if (!handle) {
       setMessage("Settings で保存フォルダを選んでください");
+      stopBusy();
       return;
     }
     setRoot(handle);
     if (!navigator.onLine) {
       setMessage("オフラインです。ネットワークが良い場所で実行してください");
+      stopBusy();
       return;
     }
     const allowed = await ensureWritePermission(handle);
     if (!allowed) {
       setMessage("フォルダへの書き込みを許可してください");
+      stopBusy();
       return;
     }
-    // queued に加えて、failed（途中から再開）と、このタブで動いていない
-    // downloading（中断分）も拾う。1 本の失敗で残りが止まらないようにする（ADR-023）。
+    // queued / paused / failed（途中から再開）と、このタブで動いていない
+    // downloading（中断分）を拾う。1 本の失敗で残りが止まらないようにする（ADR-023）。
     // リースが生きている downloading は別タブの実行中なので触らない（ADR-025）
-    const resumable = data.queue.filter(
+    const resumable = queueRef.current.filter(
       (item) =>
         isResumableVideoQueueStatus(
           item.status,
@@ -563,6 +620,7 @@ export function VideosWorkspace({
       setMessage(
         ids?.length ? "選んだ動画はキューにありません" : "キューは空です",
       );
+      stopBusy();
       return;
     }
     await Promise.all(
@@ -586,13 +644,106 @@ export function VideosWorkspace({
     const parallel = VIDEO_FILE_PARALLEL;
     let cursor = 0;
 
+    const finishPause = async (
+      item: (typeof chosen)[number],
+      relPath: string,
+      totalHint: number,
+    ) => {
+      pausedIdsRef.current.delete(item.id);
+      let disk = 0;
+      if (handle) {
+        const local = await measureLocalVideoProgress({
+          root: handle,
+          relPath,
+        });
+        if (local && local.received > 0) {
+          disk = local.received;
+        }
+      }
+      const received = committedPauseBytes({
+        diskBytes: disk,
+        savedProgress: await loadProgress(item.id),
+        previousBytes: item.progressBytes,
+      });
+      const total =
+        totalHint > 0
+          ? totalHint
+          : (item.progressTotal ?? item.estimatedBytes ?? 0);
+      if (received > 0) {
+        await rememberVideoProgress(item.id, received, "commit");
+        const ok = await pauseItemOnServer(item.id, received, total);
+        if (!ok) {
+          await requeueItem(item.id);
+        }
+        const status = ok ? "paused" : "queued";
+        applyVideoItemSaveStatus(queryClient, item, status);
+        setProgress((prev) => ({
+          ...prev,
+          [item.id]: { received, total, bps: null },
+        }));
+        setData((prev) => ({
+          ...prev,
+          queuedCount: prev.queue.some(
+            (entry) => entry.id === item.id && entry.status === "queued",
+          )
+            ? Math.max(0, prev.queuedCount - 1)
+            : prev.queuedCount,
+          queue: prev.queue.map((entry) =>
+            entry.id === item.id
+              ? {
+                  ...entry,
+                  status,
+                  error: null,
+                  progressBytes: received,
+                  progressTotal: total > 0 ? total : entry.progressTotal,
+                }
+              : entry,
+          ),
+        }));
+        if (!controller.signal.aborted) {
+          setMessage(
+            `一時停止しました（${formatBytes(received)} まで保存済み。途中から再開できます）`,
+          );
+        }
+      } else {
+        await requeueItem(item.id);
+        clearItemProgress(item.id);
+        applyVideoItemSaveStatus(queryClient, item, "queued");
+        setData((prev) => ({
+          ...prev,
+          queuedCount: prev.queue.some(
+            (entry) => entry.id === item.id && entry.status === "downloading",
+          )
+            ? prev.queuedCount + 1
+            : prev.queuedCount,
+          queue: prev.queue.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, status: "queued", error: null }
+              : entry,
+          ),
+        }));
+      }
+      setPausingIds((ids) => ids.filter((id) => id !== item.id));
+    };
+
     const runItem = async (item: (typeof chosen)[number]) => {
+      if (activeRef.current.has(item.id)) {
+        return;
+      }
       activeRef.current.add(item.id);
       const relPath = suggestedRelPath(item);
       // ハートビート（ADR-025 改定）: 生存確認と停止位置をサーバーへ残す。
       // 受信バイトが増えたときだけ送る。固まったダウンロードがリースを
       // 持ち続けて「別のタブで実行中です」のまま再開不能になるのを防ぐ
-      const beat = { lastAt: 0, received: 0, total: 0, lastSentReceived: -1 };
+      const beat = {
+        lastAt: 0,
+        received: Math.max(0, item.progressBytes ?? 0),
+        total:
+          item.progressTotal && item.progressTotal > 0
+            ? item.progressTotal
+            : (item.estimatedBytes ?? 0),
+        lastSentReceived: -1,
+      };
       const sendHeartbeat = (force = false) => {
         if (controller.signal.aborted) {
           return;
@@ -622,8 +773,9 @@ export function VideosWorkspace({
       let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
       try {
         if (controller.signal.aborted) {
-          releasedIdsRef.current.add(item.id);
-          await requeueItem(item.id);
+          if (pausedIdsRef.current.has(item.id)) {
+            await finishPause(item, relPath, beat.total);
+          }
           return;
         }
         let startRes = await fetch(`/api/videos/queue/${item.id}`, {
@@ -667,7 +819,11 @@ export function VideosWorkspace({
         speedSamplesRef.current.set(item.id, []);
         setProgress((prev) => ({
           ...prev,
-          [item.id]: { received: 0, total: 0, bps: null },
+          [item.id]: {
+            received: beat.received,
+            total: beat.total,
+            bps: null,
+          },
         }));
         heartbeatTimer = setInterval(() => {
           // 大きな途中ファイルの開き直し中はバイトが増えない。
@@ -711,7 +867,7 @@ export function VideosWorkspace({
         for (;;) {
           const itemController = new AbortController();
           const onBatchAbort = () => itemController.abort();
-          if (controller.signal.aborted) {
+          if (controller.signal.aborted || pausedIdsRef.current.has(item.id)) {
             itemController.abort();
           } else {
             controller.signal.addEventListener("abort", onBatchAbort, {
@@ -756,6 +912,7 @@ export function VideosWorkspace({
               root: handle,
               estimatedBytes: item.estimatedBytes,
               expectedTotalBytes,
+              savedBytes: item.progressBytes,
               directUrl,
               directBytes,
               // 502 等で両経路が失敗したとき、URL を取り直して CDN 直接から
@@ -786,6 +943,9 @@ export function VideosWorkspace({
             });
             break;
           } catch (error) {
+            if (pausedIdsRef.current.has(item.id)) {
+              throw error;
+            }
             if (!controller.signal.aborted && itemController.signal.aborted) {
               // ウォッチドッグが切った（ユーザーの停止ではない）
               const maxRestarts = videoStallMaxRestarts(
@@ -845,22 +1005,13 @@ export function VideosWorkspace({
         }));
       } catch (error) {
         if ((error as { name?: string }).name === "AbortError") {
-          // 停止: 途中まで保存されているので queued に戻して再開可能にする
-          releasedIdsRef.current.add(item.id);
-          await requeueItem(item.id);
-          clearItemProgress(item.id);
-          applyVideoItemSaveStatus(queryClient, item, "queued");
-          setData((prev) => ({
-            ...prev,
-            queuedCount: prev.queue.some(
-              (entry) => entry.id === item.id && entry.status === "downloading",
-            )
-              ? prev.queuedCount + 1
-              : prev.queuedCount,
-            queue: prev.queue.map((entry) =>
-              entry.id === item.id ? { ...entry, status: "queued" } : entry,
-            ),
-          }));
+          // 一時停止: 書き込み済み位置を残し、次はそこから続ける。
+          // ハートビートが未書き込み分でカーソルを上書きしないよう先に止める
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+          await finishPause(item, relPath, beat.total);
           return;
         }
         failCount += 1;
@@ -913,15 +1064,29 @@ export function VideosWorkspace({
           clearInterval(heartbeatTimer);
         }
         activeRef.current.delete(item.id);
+        setPausingIds((ids) =>
+          ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids,
+        );
       }
     };
 
     const worker = async () => {
       while (!controller.signal.aborted) {
-        const index = cursor;
-        cursor += 1;
-        const item = chosen[index];
+        const extraId = extraIdsRef.current.shift();
+        let item: (typeof chosen)[number] | undefined;
+        if (extraId) {
+          item =
+            queueRef.current.find((entry) => entry.id === extraId) ??
+            chosen.find((entry) => entry.id === extraId);
+        } else {
+          const index = cursor;
+          cursor += 1;
+          item = chosen[index];
+        }
         if (!item) {
+          if (extraId) {
+            continue;
+          }
           return;
         }
         await runItem(item);
@@ -937,7 +1102,7 @@ export function VideosWorkspace({
       const elapsed = (performance.now() - started) / 1000;
       const parts: string[] = [];
       if (controller.signal.aborted) {
-        parts.push("停止しました（途中まで保存済み。再開できます）");
+        parts.push("一時停止しました（保存済みの位置から再開できます）");
       }
       if (doneCount > 0) {
         parts.push(`${doneCount} 件完了`);
@@ -964,29 +1129,64 @@ export function VideosWorkspace({
       }
     } finally {
       setStopping(false);
-      setBusy(false);
-      abortRef.current = null;
+      const followUp = controller.signal.aborted
+        ? []
+        : extraIdsRef.current.splice(0);
+      if (controller.signal.aborted) {
+        extraIdsRef.current.length = 0;
+      }
+      if (followUp.length === 0) {
+        busyRef.current = false;
+        setBusy(false);
+        abortRef.current = null;
+      } else {
+        busyRef.current = true;
+        queueMicrotask(() => {
+          void startDownloads(followUp, { force: true });
+        });
+      }
     }
   }
 
-  function stopDownloads() {
+  function pauseItem(id: string) {
+    if (!activeRef.current.has(id)) {
+      return;
+    }
+    pausedIdsRef.current.add(id);
+    setPausingIds((current) =>
+      current.includes(id) ? current : [...current, id],
+    );
+    itemControllersRef.current.get(id)?.abort();
+  }
+
+  function pauseDownloads() {
     const controller = abortRef.current;
     if (!controller || controller.signal.aborted) {
       return;
     }
-    setStopping(true);
-    setMessage("停止しています…");
-    controller.abort();
     const ids = [...activeRef.current];
     for (const id of ids) {
-      releasedIdsRef.current.add(id);
-      const item = data.queue.find((entry) => entry.id === id);
-      if (item) {
-        applyVideoItemSaveStatus(queryClient, item, "queued");
-      }
+      pausedIdsRef.current.add(id);
     }
-    // リースをすぐ外す。失敗してもあとで再試行する
-    void Promise.all(ids.map((id) => requeueItem(id)));
+    setPausingIds(ids);
+    setStopping(true);
+    setMessage("一時停止しています…");
+    controller.abort();
+  }
+
+  function resumePaused(id: string) {
+    if (
+      busyRef.current &&
+      abortRef.current &&
+      !abortRef.current.signal.aborted
+    ) {
+      if (!extraIdsRef.current.includes(id)) {
+        extraIdsRef.current.push(id);
+      }
+      setMessage("途中から再開します");
+      return;
+    }
+    void startDownloads([id]);
   }
 
   async function cancelItem(item: VideoItem) {
@@ -1396,10 +1596,10 @@ export function VideosWorkspace({
                   <button
                     type="button"
                     disabled={stopping}
-                    onClick={stopDownloads}
-                    className="rounded-full border border-danger px-3 py-1.5 text-danger text-sm hover:bg-paper disabled:opacity-60"
+                    onClick={pauseDownloads}
+                    className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-paper disabled:opacity-60"
                   >
-                    {stopping ? "停止中…" : "停止"}
+                    {stopping ? "一時停止しています…" : "一時停止"}
                   </button>
                 ) : (
                   <button
@@ -1480,8 +1680,12 @@ export function VideosWorkspace({
               <ul className="mt-3 space-y-2">
                 {data.queue.map((item) => {
                   const prog = progress[item.id];
-                  const received = prog?.received ?? 0;
-                  const total = prog?.total ?? 0;
+                  const received =
+                    prog != null ? prog.received : (item.progressBytes ?? 0);
+                  const total =
+                    prog != null && prog.total > 0
+                      ? prog.total
+                      : (item.progressTotal ?? 0);
                   const pct = videoDownloadPercent(received, total);
                   const barPct = videoDownloadBarPercent(
                     received,
@@ -1505,7 +1709,10 @@ export function VideosWorkspace({
                     item.status === "downloading" && !prog && !otherTabActive;
                   const downloading =
                     Boolean(prog) && item.status === "downloading";
-                  const itemStopping = stopping && downloading;
+                  const itemPausing = pausingIds.includes(item.id);
+                  const itemStopping = itemPausing || (stopping && downloading);
+                  const showBar =
+                    downloading || (item.status === "paused" && received > 0);
                   const merging =
                     downloading && !stopping && mergingIds.includes(item.id);
                   const verifying =
@@ -1524,7 +1731,7 @@ export function VideosWorkspace({
                     !verifying &&
                     openingIds.includes(item.id);
                   const speedLabel =
-                    downloading && !stopping
+                    downloading && !itemStopping
                       ? verifying
                         ? "保存ファイルを確認しています…"
                         : merging
@@ -1542,7 +1749,7 @@ export function VideosWorkspace({
                     item.status === "failed" &&
                     isVideoSourceGoneError(item.error);
                   const statusLabel = itemStopping
-                    ? "停止中"
+                    ? "一時停止しています"
                     : otherTabActive
                       ? "別のタブで実行中です"
                       : interrupted
@@ -1612,11 +1819,9 @@ export function VideosWorkspace({
                         </p>
                         <p className="tabular-nums text-ink-2 text-xs">
                           {statusWithSpeed}
-                          {savedLabel && !downloading
-                            ? `（${savedLabel}）`
-                            : ""}
+                          {savedLabel && !showBar ? `（${savedLabel}）` : ""}
                         </p>
-                        {downloading ? (
+                        {showBar ? (
                           <div className="mt-1.5 flex items-center gap-2">
                             <div
                               className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-line"
@@ -1714,6 +1919,30 @@ export function VideosWorkspace({
                                   onClick={() => void startDownloads([item.id])}
                                 >
                                   この動画だけ
+                                </button>
+                              ) : null}
+                              {downloading && !itemPausing ? (
+                                <button
+                                  type="button"
+                                  className="text-ink-2 text-xs hover:underline"
+                                  onClick={() => pauseItem(item.id)}
+                                >
+                                  一時停止
+                                </button>
+                              ) : null}
+                              {item.status === "paused" ? (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    stopping ||
+                                    itemPausing ||
+                                    !supported ||
+                                    !linked
+                                  }
+                                  className="text-accent text-xs hover:underline disabled:opacity-40"
+                                  onClick={() => resumePaused(item.id)}
+                                >
+                                  途中から再開
                                 </button>
                               ) : null}
                               {interrupted || otherTabActive ? (

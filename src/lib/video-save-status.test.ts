@@ -25,6 +25,10 @@ describe("video save status sync", () => {
       videoRelPath: "a/b.mp4",
       hasQueueableVideos: false,
     });
+    expect(libraryVideoSaveFields({ videoSaveStatus: "paused" })).toEqual({
+      videoSaveStatus: "paused",
+      hasQueueableVideos: false,
+    });
     expect(libraryVideoSaveFields({ videoSaveStatus: "failed" })).toEqual({
       videoSaveStatus: "failed",
       hasQueueableVideos: true,

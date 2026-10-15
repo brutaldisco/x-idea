@@ -40,6 +40,8 @@ describe("video progress", () => {
     expect(videoQueueStatusLabel("downloading", 42)).toBe("ダウンロード中 42%");
     expect(videoQueueStatusLabel("downloading", null)).toBe("ダウンロード中");
     expect(videoQueueStatusLabel("queued", null)).toBe("待機中");
+    expect(videoQueueStatusLabel("paused", 42)).toBe("一時停止 42%");
+    expect(videoQueueStatusLabel("paused", null)).toBe("一時停止");
   });
 
   it("averages download speed over recent samples", () => {

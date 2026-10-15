@@ -66,7 +66,7 @@ export type VideoLibraryPayload = {
   folders: VideoFolder[];
   queue: VideoItem[];
   library: VideoItem[];
-  /** ready / queued / downloading / failed のパス。途中ファイル掃除で残す */
+  /** ready / queued / downloading / paused / failed のパス。途中ファイル掃除で残す */
   protectedRelPaths: string[];
 };
 
@@ -122,7 +122,7 @@ async function listProtectedVideoRelPaths(
           JOIN x_posts p ON p.id = m.x_post_id
           LEFT JOIN video_folders f ON f.id = d.folder_id
           WHERE d.x_account_id = ?
-            AND d.status IN ('ready', 'queued', 'downloading', 'failed')
+            AND d.status IN ('ready', 'queued', 'downloading', 'paused', 'failed')
           LIMIT 2000`,
     args: [accountId],
   });
@@ -228,7 +228,7 @@ export async function listVideoLibrary(
       accountId: String(row.x_account_id),
     })),
     queue: items.filter((item) =>
-      ["queued", "downloading", "failed"].includes(item.status),
+      ["queued", "downloading", "paused", "failed"].includes(item.status),
     ),
     library: items.filter((item) => item.status === "ready"),
     protectedRelPaths,
@@ -300,7 +300,11 @@ export async function tryEnqueueVideo(
     if (status === "ready") {
       return { status: "ready" };
     }
-    if (status === "queued" || status === "downloading") {
+    if (
+      status === "queued" ||
+      status === "downloading" ||
+      status === "paused"
+    ) {
       return { status: "already_queued" };
     }
     if (status === "failed" || status === "canceled") {
@@ -556,6 +560,7 @@ export async function markVideoDownloading(
   }
   // リース（ADR-025）: ハートビートが生きている downloading は別タブで
   // 実行中なので取らない。途絶えた（= 中断した）ものだけ再開を許可する。
+  // paused は一時停止位置を保ったまま続きから開始する（ADR-029）。
   const staleCutoff = dbUtcTimestamp(-VIDEO_LEASE_STALE_MS);
   const result = await getClient().execute({
     sql: `UPDATE video_downloads SET
@@ -563,6 +568,7 @@ export async function markVideoDownloading(
             last_progress_at = datetime('now')
           WHERE id = ? AND (
             status = 'queued' OR
+            status = 'paused' OR
             (status = 'downloading' AND
               (last_progress_at IS NULL OR last_progress_at < ?))
           )`,
@@ -571,6 +577,57 @@ export async function markVideoDownloading(
   if (result.rowsAffected === 0) {
     throw new AppError("CONFLICT", "別のタブで実行中です", { status: 409 });
   }
+}
+
+/**
+ * 一時停止（ADR-029）。downloading を paused にし、書き込み済みバイトを残す。
+ * 0 は「未計測」なので既存カーソルを消さない。ready / canceled は変えない。
+ */
+export async function pauseVideoDownload(
+  id: string,
+  ctx: AccountContext,
+  input: { received?: unknown; total?: unknown },
+): Promise<VideoItem> {
+  const accountId = contextAccountId(ctx);
+  if (!accountId) {
+    throw new AppError("VALIDATION", "アカウントを選んでください");
+  }
+  const item = await ownedItem(id, accountId);
+  if (item.status === "ready" || item.status === "canceled") {
+    throw new AppError("CONFLICT", "一時停止できる状態ではありません");
+  }
+  if (item.status === "paused") {
+    return item;
+  }
+  if (item.status !== "downloading" && item.status !== "queued") {
+    throw new AppError("VALIDATION", "一時停止できる状態ではありません");
+  }
+  const received = asPositiveInt(input.received);
+  const total = asPositiveInt(input.total);
+  const result = await getClient().execute({
+    sql: `UPDATE video_downloads SET
+            status = 'paused',
+            error = NULL,
+            last_progress_at = datetime('now'),
+            progress_bytes = CASE
+              WHEN ? IS NULL THEN progress_bytes
+              ELSE ?
+            END,
+            progress_total = CASE
+              WHEN ? IS NULL THEN progress_total
+              ELSE ?
+            END
+          WHERE id = ? AND status IN ('downloading', 'queued')`,
+    args: [received, received, total, total, id],
+  });
+  if (result.rowsAffected === 0) {
+    const current = await loadVideoItem(id);
+    if (current.status === "paused") {
+      return current;
+    }
+    throw new AppError("CONFLICT", "一時停止できる状態ではありません");
+  }
+  return loadVideoItem(id);
 }
 
 /**

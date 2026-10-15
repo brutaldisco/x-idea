@@ -6,6 +6,7 @@ import {
   failVideoDownload,
   markVideoDownloading,
   markVideoProgress,
+  pauseVideoDownload,
   updateVideoQueue,
 } from "@/server/videos/queue";
 import { getAccountContext } from "@/server/x/context";
@@ -37,6 +38,13 @@ export async function POST(
       // リースが生きている（別タブで実行中の）ときは 409 が返る（ADR-025）
       await markVideoDownloading(id, ctx);
       return Response.json({ ok: true, status: "downloading" });
+    }
+    if (body.action === "pause") {
+      const item = await pauseVideoDownload(id, ctx, {
+        received: body.received,
+        total: body.total,
+      });
+      return Response.json({ ok: true, item });
     }
     if (body.action === "progress") {
       // ハートビート: 最終生存時刻と停止位置を残す（ADR-025）
